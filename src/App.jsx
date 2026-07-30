@@ -107,7 +107,10 @@ function LoginScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg)' }}>
       <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <h1 className="font-display text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Central de Manutenção PCI</h1>
+        <div className="flex flex-col items-center gap-3 mb-4">
+          <BrandLogo boxSize={56} size={28} />
+          <h1 className="font-display text-lg font-semibold text-center" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
+        </div>
         <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
           className="w-full mb-3 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
@@ -117,7 +120,7 @@ function LoginScreen() {
         {error && <p className="text-xs mb-3" style={{ color: 'var(--status-danger)' }}>{error}</p>}
         {info && <p className="text-xs mb-3" style={{ color: 'var(--accent)' }}>{info}</p>}
         <button type="submit" disabled={loading} className="w-full py-2 rounded-lg text-sm font-medium mb-3"
-          style={{ background: 'var(--accent)', color: '#14171A', border: 'none', cursor: 'pointer' }}>
+          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none', cursor: 'pointer' }}>
           {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
         </button>
         <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
@@ -126,6 +129,22 @@ function LoginScreen() {
         </button>
       </form>
     </div>
+  );
+}
+
+function BrandLogo({ size = 18, boxSize = 36, rounded = true }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className={rounded ? 'rounded-lg flex items-center justify-center flex-shrink-0' : 'flex items-center justify-center flex-shrink-0'}
+        style={{ width: boxSize, height: boxSize, background: 'var(--accent)' }}>
+        <ShieldAlert size={size} style={{ color: 'var(--accent-contrast)' }} />
+      </div>
+    );
+  }
+  return (
+    <img src="/maj-logo-icon.png" alt="MAJ Soluções" style={{ width: boxSize, height: boxSize, objectFit: 'contain', flexShrink: 0 }}
+      onError={() => setFailed(true)} />
   );
 }
 
@@ -1096,20 +1115,21 @@ function LoginGate({ client, onSuccess, onBack }) {
 }
 
 function ClientCard({ client, onSelect, onEdit, onDelete }) {
+  const logo = client.branding?.logoData;
   const cover = client.branding?.coverImageData;
   const coverColor = client.branding?.coverColor || 'var(--surface-raised)';
   return (
     <div className="rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <button type="button" onClick={onSelect} className="text-left flex-1 flex flex-col">
-        <div className="h-14 w-full" style={{ background: cover ? `url(${cover}) center/cover` : coverColor }} />
-        <div className="p-3.5 flex items-center gap-3">
-          {client.branding?.logoData
-            ? <img src={client.branding.logoData} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-            : <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--surface-raised)' }}><Building2 size={18} style={{ color: 'var(--text-secondary)' }} /></div>}
-          <div className="min-w-0">
-            <p className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{client.name}</p>
-            {client.address && <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{client.address}</p>}
-          </div>
+        <div className="w-full aspect-[4/3] flex items-center justify-center p-4"
+          style={{ background: logo ? '#FFFFFF' : (cover ? `url(${cover}) center/cover` : coverColor) }}>
+          {logo
+            ? <img src={logo} alt="" className="max-w-full max-h-full object-contain" />
+            : !cover && <Building2 size={32} style={{ color: 'var(--text-secondary)' }} />}
+        </div>
+        <div className="p-3.5">
+          <p className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{client.name}</p>
+          {client.address && <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{client.address}</p>}
         </div>
       </button>
       <div className="flex items-center justify-between gap-1 px-3.5 pb-3">
@@ -1130,16 +1150,21 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
   const [confirm, setConfirm] = useState(null);
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
+    <div className="min-h-screen relative overflow-hidden" style={{ background: 'var(--bg)' }}>
       <PageStyles />
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 flex flex-col gap-6">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-            <ShieldAlert size={18} style={{ color: 'var(--accent-contrast)' }} />
-          </div>
+      <img src="/maj-watermark.png" alt="" aria-hidden="true"
+        className="pointer-events-none select-none"
+        style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: '300px', maxWidth: '38vw', opacity: 0.045, zIndex: 0,
+          imageRendering: '-webkit-optimize-contrast',
+        }} />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 flex flex-col gap-6 relative" style={{ zIndex: 1, minHeight: '100vh' }}>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 text-center">
+          <BrandLogo boxSize={40} size={20} />
           <div>
-            <h1 className="font-display font-semibold text-base" style={{ color: 'var(--text-primary)' }}>Central de Manutenção PCI</h1>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Selecione um cliente para continuar</p>
+            <h1 className="font-display font-semibold text-lg sm:text-2xl" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
+            <p className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>Selecione um cliente para continuar</p>
           </div>
         </div>
 
@@ -1159,7 +1184,7 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
               description="Peça ao administrador para vincular seu usuário a um cliente." />
           )
         ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {clients.map((c) => (
               <ClientCard key={c.id} client={c} onSelect={() => onSelect(c.id)}
                 onEdit={canManage ? () => setModal({ mode: 'edit', client: c }) : undefined}
@@ -1167,6 +1192,13 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
             ))}
           </div>
         )}
+
+        <div className="mt-auto pt-8 text-center">
+          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            Desenvolvido por M.A.J Eletro Eletrônica LTDA — CNPJ: 45.893.915/0001-01<br />
+            Sistema de uso exclusivo e restrito a usuários autorizados.
+          </p>
+        </div>
       </div>
 
       {modal && canManage && (
@@ -1390,10 +1422,10 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             <div className="flex items-center gap-2.5 min-w-0">
               {client.branding?.logoData
                 ? <img src={client.branding.logoData} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                : <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--accent)' }}><ShieldAlert size={17} style={{ color: 'var(--accent-contrast)' }} /></div>}
+                : <BrandLogo boxSize={32} size={17} />}
               <div className="min-w-0">
                 <h1 className="font-display font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)', fontSize: '15px' }}>{client.name}</h1>
-                <p className="text-xs leading-tight" style={{ color: 'var(--text-secondary)' }}>Central de Manutenção PCI</p>
+                <p className="text-xs leading-tight" style={{ color: 'var(--text-secondary)' }}>Centro de Controle de Manutenção</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -2110,18 +2142,18 @@ function PageStyles() {
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
       :root {
-        --bg: #14171A;
-        --surface: #1D2124;
-        --surface-raised: #262B2E;
-        --border: #33393D;
-        --text-primary: #E9ECE7;
-        --text-secondary: #8D9691;
-        --accent: #F2B705;
-        --accent-contrast: #14171A;
+        --bg: #181414;
+        --surface: #221D1D;
+        --surface-raised: #2C2424;
+        --border: #3E3232;
+        --text-primary: #F1EDEA;
+        --text-secondary: #A79999;
+        --accent: #8B2F2F;
+        --accent-contrast: #FFFFFF;
         --status-ok: #3FB950;
-        --status-warn: #F2A93B;
-        --status-danger: #F0473D;
-        --status-none: #5B6266;
+        --status-warn: #E8A33B;
+        --status-danger: #E0483D;
+        --status-none: #6B6161;
       }
       .font-display { font-family: 'Space Grotesk', sans-serif; }
       .font-body, body { font-family: 'IBM Plex Sans', sans-serif; }
@@ -2144,7 +2176,7 @@ function PageStyles() {
       }
       .field-input { background: var(--surface-raised); border: 1px solid var(--border); color: var(--text-primary); }
       .field-input::placeholder { color: #5B6266; }
-      .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(242,183,5,0.18); outline: none; }
+      .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(139,47,47,0.25); outline: none; }
       .btn {
         display: inline-flex; align-items: center; justify-content: center; gap: 6px;
         font-size: 14px; font-weight: 500; padding: 10px 16px; border-radius: 8px; min-height: 40px;
@@ -2314,14 +2346,14 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#14171A' }}>
-          <div className="w-full max-w-md rounded-2xl p-6" style={{ background: '#1D2124', border: '1px solid #33393D' }}>
-            <p className="font-medium mb-2" style={{ color: '#E9ECE7' }}>Ocorreu um erro inesperado</p>
-            <p className="text-sm mb-4" style={{ color: '#8D9691', fontFamily: 'monospace' }}>
+        <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#181414' }}>
+          <div className="w-full max-w-md rounded-2xl p-6" style={{ background: '#221D1D', border: '1px solid #3E3232' }}>
+            <p className="font-medium mb-2" style={{ color: '#F1EDEA' }}>Ocorreu um erro inesperado</p>
+            <p className="text-sm mb-4" style={{ color: '#A79999', fontFamily: 'monospace' }}>
               {String((this.state.error && this.state.error.message) || this.state.error)}
             </p>
             <button onClick={() => this.setState({ error: null })}
-              className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: '#F2B705', color: '#14171A', border: 'none', cursor: 'pointer' }}>
+              className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: '#8B2F2F', color: '#FFFFFF', border: 'none', cursor: 'pointer' }}>
               Tentar novamente
             </button>
           </div>
@@ -2335,6 +2367,7 @@ class ErrorBoundary extends React.Component {
 export default function App() {
   return (
     <ErrorBoundary>
+      <PageStyles />
       <AuthGate>
         <Root />
       </AuthGate>
