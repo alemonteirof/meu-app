@@ -8,6 +8,167 @@ import {
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
+/* Supabase (banco de dados + login de usuários)                      */
+/* ------------------------------------------------------------------ */
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+/* ------------------------------------------------------------------ */
+/* Storage: window.storage -> Supabase (tabela kv_store)               */
+/* ------------------------------------------------------------------ */
+/* Todo o app já lê/grava dados através de window.storage.get/set/    */
+/* delete/list. Aqui plugamos essa mesma interface no Supabase quando  */
+/* as chaves VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY existirem, ou  */
+/* caímos de volta para o localStorage do navegador (útil para testar */
+/* localmente antes de configurar o Supabase).                        */
+if (typeof window !== 'undefined') {
+  if (supabase) {
+    window.storage = {
+      async get(key) {
+        const { data, error } = await supabase.from('kv_store').select('value').eq('key', key).maybeSingle();
+        if (error) throw error;
+        return data ? { key, value: data.value } : null;
+      },
+      async set(key, value) {
+        const { error } = await supabase.from('kv_store').upsert({ key, value, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        return { key, value };
+      },
+      async delete(key) {
+        const { error } = await supabase.from('kv_store').delete().eq('key', key);
+        if (error) throw error;
+        return { key, deleted: true };
+      },
+      async list(prefix = '') {
+        const { data, error } = await supabase.from('kv_store').select('key').like('key', `${prefix}%`);
+        if (error) throw error;
+        return { keys: (data || []).map((r) => r.key) };
+      },
+    };
+  } else if (!window.storage) {
+    window.storage = {
+      async get(key) {
+        const value = localStorage.getItem(key);
+        return value === null ? null : { key, value };
+      },
+      async set(key, value) {
+        localStorage.setItem(key, value);
+        return { key, value };
+      },
+      async delete(key) {
+        localStorage.removeItem(key);
+        return { key, deleted: true };
+      },
+      async list(prefix = '') {
+        const keys = Object.keys(localStorage).filter((k) => k.startsWith(prefix));
+        return { keys };
+      },
+    };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Autenticação global + níveis de acesso (admin / operador / visualizador) */
+/* ------------------------------------------------------------------ */
+const AuthContext = React.createContext({ role: 'admin', email: null, signOut: () => {} });
+function useAuth() { return React.useContext(AuthContext); }
+
+function LoginScreen() {
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError(''); setInfo(''); setLoading(true);
+    try {
+      if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        setInfo('Conta criada! Um administrador precisa liberar seu nível de acesso antes que você possa usar o sistema plenamente.');
+      }
+    } catch (err) {
+      setError(err.message || 'Não foi possível entrar.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg)' }}>
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <h1 className="font-display text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Central de Manutenção PCI</h1>
+        <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+          className="w-full mb-3 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+        <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Senha</label>
+        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+          className="w-full mb-4 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+        {error && <p className="text-xs mb-3" style={{ color: 'var(--status-danger)' }}>{error}</p>}
+        {info && <p className="text-xs mb-3" style={{ color: 'var(--accent)' }}>{info}</p>}
+        <button type="submit" disabled={loading} className="w-full py-2 rounded-lg text-sm font-medium mb-3"
+          style={{ background: 'var(--accent)', color: '#14171A', border: 'none', cursor: 'pointer' }}>
+          {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+        </button>
+        <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
+          className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          {mode === 'login' ? 'Não tem conta? Criar uma' : 'Já tem conta? Entrar'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function AuthGate({ children }) {
+  const [session, setSession] = useState(undefined);
+  const [role, setRole] = useState('visualizador');
+
+  useEffect(() => {
+    if (!supabase) { setSession(null); return; }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !session) return;
+    (async () => {
+      const { data, error } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+      if (!error && data) setRole(data.role);
+    })();
+  }, [session]);
+
+  if (!supabase) {
+    return <AuthContext.Provider value={{ role: 'admin', email: null, signOut: () => {} }}>{children}</AuthContext.Provider>;
+  }
+
+  if (session === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)' }} />
+      </div>
+    );
+  }
+
+  if (!session) return <LoginScreen />;
+
+  return (
+    <AuthContext.Provider value={{ role, email: session.user.email, signOut: () => supabase.auth.signOut() }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Constants                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -1016,6 +1177,7 @@ function ClientSelector({ clients, onSelect, onCreate, onUpdate, onDelete }) {
 /* ------------------------------------------------------------------ */
 
 function Workspace({ client, onUpdateClient, onSwitchClient }) {
+  const { role, signOut } = useAuth();
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -1212,13 +1374,16 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {saveError && (
-                <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>Falha ao salvar</span>
+                <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
+                  {role === 'visualizador' ? 'Somente leitura' : 'Falha ao salvar'}
+                </span>
               )}
               <IconButton title="Trocar cliente" onClick={onSwitchClient}><LogOut size={16} /></IconButton>
+              {signOut && <IconButton title="Sair da conta" onClick={signOut}><LogOut size={16} /></IconButton>}
             </div>
           </div>
           <nav className="flex gap-1 mt-4 -mb-3 overflow-x-auto">
-            {NAV_ITEMS.map((item) => (
+            {NAV_ITEMS.filter((item) => item.key !== 'settings' || role === 'admin').map((item) => (
               <button key={item.key} className="nav-tab" data-active={view === item.key || (item.key === 'panels' && view === 'panelDetail')}
                 onClick={() => { setView(item.key); setPanelId(null); }}>
                 <item.icon size={15} /> {item.label}
@@ -2010,7 +2175,9 @@ class ErrorBoundary extends React.Component {
 export default function App() {
   return (
     <ErrorBoundary>
-      <Root />
+      <AuthGate>
+        <Root />
+      </AuthGate>
     </ErrorBoundary>
   );
 }
