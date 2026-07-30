@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronRight, ArrowLeft, Cloud, Thermometer, Hand, LogOut,
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
-  ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette,
+  ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -33,7 +33,8 @@ if (typeof window !== 'undefined') {
         return data ? { key, value: data.value } : null;
       },
       async set(key, value) {
-        const { error } = await supabase.from('kv_store').upsert({ key, value, updated_at: new Date().toISOString() });
+        const client_id = key.startsWith('pci-dados-cliente-') ? key.replace('pci-dados-cliente-', '') : null;
+        const { error } = await supabase.from('kv_store').upsert({ key, value, client_id, updated_at: new Date().toISOString() });
         if (error) throw error;
         return { key, value };
       },
@@ -131,6 +132,7 @@ function LoginScreen() {
 function AuthGate({ children }) {
   const [session, setSession] = useState(undefined);
   const [role, setRole] = useState('visualizador');
+  const [memberships, setMemberships] = useState(null); // null = ainda carregando
 
   useEffect(() => {
     if (!supabase) { setSession(null); return; }
@@ -145,13 +147,17 @@ function AuthGate({ children }) {
       const { data, error } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
       if (!error && data) setRole(data.role);
     })();
+    (async () => {
+      const { data, error } = await supabase.from('memberships').select('client_id, role').eq('user_id', session.user.id);
+      setMemberships(!error && data ? data : []);
+    })();
   }, [session]);
 
   if (!supabase) {
-    return <AuthContext.Provider value={{ role: 'admin', email: null, signOut: () => {} }}>{children}</AuthContext.Provider>;
+    return <AuthContext.Provider value={{ role: 'admin', email: null, memberships: [], isOwner: true, signOut: () => {} }}>{children}</AuthContext.Provider>;
   }
 
-  if (session === undefined) {
+  if (session === undefined || (session && memberships === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)' }} />
@@ -162,7 +168,7 @@ function AuthGate({ children }) {
   if (!session) return <LoginScreen />;
 
   return (
-    <AuthContext.Provider value={{ role, email: session.user.email, signOut: () => supabase.auth.signOut() }}>
+    <AuthContext.Provider value={{ role, email: session.user.email, memberships, isOwner: role === 'admin', signOut: () => supabase.auth.signOut() }}>
       {children}
     </AuthContext.Provider>
   );
@@ -1108,16 +1114,18 @@ function ClientCard({ client, onSelect, onEdit, onDelete }) {
       </button>
       <div className="flex items-center justify-between gap-1 px-3.5 pb-3">
         {client.user ? <span className="mono-chip">usuário configurado</span> : <span />}
-        <div className="flex gap-1">
-          <IconButton title="Editar cliente" onClick={onEdit}><Pencil size={14} /></IconButton>
-          <IconButton title="Excluir cliente" danger onClick={onDelete}><Trash2 size={14} /></IconButton>
-        </div>
+        {(onEdit || onDelete) && (
+          <div className="flex gap-1">
+            {onEdit && <IconButton title="Editar cliente" onClick={onEdit}><Pencil size={14} /></IconButton>}
+            {onDelete && <IconButton title="Excluir cliente" danger onClick={onDelete}><Trash2 size={14} /></IconButton>}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ClientSelector({ clients, onSelect, onCreate, onUpdate, onDelete }) {
+function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDelete }) {
   const [modal, setModal] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
@@ -1135,35 +1143,51 @@ function ClientSelector({ clients, onSelect, onCreate, onUpdate, onDelete }) {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <Button variant="primary" onClick={() => setModal({ mode: 'create' })}><Plus size={16} /> Novo cliente</Button>
-        </div>
+        {canManage && (
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => setModal({ mode: 'create' })}><Plus size={16} /> Novo cliente</Button>
+          </div>
+        )}
 
         {clients.length === 0 ? (
-          <EmptyState icon={Building2} title="Nenhum cliente cadastrado"
-            description="Cadastre o primeiro cliente para começar a controlar as manutenções do sistema de PCI."
-            actionLabel="Cadastrar cliente" onAction={() => setModal({ mode: 'create' })} />
+          canManage ? (
+            <EmptyState icon={Building2} title="Nenhum cliente cadastrado"
+              description="Cadastre o primeiro cliente para começar a controlar as manutenções do sistema de PCI."
+              actionLabel="Cadastrar cliente" onAction={() => setModal({ mode: 'create' })} />
+          ) : (
+            <EmptyState icon={Building2} title="Nenhum cliente vinculado à sua conta"
+              description="Peça ao administrador para vincular seu usuário a um cliente." />
+          )
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             {clients.map((c) => (
               <ClientCard key={c.id} client={c} onSelect={() => onSelect(c.id)}
-                onEdit={() => setModal({ mode: 'edit', client: c })}
-                onDelete={() => setConfirm(c)} />
+                onEdit={canManage ? () => setModal({ mode: 'edit', client: c }) : undefined}
+                onDelete={canManage ? () => setConfirm(c) : undefined} />
             ))}
           </div>
         )}
       </div>
 
-      {modal && (
+      {modal && canManage && (
         <Modal title={modal.mode === 'create' ? 'Novo cliente' : 'Editar cliente'} onClose={() => setModal(null)}>
           <ClientForm initial={modal.client} onSubmit={(v) => {
             if (modal.mode === 'create') onCreate(v); else onUpdate(modal.client.id, v);
             setModal(null);
           }} onCancel={() => setModal(null)} />
+          {modal.mode === 'edit' && (
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>ID do cliente (use para vincular operadores no Supabase)</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs px-2 py-1 rounded-md flex-1 truncate" style={{ background: 'var(--surface-raised)', color: 'var(--text-primary)' }}>{modal.client.id}</code>
+                <Button variant="secondary" onClick={() => navigator.clipboard?.writeText(modal.client.id)}>Copiar</Button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
 
-      {confirm && (
+      {confirm && canManage && (
         <ConfirmModal title="Excluir cliente"
           message={`Excluir "${confirm.name}"? Todos os painéis, dispositivos e o histórico deste cliente serão removidos permanentemente.`}
           onConfirm={() => { onDelete(confirm.id); setConfirm(null); }} onCancel={() => setConfirm(null)} />
@@ -1949,6 +1973,7 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
     { key: 'marca', label: 'Marca', icon: Palette },
     { key: 'usuario', label: 'Usuário', icon: UserCog },
     { key: 'modelos', label: 'Modelos', icon: ImagePlus },
+    { key: 'operadores', label: 'Operadores', icon: Users },
   ];
   return (
     <div className="flex flex-col gap-4">
@@ -1962,6 +1987,115 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
       {tab === 'marca' && <BrandingForm client={client} onSave={(branding) => onUpdateClient({ branding })} />}
       {tab === 'usuario' && <UserForm client={client} onSave={(user) => onUpdateClient({ user })} onRemove={() => onUpdateClient({ user: null })} />}
       {tab === 'modelos' && <ModelLibraryManager data={data} onSave={onSaveModelPhoto} onRemove={onRemoveModelPhoto} />}
+      {tab === 'operadores' && <MembersManager clientId={client.id} />}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Gerenciamento de operadores/visualizadores por cliente               */
+/* ------------------------------------------------------------------ */
+
+function MembersManager({ clientId }) {
+  const [members, setMembers] = useState(null);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('operador');
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function loadMembers() {
+    const { data: rows, error: err } = await supabase
+      .from('memberships').select('id, user_id, role').eq('client_id', clientId);
+    if (err) { setError('Não foi possível carregar os usuários deste cliente.'); return; }
+    if (!rows || rows.length === 0) { setMembers([]); return; }
+    const ids = rows.map((r) => r.user_id);
+    const { data: profs } = await supabase.from('profiles').select('id, email').in('id', ids);
+    const emailById = Object.fromEntries((profs || []).map((p) => [p.id, p.email]));
+    setMembers(rows.map((r) => ({ ...r, email: emailById[r.user_id] || '(email não encontrado)' })));
+  }
+
+  useEffect(() => { loadMembers(); }, [clientId]);
+
+  async function addMember(e) {
+    e.preventDefault();
+    setError(''); setInfo(''); setSaving(true);
+    try {
+      const { data: prof, error: findErr } = await supabase.from('profiles').select('id').eq('email', email.trim()).maybeSingle();
+      if (findErr) throw findErr;
+      if (!prof) {
+        setError('Nenhum usuário encontrado com esse email. Peça para essa pessoa criar uma conta na tela de login do app primeiro, depois tente novamente.');
+        return;
+      }
+      const { error: insErr } = await supabase.from('memberships').upsert(
+        { user_id: prof.id, client_id: clientId, role }, { onConflict: 'user_id,client_id' }
+      );
+      if (insErr) throw insErr;
+      setInfo('Usuário vinculado com sucesso.');
+      setEmail('');
+      await loadMembers();
+    } catch (err) {
+      setError(err.message || 'Não foi possível vincular esse usuário.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changeRole(id, newRole) {
+    await supabase.from('memberships').update({ role: newRole }).eq('id', id);
+    loadMembers();
+  }
+
+  async function removeMember(id) {
+    await supabase.from('memberships').delete().eq('id', id);
+    loadMembers();
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Vincular usuário a este cliente</p>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          A pessoa precisa primeiro ter criado uma conta na tela de login do app (com o email abaixo). Depois, vincule aqui e escolha o nível de acesso.
+        </p>
+        <form onSubmit={addMember} className="flex flex-col sm:flex-row gap-2">
+          <input type="email" required placeholder="email@dapessoa.com" value={email} onChange={(e) => setEmail(e.target.value)}
+            className="flex-1 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+          <select value={role} onChange={(e) => setRole(e.target.value)}
+            className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+            <option value="operador">Operador (pode editar)</option>
+            <option value="visualizador">Visualizador (só leitura)</option>
+            <option value="admin">Admin deste cliente</option>
+          </select>
+          <Button variant="primary" type="submit" disabled={saving}><UserPlus size={15} /> Vincular</Button>
+        </form>
+        {error && <p className="text-xs" style={{ color: 'var(--status-danger)' }}>{error}</p>}
+        {info && <p className="text-xs" style={{ color: 'var(--accent)' }}>{info}</p>}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Usuários vinculados</p>
+        {members === null ? (
+          <Loader2 size={18} className="animate-spin" style={{ color: 'var(--accent)' }} />
+        ) : members.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum usuário vinculado ainda.</p>
+        ) : (
+          members.map((m) => (
+            <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg p-2.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{m.email}</span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <select value={m.role} onChange={(e) => changeRole(m.id, e.target.value)}
+                  className="px-2 py-1 rounded-md text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                  <option value="operador">Operador</option>
+                  <option value="visualizador">Visualizador</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <IconButton title="Remover vínculo" danger onClick={() => removeMember(m.id)}><Trash2 size={14} /></IconButton>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -2061,6 +2195,7 @@ function PageStyles() {
 /* ------------------------------------------------------------------ */
 
 function Root() {
+  const { isOwner, memberships } = useAuth();
   const [clients, setClients] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [activeClientId, setActiveClientId] = useState(null);
@@ -2075,6 +2210,19 @@ function Root() {
       setLoaded(true);
     })();
   }, []);
+
+  // Um usuário que não é dono da plataforma só enxerga os clientes aos quais foi vinculado (memberships)
+  const visibleClients = React.useMemo(() => {
+    if (!clients) return clients;
+    if (isOwner) return clients;
+    const allowedIds = new Set((memberships || []).map((m) => m.client_id));
+    return clients.filter((c) => allowedIds.has(c.id));
+  }, [clients, isOwner, memberships]);
+
+  function membershipRoleFor(clientId) {
+    const m = (memberships || []).find((mm) => mm.client_id === clientId);
+    return m ? m.role : null;
+  }
 
   function persistClients(next) {
     (async () => { try { await window.storage.set(CLIENTS_KEY, JSON.stringify(next), false); } catch (e) { console.error(e); } })();
@@ -2101,12 +2249,14 @@ function Root() {
   function selectClient(id) {
     setActiveClientId(id);
     const c = clients.find((x) => x.id === id);
-    if (!c || !c.user) { setAuthedClientId(id); saveLastClientId(id); }
+    // O antigo PIN por cliente só se aplica quando o Supabase não está configurado (modo local legado);
+    // com Supabase, o login já foi validado antes de chegar aqui.
+    if (supabase || !c || !c.user) { setAuthedClientId(id); saveLastClientId(id); }
   }
   function handleLoginSuccess() { setAuthedClientId(activeClientId); saveLastClientId(activeClientId); }
   function switchClient() { setActiveClientId(null); setAuthedClientId(null); clearLastClientId(); }
 
-  if (!loaded || !clients) {
+  if (!loaded || !clients || !visibleClients) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <PageStyles />
@@ -2115,8 +2265,18 @@ function Root() {
     );
   }
 
+  // Usuário vinculado a um único cliente entra direto nele, sem precisar escolher
+  if (!isOwner && !activeClientId && visibleClients.length === 1) {
+    setTimeout(() => selectClient(visibleClients[0].id), 0);
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)' }} />
+      </div>
+    );
+  }
+
   if (!activeClientId) {
-    return <ClientSelector clients={clients} onSelect={selectClient} onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient} />;
+    return <ClientSelector clients={visibleClients} canManage={isOwner} onSelect={selectClient} onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient} />;
   }
 
   const activeClient = clients.find((c) => c.id === activeClientId);
