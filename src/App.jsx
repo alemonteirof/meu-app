@@ -957,11 +957,17 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
 }
 
 /* Generic card for any trackable equipment (device, NAC, pump item, gas detector) */
-function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInspect, onMaintain, onEdit, onDelete }) {
+function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInspect, onMaintain, onEdit, onDelete, selectable, selected, onToggleSelect }) {
   return (
-    <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+    <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: selected ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
       <div className="flex items-start gap-3">
-        <div className="pt-1"><Led color={status.color} pulse={status.key === 'overdue'} /></div>
+        {selectable ? (
+          <label className="pt-1.5 cursor-pointer" title={selected ? 'Remover da seleção' : 'Selecionar'}>
+            <input type="checkbox" checked={!!selected} onChange={onToggleSelect} className="w-4 h-4 cursor-pointer" style={{ accentColor: 'var(--accent)' }} />
+          </label>
+        ) : (
+          <div className="pt-1"><Led color={status.color} pulse={status.key === 'overdue'} /></div>
+        )}
         {photo && <img src={photo} alt="" className="w-9 h-9 rounded-md object-cover flex-shrink-0" />}
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -981,12 +987,14 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
         </div>
         <StatusPill status={status} />
       </div>
-      <div className="flex items-center justify-end gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-        {onInspect && <IconButton title="Registrar inspeção" onClick={onInspect}><ClipboardCheck size={15} /></IconButton>}
-        {onMaintain && <IconButton title="Registrar manutenção" onClick={onMaintain}><Wrench size={15} /></IconButton>}
-        {onEdit && <IconButton title="Editar" onClick={onEdit}><Pencil size={15} /></IconButton>}
-        {onDelete && <IconButton title="Excluir" danger onClick={onDelete}><Trash2 size={15} /></IconButton>}
-      </div>
+      {!selectable && (
+        <div className="flex items-center justify-end gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+          {onInspect && <IconButton title="Registrar inspeção" onClick={onInspect}><ClipboardCheck size={15} /></IconButton>}
+          {onMaintain && <IconButton title="Registrar manutenção" onClick={onMaintain}><Wrench size={15} /></IconButton>}
+          {onEdit && <IconButton title="Editar" onClick={onEdit}><Pencil size={15} /></IconButton>}
+          {onDelete && <IconButton title="Excluir" danger onClick={onDelete}><Trash2 size={15} /></IconButton>}
+        </div>
+      )}
     </div>
   );
 }
@@ -1189,6 +1197,45 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Registrar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
+  const [v, setV] = useState({ date: todayISO(), technician: '', description: '', intervalMonths: '', nextDate: '' });
+  function handleIntervalChange(months) {
+    setV((prev) => ({ ...prev, intervalMonths: months, nextDate: addMonthsToDate(prev.date, months) || prev.nextDate }));
+  }
+  function handleDateChange(date) {
+    setV((prev) => ({ ...prev, date, nextDate: prev.intervalMonths ? addMonthsToDate(date, prev.intervalMonths) : prev.nextDate }));
+  }
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
+      <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+        Este registro será aplicado aos <strong>{count} dispositivos selecionados</strong>, com a mesma data, técnico e observações.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
+          onChange={(e) => handleDateChange(e.target.value)} /></Field>
+        <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
+          onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do técnico" /></Field>
+      </div>
+      <Field label="Observações / serviço realizado"><textarea rows={3} className={inputCls} value={v.description}
+        onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Limpeza preventiva, troca de bateria..." /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Periodicidade">
+          <select className={inputCls} value={v.intervalMonths} onChange={(e) => handleIntervalChange(e.target.value)}>
+            <option value="">Definir manualmente</option>
+            {INTERVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Próxima manutenção"><input type="date" className={inputCls} value={v.nextDate}
+          onChange={(e) => setV({ ...v, nextDate: e.target.value })} /></Field>
+      </div>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Registrar em {count} dispositivo(s)</Button>
       </FormActions>
     </form>
   );
@@ -1786,6 +1833,27 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     closeModal();
   }
 
+  function submitBulkMaintenance(values) {
+    const { category, ids } = modal.context;
+    updateData((prev) => {
+      const list = prev[category];
+      const logEntries = ids.map((id) => ({ id: uid(), category, itemId: id, date: values.date, technician: values.technician, description: values.description, nextDate: values.nextDate || '' }));
+      return {
+        ...prev,
+        [category]: list.map((it) => (ids.includes(it.id)
+          ? { ...it, lastMaintenance: values.date, nextMaintenance: values.nextDate || '', intervalMonths: values.intervalMonths || it.intervalMonths }
+          : it)),
+        maintenanceLog: [...logEntries, ...prev.maintenanceLog],
+      };
+    });
+    closeModal();
+  }
+
+  function deleteDevicesBulk(ids) {
+    updateData((prev) => ({ ...prev, devices: prev.devices.filter((d) => !ids.includes(d.id)) }));
+    setConfirmState(null);
+  }
+
   function submitInspection(values) {
     const { category, id } = modal.context;
     updateData((prev) => ({ ...prev, [category]: prev[category].map((it) => (it.id === id ? { ...it, ...values } : it)) }));
@@ -1808,6 +1876,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   function openMaintainModal(category, item, label) { setModal({ type: 'maintenance', context: { category, id: item.id, label }, item }); }
   function openInspectModal(category, item, label) { setModal({ type: 'inspection', context: { category, id: item.id, label }, item }); }
+  function openBulkMaintainModal(category, ids) { setModal({ type: 'bulkMaintenance', context: { category, ids } }); }
 
   if (!loaded || !data) {
     return (
@@ -1916,6 +1985,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onInspectDevice={(d) => openInspectModal('devices', d, `Dispositivo ${d.address}`)}
             onMaintainNac={(n) => openMaintainModal('nacs', n, n.name)}
             onInspectNac={(n) => openInspectModal('nacs', n, n.name)}
+            onBulkMaintainDevices={(ids) => openBulkMaintainModal('devices', ids)}
+            onBulkDeleteDevices={(ids) => setConfirmState({ title: 'Excluir dispositivos selecionados', message: `Excluir ${ids.length} dispositivo(s) selecionado(s)? Essa ação não pode ser desfeita.`, onConfirm: () => deleteDevicesBulk(ids) })}
           />
         )}
 
@@ -1991,6 +2062,11 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       {modal?.type === 'maintenance' && (
         <Modal title={`Registrar manutenção — ${modal.context.label}`} onClose={closeModal} wide>
           <MaintenanceForm item={modal.item} onSubmit={submitMaintenance} onCancel={closeModal} />
+        </Modal>
+      )}
+      {modal?.type === 'bulkMaintenance' && (
+        <Modal title={`Registrar manutenção em lote (${modal.context.ids.length} dispositivos)`} onClose={closeModal} wide>
+          <BulkMaintenanceForm count={modal.context.ids.length} onSubmit={submitBulkMaintenance} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'inspection' && (
@@ -2132,9 +2208,16 @@ function PanelDetail({
   data, panelId, tab, setTab, canEdit, expandedLoops, setExpandedLoops, onBack, onEditPanel, onDeletePanel,
   onCreateLoop, onEditLoop, onDeleteLoop, onCreateNac, onEditNac, onDeleteNac,
   onCreateDevice, onEditDevice, onDeleteDevice, onMaintainDevice, onInspectDevice, onMaintainNac, onInspectNac,
+  onBulkMaintainDevices, onBulkDeleteDevices,
 }) {
   const panel = data.panels.find((p) => p.id === panelId);
   const [deviceSearch, setDeviceSearch] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  function toggleSelect(id) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function exitSelectMode() { setSelectMode(false); setSelectedIds([]); }
   if (!panel) return null;
   const loops = data.loops.filter((l) => l.panelId === panelId);
   const nacs = data.nacs.filter((n) => n.panelId === panelId);
@@ -2166,8 +2249,26 @@ function PanelDetail({
       {tab === 'loops' && (
         <div className="flex flex-col gap-3">
           {canEdit && (
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {selectMode ? (
+                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
+              ) : (
+                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
+              )}
               <Button variant="primary" onClick={() => onCreateLoop(panelId)}><Plus size={15} /> Novo laço</Button>
+            </div>
+          )}
+          {selectMode && (
+            <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                {selectedIds.length === 0 ? 'Marque os dispositivos que quer atualizar de uma vez.' : `${selectedIds.length} dispositivo(s) selecionado(s)`}
+              </p>
+              {selectedIds.length > 0 && (
+                <div className="flex gap-2">
+                  <Button variant="danger" onClick={() => { onBulkDeleteDevices(selectedIds); exitSelectMode(); }}><Trash2 size={15} /> Excluir</Button>
+                  <Button variant="primary" onClick={() => { onBulkMaintainDevices(selectedIds); exitSelectMode(); }}><Wrench size={15} /> Registrar manutenção</Button>
+                </div>
+              )}
             </div>
           )}
           {loops.length === 0 ? (
@@ -2190,7 +2291,7 @@ function PanelDetail({
                   : allDevices;
                 if (q && devices.length === 0) return null;
                 const status = worstStatus(allDevices.map((d) => computeStatus(d.nextMaintenance)));
-                const expanded = q ? true : !!expandedLoops[loop.id];
+                const expanded = (q || selectMode) ? true : !!expandedLoops[loop.id];
                 return (
                   <div key={loop.id} className="rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                     <div className="flex items-center gap-2 p-3.5">
@@ -2220,6 +2321,7 @@ function PanelDetail({
                           <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
                             title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                             status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
+                            selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
                             onInspect={canEdit ? () => onInspectDevice(d) : undefined} onMaintain={canEdit ? () => onMaintainDevice(d) : undefined}
                             onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
                         ))}
