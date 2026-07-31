@@ -5,7 +5,7 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet, FileText, Activity,
+  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -149,7 +149,8 @@ function BrandLogo({ size = 18, boxSize = 36, rounded = true }) {
     );
   }
   return (
-    <img src="/maj-logo-icon.png" alt="MAJ Soluções" style={{ width: boxSize, height: boxSize, objectFit: 'contain', flexShrink: 0 }}
+    <img src="/maj-logo-icon.png" alt="MAJ Soluções"
+      style={{ height: boxSize, width: 'auto', maxWidth: boxSize * 3.5, objectFit: 'contain', flexShrink: 0 }}
       onError={() => setFailed(true)} />
   );
 }
@@ -774,13 +775,15 @@ const NAV_ITEMS = [
   { key: 'gas', label: 'Detectores de Gases', icon: Wind },
   { key: 'report', label: 'Relatório', icon: ClipboardList },
   { key: 'history', label: 'Histórico', icon: Clock },
+  { key: 'rvt', label: 'RVT', icon: Camera },
   { key: 'indicador', label: 'Indicador', icon: Activity },
+  { key: 'graficos', label: 'Gráficos', icon: BarChart3 },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
 
 const emptyData = () => ({
   panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
-  maintenanceLog: [], modelPhotos: {}, indicador: [],
+  maintenanceLog: [], inspectionLog: [], modelPhotos: {}, indicador: [], rvt: [],
 });
 
 /* ------------------------------------------------------------------ */
@@ -894,6 +897,47 @@ function compressImageFile(file, maxDim = 480, quality = 0.75) {
     reader.onerror = () => reject(new Error('Não foi possível ler o arquivo'));
     reader.readAsDataURL(file);
   });
+}
+
+/* Upload de múltiplas fotos (com atalho de câmera no celular), comprimindo cada uma. */
+function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
+  const [busy, setBusy] = useState(false);
+  async function handleChange(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      const compressed = await Promise.all(files.map((f) => compressImageFile(f, 900, 0.7)));
+      onChange([...(photos || []), ...compressed]);
+    } catch (err) { console.error(err); }
+    finally { setBusy(false); e.target.value = ''; }
+  }
+  function removeAt(idx) {
+    onChange((photos || []).filter((_, i) => i !== idx));
+  }
+  return (
+    <div>
+      <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {(photos || []).map((p, i) => (
+          <div key={i} className="relative flex-shrink-0">
+            <img src={p} alt="" className="w-20 h-20 rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />
+            <button type="button" onClick={() => removeAt(i)}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+              style={{ background: 'var(--status-danger)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+        <label className="w-20 h-20 rounded-md flex flex-col items-center justify-center gap-1 cursor-pointer flex-shrink-0"
+          style={{ background: 'var(--surface-raised)', border: '1px dashed var(--border)' }}>
+          <ImagePlus size={16} style={{ color: 'var(--text-secondary)' }} />
+          <span className="text-[10px] text-center px-1" style={{ color: 'var(--text-secondary)' }}>{busy ? '...' : 'Adicionar'}</span>
+          <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handleChange} disabled={busy} />
+        </label>
+      </div>
+    </div>
+  );
 }
 
 /* ---- Multi-tenant helpers (clients list + legacy single-tenant migration) ---- */
@@ -1132,7 +1176,7 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
 }
 
 /* Generic card for any trackable equipment (device, NAC, pump item, gas detector) */
-function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInspect, onMaintain, onEdit, onDelete, selectable, selected, onToggleSelect }) {
+function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInspect, onMaintain, onEdit, onDelete, selectable, selected, onToggleSelect, indicadorCount }) {
   return (
     <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: selected ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
       <div className="flex items-start gap-3">
@@ -1154,6 +1198,11 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
           <div className="text-xs mt-1.5 mono" style={{ color: 'var(--text-secondary)' }}>
             Última manutenção: {formatDateBR(status && status.lastMaintenance)}
           </div>
+          {!!indicadorCount && (
+            <div className="text-xs mt-1 flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+              <Activity size={11} /> {indicadorCount} registro{indicadorCount === 1 ? '' : 's'} no Indicador
+            </div>
+          )}
           {status && status.operationalStatus === 'nao_operante' && (
             <div className="text-xs mt-1 font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
               <AlertTriangle size={11} /> Não operante
@@ -1338,11 +1387,305 @@ function GasDetectorForm({ initial, onSubmit, onCancel }) {
   );
 }
 
+const RVT_CATEGORY_OPTIONS = [
+  { value: 'devices', label: 'Dispositivo do painel' },
+  { value: 'nacs', label: 'Circuito de saída (NAC)' },
+  { value: 'pumpDevices', label: 'Casa de Bombas' },
+  { value: 'gasDetectors', label: 'Detector de Gás' },
+  { value: 'outro', label: 'Outro / não listado' },
+];
+
+/** Formulário de "adicionar item" do RVT — os campos de local (painel/laço/dispositivo)
+    ficam travados nos cadastros já existentes, pra não deixar o técnico digitar errado. */
+function RvtItemForm({ data, onAdd }) {
+  const [categoria, setCategoria] = useState('devices');
+  const [panelId, setPanelId] = useState('');
+  const [loopId, setLoopId] = useState('');
+  const [deviceId, setDeviceId] = useState('');
+  const [simpleId, setSimpleId] = useState('');
+  const [manualLabel, setManualLabel] = useState('');
+  const [falha, setFalha] = useState('');
+  const [descritivo, setDescritivo] = useState('');
+  const [status, setStatus] = useState('Resolvido');
+  const [explanacao, setExplanacao] = useState('');
+  const [dataIntervencao, setDataIntervencao] = useState(todayISO());
+  const [solucao, setSolucao] = useState('');
+  const [fotos, setFotos] = useState([]);
+
+  const panelLoops = data.loops.filter((l) => l.panelId === panelId);
+  const loopDevices = data.devices.filter((d) => d.loopId === loopId).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
+
+  function handleCategoriaChange(val) {
+    setCategoria(val);
+    setPanelId(''); setLoopId(''); setDeviceId(''); setSimpleId(''); setManualLabel('');
+  }
+
+  function resolveSelected() {
+    if (categoria === 'devices' && deviceId) {
+      const device = data.devices.find((d) => d.id === deviceId);
+      if (!device) return null;
+      const loop = data.loops.find((l) => l.id === device.loopId);
+      const panel = data.panels.find((p) => p.id === loop?.panelId);
+      const tipoLabel = DEVICE_TYPE_MAP[device.type]?.label || 'Dispositivo';
+      return {
+        deviceId: device.id, categoria: 'devices',
+        etiqueta: device.description || `${tipoLabel} ${device.address}`,
+        endereco: device.address, laco: loop?.name || '', painel: panel?.name || '',
+        equipamento: tipoLabel + (device.modelo ? ` (${device.modelo})` : ''), area: '',
+      };
+    }
+    if (categoria === 'nacs' && simpleId) {
+      const nac = data.nacs.find((n) => n.id === simpleId);
+      if (!nac) return null;
+      const panel = data.panels.find((p) => p.id === nac.panelId);
+      return { deviceId: nac.id, categoria: 'nacs', etiqueta: nac.name, endereco: '', laco: '', painel: panel?.name || '', equipamento: 'Circuito NAC', area: '' };
+    }
+    if (categoria === 'pumpDevices' && simpleId) {
+      const it = data.pumpDevices.find((p) => p.id === simpleId);
+      if (!it) return null;
+      return { deviceId: it.id, categoria: 'pumpDevices', etiqueta: it.name, endereco: '', laco: '', painel: '', equipamento: it.type || 'Casa de Bombas', area: '' };
+    }
+    if (categoria === 'gasDetectors' && simpleId) {
+      const it = data.gasDetectors.find((g) => g.id === simpleId);
+      if (!it) return null;
+      return { deviceId: it.id, categoria: 'gasDetectors', etiqueta: it.name, endereco: '', laco: '', painel: '', equipamento: 'Detector de Gás', area: '' };
+    }
+    if (categoria === 'outro' && manualLabel.trim()) {
+      return { deviceId: '', categoria: '', etiqueta: manualLabel.trim(), endereco: '', laco: '', painel: '', equipamento: '', area: '' };
+    }
+    return null;
+  }
+
+  const selected = resolveSelected();
+  const canAdd = !!selected && falha.trim().length > 0;
+
+  function handleAdd() {
+    if (!canAdd) return;
+    onAdd({ id: uid(), ...selected, falha: falha.trim(), descritivo, status, explanacao, dataIntervencao, solucao, fotos });
+    setFalha(''); setDescritivo(''); setStatus('Resolvido'); setExplanacao(''); setSolucao(''); setFotos([]);
+  }
+
+  return (
+    <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface-raised)', border: '1px dashed var(--border)' }}>
+      <Field label="Tipo de item">
+        <select className={inputCls} value={categoria} onChange={(e) => handleCategoriaChange(e.target.value)}>
+          {RVT_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
+
+      {categoria === 'devices' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Field label="Painel">
+            <select className={inputCls} value={panelId} onChange={(e) => { setPanelId(e.target.value); setLoopId(''); setDeviceId(''); }}>
+              <option value="">Selecione…</option>
+              {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Laço">
+            <select className={inputCls} value={loopId} onChange={(e) => { setLoopId(e.target.value); setDeviceId(''); }} disabled={!panelId}>
+              <option value="">Selecione…</option>
+              {panelLoops.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Dispositivo (endereço)">
+            <select className={inputCls} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} disabled={!loopId}>
+              <option value="">Selecione…</option>
+              {loopDevices.map((d) => (
+                <option key={d.id} value={d.id}>{d.address} — {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      )}
+      {categoria === 'nacs' && (
+        <Field label="Circuito (NAC)">
+          <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
+            <option value="">Selecione…</option>
+            {data.nacs.map((n) => {
+              const panel = data.panels.find((p) => p.id === n.panelId);
+              return <option key={n.id} value={n.id}>{n.name}{panel ? ` — ${panel.name}` : ''}</option>;
+            })}
+          </select>
+        </Field>
+      )}
+      {categoria === 'pumpDevices' && (
+        <Field label="Equipamento da Casa de Bombas">
+          <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
+            <option value="">Selecione…</option>
+            {data.pumpDevices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Field>
+      )}
+      {categoria === 'gasDetectors' && (
+        <Field label="Detector de Gás">
+          <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
+            <option value="">Selecione…</option>
+            {data.gasDetectors.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </Field>
+      )}
+      {categoria === 'outro' && (
+        <Field label="Local / equipamento (descreva)">
+          <input className={inputCls} value={manualLabel} onChange={(e) => setManualLabel(e.target.value)} placeholder="Ex.: Bateria do painel BODY" />
+        </Field>
+      )}
+
+      <Field label="Falha *"><input className={inputCls} value={falha} onChange={(e) => setFalha(e.target.value)} placeholder="Ex.: Dispositivo Desconectado" /></Field>
+      <Field label="Descritivo"><textarea rows={2} className={inputCls} value={descritivo} onChange={(e) => setDescritivo(e.target.value)} /></Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Status">
+          <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)}>
+            {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </Field>
+        <Field label="Data de intervenção"><input type="date" className={inputCls} value={dataIntervencao} onChange={(e) => setDataIntervencao(e.target.value)} /></Field>
+      </div>
+      <Field label="Explanação"><textarea rows={2} className={inputCls} value={explanacao} onChange={(e) => setExplanacao(e.target.value)} /></Field>
+      <Field label="Solução"><textarea rows={2} className={inputCls} value={solucao} onChange={(e) => setSolucao(e.target.value)} /></Field>
+      <MultiPhotoUpload photos={fotos} onChange={setFotos} />
+
+      <Button variant="primary" type="button" onClick={handleAdd} disabled={!canAdd}><Plus size={16} /> Adicionar item ao relatório</Button>
+    </div>
+  );
+}
+
+function RvtDetail({ report, client, onBack }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
+        <Button variant="secondary" onClick={onBack}><ArrowLeft size={15} /> Voltar</Button>
+        <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
+      </div>
+      <div className="print-area rounded-xl p-4 sm:p-6 flex flex-col gap-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Relatório de Visita Técnica (RVT) — {client.name}</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Data da visita: {formatDateBR(report.data)}{report.tecnico ? ` · Técnico: ${report.tecnico}` : ''} · {report.itens.length} item(ns)
+          </p>
+        </div>
+        <div className="flex flex-col gap-3">
+          {report.itens.map((it, i) => (
+            <div key={it.id} className="rounded-lg p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                {i + 1}. {it.etiqueta || 'Item'}{it.endereco ? ` · END ${it.endereco}` : ''}{it.laco ? ` · ${it.laco}` : ''}{it.painel ? ` · ${it.painel}` : ''}
+              </p>
+              {it.equipamento && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.equipamento}</p>}
+              <p className="text-xs mt-1" style={{ color: 'var(--text-primary)' }}><strong>Falha:</strong> {it.falha}</p>
+              {it.descritivo && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.descritivo}</p>}
+              <p className="text-xs mt-1" style={{ color: indicatorStatusColor(it.status) }}>Status: {it.status || 'Sem status'}</p>
+              {it.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>Explanação:</strong> {it.explanacao}</p>}
+              {it.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>Solução:</strong> {it.solucao}</p>}
+              {it.dataIntervencao && <p className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>Intervenção: {formatDateBR(it.dataIntervencao)}</p>}
+              {it.fotos && it.fotos.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {it.fotos.map((f, fi) => <img key={fi} src={f} alt="" className="w-24 h-24 rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
+  const reports = data.rvt || [];
+  const [mode, setMode] = useState('list');
+  const [viewingId, setViewingId] = useState(null);
+  const [visitDate, setVisitDate] = useState(todayISO());
+  const [tecnico, setTecnico] = useState('');
+  const [queue, setQueue] = useState([]);
+
+  function handleAddItem(item) { setQueue((prev) => [...prev, item]); }
+  function handleRemoveItem(id) { setQueue((prev) => prev.filter((it) => it.id !== id)); }
+
+  function handleSave() {
+    if (!visitDate || queue.length === 0) return;
+    onSaveReport({ id: uid(), data: visitDate, tecnico, itens: queue });
+    setVisitDate(todayISO()); setTecnico(''); setQueue([]);
+    setMode('list');
+  }
+
+  const viewingReport = viewingId ? reports.find((r) => r.id === viewingId) : null;
+  if (viewingReport) return <RvtDetail report={viewingReport} client={client} onBack={() => setViewingId(null)} />;
+
+  if (mode === 'new') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Novo Relatório de Visita Técnica (RVT)</h2>
+          <Button variant="secondary" onClick={() => { setMode('list'); setQueue([]); }}><ArrowLeft size={15} /> Cancelar</Button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Data da visita *"><input type="date" className={inputCls} value={visitDate} required onChange={(e) => setVisitDate(e.target.value)} /></Field>
+          <Field label="Técnico responsável"><input className={inputCls} value={tecnico} onChange={(e) => setTecnico(e.target.value)} placeholder="Nome do técnico" /></Field>
+        </div>
+
+        {queue.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Itens desta visita ({queue.length})</p>
+            {queue.map((it) => (
+              <div key={it.id} className="rounded-lg p-3 flex items-start justify-between gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.falha} — {it.status}{it.fotos?.length ? ` · ${it.fotos.length} foto(s)` : ''}</p>
+                </div>
+                <IconButton title="Remover" danger onClick={() => handleRemoveItem(it.id)}><Trash2 size={15} /></IconButton>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <RvtItemForm data={data} onAdd={handleAddItem} />
+
+        <Button variant="primary" onClick={handleSave} disabled={queue.length === 0}>
+          <CheckCircle2 size={16} /> Salvar relatório de visita ({queue.length} item{queue.length === 1 ? '' : 's'})
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT — Relatórios de Visita Técnica</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registros de campo, com fotos, que alimentam o Indicador automaticamente.</p>
+        </div>
+        {canEdit && <Button variant="primary" onClick={() => setMode('new')}><Plus size={16} /> Novo RVT</Button>}
+      </div>
+
+      {reports.length === 0 ? (
+        <EmptyState icon={Camera} title="Nenhum RVT registrado ainda"
+          description="Crie o primeiro relatório de visita técnica, selecionando os dispositivos direto dos painéis já cadastrados."
+          actionLabel={canEdit ? 'Novo RVT' : undefined} onAction={canEdit ? () => setMode('new') : undefined} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {[...reports].sort((a, b) => b.data.localeCompare(a.data)).map((r) => (
+            <div key={r.id} className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.data)}{r.tecnico ? ` — ${r.tecnico}` : ''}</p>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.itens.length} item(ns) registrado(s)</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setViewingId(r.id)}><FileText size={15} /> Ver / Imprimir</Button>
+                {canEdit && <IconButton title="Excluir relatório" danger onClick={() => onDeleteReport(r)}><Trash2 size={15} /></IconButton>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
   const [v, setV] = useState(initial || {
     etiqueta: '', endereco: '', laco: '', equipamento: '', painel: '', area: '', falha: '', descritivo: '',
     status: 'Andamento', explanacao: '', dataDiagnostico: '', dataIntervencao1: '', dataIntervencao2: '',
-    dataIntervencao3: '', dataIntervencao4: '', dataSolucao: '', solucao: '',
+    dataIntervencao3: '', dataIntervencao4: '', dataSolucao: '', solucao: '', fotos: [],
   });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.etiqueta.trim() || v.falha.trim()) onSubmit(v); }}>
@@ -1394,6 +1737,9 @@ function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
       </div>
       <Field label="Solução"><textarea rows={2} className={inputCls} value={v.solucao}
         onChange={(e) => setV({ ...v, solucao: e.target.value })} /></Field>
+      <div className="mb-4">
+        <MultiPhotoUpload photos={v.fotos} onChange={(fotos) => setV({ ...v, fotos })} />
+      </div>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit">Salvar registro</Button>
@@ -1404,7 +1750,7 @@ function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
 
 function MaintenanceForm({ item, onSubmit, onCancel }) {
   const [v, setV] = useState({
-    date: todayISO(), technician: '', description: '',
+    date: todayISO(), technician: '', description: '', tipo: 'preventiva',
     intervalMonths: item.intervalMonths || '', nextDate: item.nextMaintenance || '',
   });
   function handleIntervalChange(months) {
@@ -1415,6 +1761,12 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
   }
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
+      <Field label="Tipo de manutenção">
+        <select className={inputCls} value={v.tipo} onChange={(e) => setV({ ...v, tipo: e.target.value })}>
+          <option value="preventiva">Preventiva</option>
+          <option value="corretiva">Corretiva</option>
+        </select>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
           onChange={(e) => handleDateChange(e.target.value)} /></Field>
@@ -1442,7 +1794,7 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
 }
 
 function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
-  const [v, setV] = useState({ date: todayISO(), technician: '', description: '', intervalMonths: '', nextDate: '' });
+  const [v, setV] = useState({ date: todayISO(), technician: '', description: '', tipo: 'preventiva', intervalMonths: '', nextDate: '' });
   function handleIntervalChange(months) {
     setV((prev) => ({ ...prev, intervalMonths: months, nextDate: addMonthsToDate(prev.date, months) || prev.nextDate }));
   }
@@ -1454,6 +1806,12 @@ function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
       <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
         Este registro será aplicado aos <strong>{count} dispositivos selecionados</strong>, com a mesma data, técnico e observações.
       </p>
+      <Field label="Tipo de manutenção">
+        <select className={inputCls} value={v.tipo} onChange={(e) => setV({ ...v, tipo: e.target.value })}>
+          <option value="preventiva">Preventiva</option>
+          <option value="corretiva">Corretiva</option>
+        </select>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
           onChange={(e) => handleDateChange(e.target.value)} /></Field>
@@ -2080,6 +2438,56 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     updateData((prev) => ({ ...prev, indicador: (prev.indicador || []).filter((r) => r.id !== id) }));
     setConfirmState(null);
   }
+  function deleteIndicadorBulk(ids) {
+    updateData((prev) => ({ ...prev, indicador: (prev.indicador || []).filter((r) => !ids.includes(r.id)) }));
+    setConfirmState(null);
+  }
+  function deleteIndicadorByStatus(status) {
+    updateData((prev) => ({ ...prev, indicador: (prev.indicador || []).filter((r) => r.status !== status) }));
+    setConfirmState(null);
+  }
+  function deleteIndicadorAll() {
+    updateData((prev) => ({ ...prev, indicador: [] }));
+    setConfirmState(null);
+  }
+
+  function saveRvtReport(report) {
+    updateData((prev) => {
+      const indicadorEntries = report.itens.map((it) => ({
+        id: uid(),
+        deviceId: it.deviceId || '',
+        categoria: it.categoria || '',
+        etiqueta: it.etiqueta || '',
+        endereco: it.endereco || '',
+        laco: it.laco || '',
+        painel: it.painel || '',
+        area: it.area || '',
+        equipamento: it.equipamento || '',
+        falha: it.falha || '',
+        descritivo: it.descritivo || '',
+        status: it.status || '',
+        explanacao: it.explanacao || '',
+        dataDiagnostico: report.data,
+        dataIntervencao1: it.dataIntervencao || '',
+        dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
+        dataSolucao: it.status === 'Resolvido' ? (it.dataIntervencao || report.data) : '',
+        solucao: it.solucao || '',
+        fotos: it.fotos || [],
+        origemRvt: report.id,
+      }));
+      return {
+        ...prev,
+        rvt: [{ ...report }, ...(prev.rvt || [])],
+        indicador: [...indicadorEntries, ...(prev.indicador || [])],
+      };
+    });
+  }
+
+  function deleteRvtReport(id) {
+    updateData((prev) => ({ ...prev, rvt: (prev.rvt || []).filter((r) => r.id !== id) }));
+    setConfirmState(null);
+  }
+
   async function handleImportIndicador(file) {
     try {
       const records = await parseIndicadorXlsx(file);
@@ -2090,11 +2498,27 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     }
   }
 
+  function linkIndicadorToDevices() {
+    let matched = 0;
+    let total = 0;
+    updateData((prev) => {
+      const list = prev.indicador || [];
+      total = list.length;
+      const linked = list.map((r) => {
+        const deviceId = matchIndicadorRecordToDevice(r, prev);
+        if (deviceId) matched += 1;
+        return deviceId ? { ...r, deviceId, categoria: 'devices' } : { ...r, deviceId: '' };
+      });
+      return { ...prev, indicador: linked };
+    });
+    return { matched, total, unmatched: total - matched };
+  }
+
   function submitMaintenance(values) {
     const { category, id } = modal.context;
     updateData((prev) => {
       const list = prev[category];
-      const logEntry = { id: uid(), category, itemId: id, date: values.date, technician: values.technician, description: values.description, nextDate: values.nextDate || '' };
+      const logEntry = { id: uid(), category, itemId: id, date: values.date, technician: values.technician, description: values.description, nextDate: values.nextDate || '', tipo: values.tipo || 'preventiva' };
       return {
         ...prev,
         [category]: list.map((it) => (it.id === id
@@ -2110,7 +2534,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     const { category, ids } = modal.context;
     updateData((prev) => {
       const list = prev[category];
-      const logEntries = ids.map((id) => ({ id: uid(), category, itemId: id, date: values.date, technician: values.technician, description: values.description, nextDate: values.nextDate || '' }));
+      const logEntries = ids.map((id) => ({ id: uid(), category, itemId: id, date: values.date, technician: values.technician, description: values.description, nextDate: values.nextDate || '', tipo: values.tipo || 'preventiva' }));
       return {
         ...prev,
         [category]: list.map((it) => (ids.includes(it.id)
@@ -2129,7 +2553,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   function submitInspection(values) {
     const { category, id } = modal.context;
-    updateData((prev) => ({ ...prev, [category]: prev[category].map((it) => (it.id === id ? { ...it, ...values } : it)) }));
+    updateData((prev) => {
+      const logEntry = { id: uid(), category, itemId: id, date: values.lastInspection || todayISO(), operationalStatus: values.operationalStatus || '' };
+      return {
+        ...prev,
+        [category]: prev[category].map((it) => (it.id === id ? { ...it, ...values } : it)),
+        inspectionLog: [logEntry, ...(prev.inspectionLog || [])],
+      };
+    });
     closeModal();
   }
 
@@ -2296,12 +2727,25 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           <HistoryView data={data} filter={historyFilter} setFilter={setHistoryFilter} />
         )}
 
+        {view === 'rvt' && (
+          <RvtView data={data} client={client} canEdit={canEdit}
+            onSaveReport={saveRvtReport}
+            onDeleteReport={(r) => setConfirmState({ title: 'Excluir relatório de visita', message: `Excluir o RVT de ${formatDateBR(r.data)}? Os registros já criados no Indicador a partir dele não serão apagados.`, onConfirm: () => deleteRvtReport(r.id) })} />
+        )}
+
         {view === 'indicador' && (
           <IndicadorView data={data} canEdit={canEdit}
             onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
             onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
             onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
-            onImportFile={handleImportIndicador} />
+            onImportFile={handleImportIndicador} onLinkDevices={linkIndicadorToDevices}
+            onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
+            onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
+            onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
+        )}
+
+        {view === 'graficos' && (
+          <ChartsView data={data} />
         )}
 
         {view === 'settings' && (
@@ -2386,6 +2830,132 @@ function StatCard({ label, value, color, icon: Icon }) {
       </div>
     </div>
   );
+}
+
+const CHART_PALETTE = ['#8B2F2F', '#C97D3A', '#4F8A6D', '#3C6E9C', '#9C5FA8', '#B08D57', '#5B7CA6', '#A24D6E'];
+
+/** Gráfico de barras horizontais simples, em SVG/HTML puro (sem dependências externas). */
+function SimpleBarChart({ data, emptyLabel = 'Sem dados para exibir.' }) {
+  if (!data || data.length === 0) {
+    return <p className="text-xs py-6 text-center" style={{ color: 'var(--text-secondary)' }}>{emptyLabel}</p>;
+  }
+  const max = Math.max(...data.map((d) => d.value), 1);
+  return (
+    <div className="flex flex-col gap-2">
+      {data.map((d, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="text-xs w-36 truncate text-right flex-shrink-0" style={{ color: 'var(--text-secondary)' }} title={d.label}>{d.label}</span>
+          <div className="flex-1 rounded-md" style={{ background: 'var(--surface-raised)' }}>
+            <div className="h-5 rounded-md flex items-center justify-end px-1.5 min-w-[22px]"
+              style={{ width: `${Math.max((d.value / max) * 100, 3)}%`, background: d.color || 'var(--accent)' }}>
+              <span className="text-xs font-medium mono" style={{ color: '#fff' }}>{d.value}</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Gráfico de pizza/rosca simples, em SVG puro, com legenda ao lado. */
+function SimplePieChart({ data, size = 168, emptyLabel = 'Sem dados para exibir.' }) {
+  const total = (data || []).reduce((s, d) => s + d.value, 0);
+  if (!data || data.length === 0 || total === 0) {
+    return <p className="text-xs py-6 text-center" style={{ color: 'var(--text-secondary)' }}>{emptyLabel}</p>;
+  }
+  const radius = size / 2 - 14;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  return (
+    <div className="flex items-center gap-5 flex-wrap">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
+        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--surface-raised)" strokeWidth="26" />
+          {data.map((d, i) => {
+            const frac = d.value / total;
+            const dash = frac * circumference;
+            const seg = (
+              <circle key={i} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={d.color || CHART_PALETTE[i % CHART_PALETTE.length]}
+                strokeWidth="26" strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset} strokeLinecap="butt" />
+            );
+            offset += dash;
+            return seg;
+          })}
+        </g>
+      </svg>
+      <div className="flex flex-col gap-1.5 min-w-[140px]">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: d.color || CHART_PALETTE[i % CHART_PALETTE.length] }} />
+            <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{d.label}</span>
+            <span className="mono font-medium flex-shrink-0" style={{ color: 'var(--text-primary)' }}>{d.value} ({Math.round((d.value / total) * 100)}%)</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, children }) {
+  return (
+    <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{title}</p>
+        {subtitle && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Baixa uma lista de pares [rótulo, valor] como CSV (separador ; para abrir bem no Excel BR). */
+function exportChartCsv(filename, header, rows) {
+  const escapeCell = (v) => {
+    const s = String(v ?? '');
+    return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [header, ...rows].map((r) => r.map(escapeCell).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function countBy(list, keyFn, fallbackLabel) {
+  const counts = new Map();
+  list.forEach((item) => {
+    const key = keyFn(item) || fallbackLabel;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return [...counts.entries()].map(([label, value]) => ({ label, value }));
+}
+
+function sortDesc(arr) { return [...arr].sort((a, b) => b.value - a.value); }
+
+const MONTH_LABELS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** Conta itens com campo `date` (YYYY-MM-DD) nos últimos N meses, agrupados por mês. */
+function countByMonth(list, months = 12) {
+  const now = new Date();
+  const buckets = [];
+  const indexByKey = {};
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    indexByKey[key] = buckets.length;
+    buckets.push({ label: `${MONTH_LABELS_PT[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`, value: 0 });
+  }
+  list.forEach((item) => {
+    if (!item.date) return;
+    const key = item.date.slice(0, 7);
+    if (key in indexByKey) buckets[indexByKey[key]].value += 1;
+  });
+  return buckets;
 }
 
 function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspect, onGoPanels }) {
@@ -2650,6 +3220,7 @@ function PanelDetail({
                           <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
                             title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                             status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
+                            indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
                             onInspect={canEdit ? () => onInspectDevice(d) : undefined} onMaintain={canEdit ? () => onMaintainDevice(d) : undefined}
                             onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
@@ -2770,19 +3341,58 @@ function HistoryView({ data, filter, setFilter }) {
   );
 }
 
-function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile }) {
+function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile, onLinkDevices, onBulkDelete, onDeleteByStatus, onDeleteAll }) {
   const list = data.indicador || [];
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
+  const [linkFilter, setLinkFilter] = useState('all');
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState(null);
+  const [linkMsg, setLinkMsg] = useState(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [statusToDelete, setStatusToDelete] = useState(INDICATOR_STATUS_OPTIONS[0]);
 
   const areaOptions = [...new Set(list.map((r) => r.area).filter(Boolean))].sort();
+
+  function deviceContext(r) {
+    if (!r.deviceId) return null;
+    const cat = r.categoria || 'devices';
+    if (cat === 'devices') {
+      const device = data.devices.find((d) => d.id === r.deviceId);
+      if (!device) return null;
+      const loop = data.loops.find((l) => l.id === device.loopId);
+      const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+      return {
+        title: (DEVICE_TYPE_MAP[device.type]?.label || 'Dispositivo') + (device.modelo ? ` · ${device.modelo}` : ''),
+        address: device.address, sub: [loop?.name, panel?.name].filter(Boolean).join(' · '),
+      };
+    }
+    if (cat === 'nacs') {
+      const nac = data.nacs.find((n) => n.id === r.deviceId);
+      if (!nac) return null;
+      const panel = data.panels.find((p) => p.id === nac.panelId);
+      return { title: nac.name, address: null, sub: ['Circuito NAC', panel?.name].filter(Boolean).join(' · ') };
+    }
+    if (cat === 'pumpDevices') {
+      const it = data.pumpDevices.find((p) => p.id === r.deviceId);
+      if (!it) return null;
+      return { title: it.name, address: null, sub: it.type || 'Casa de Bombas' };
+    }
+    if (cat === 'gasDetectors') {
+      const it = data.gasDetectors.find((g) => g.id === r.deviceId);
+      if (!it) return null;
+      return { title: it.name, address: null, sub: 'Detector de Gás' };
+    }
+    return null;
+  }
 
   const filtered = list.filter((r) => {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
     if (areaFilter !== 'all' && r.area !== areaFilter) return false;
+    if (linkFilter === 'linked' && !r.deviceId) return false;
+    if (linkFilter === 'unlinked' && r.deviceId) return false;
     if (search) {
       const q = search.toLowerCase();
       const hay = `${r.etiqueta} ${r.endereco} ${r.equipamento} ${r.area} ${r.falha} ${r.descritivo}`.toLowerCase();
@@ -2790,6 +3400,14 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
     }
     return true;
   }).sort((a, b) => (b.dataDiagnostico || '').localeCompare(a.dataDiagnostico || ''));
+
+  const linkedCount = list.filter((r) => r.deviceId).length;
+  const statusToDeleteCount = list.filter((r) => r.status === statusToDelete).length;
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function exitSelectMode() { setSelectMode(false); setSelectedIds([]); }
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
@@ -2802,6 +3420,11 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
     e.target.value = '';
   }
 
+  function handleLink() {
+    const res = onLinkDevices();
+    setLinkMsg(`${res.matched} de ${res.total} registro(s) vinculado(s) a um dispositivo importado. ${res.unmatched} sem correspondência (painel/laço/endereço não encontrados entre os dispositivos já importados).`);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -2810,11 +3433,21 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Histórico de diagnóstico e falhas identificadas no sistema.</p>
         </div>
         {canEdit && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
               <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
               <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" disabled={importing} />
             </label>
+            {list.length > 0 && (
+              <>
+                <Button variant="secondary" onClick={handleLink}><Cpu size={15} /> Vincular aos dispositivos</Button>
+                {selectMode ? (
+                  <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
+                ) : (
+                  <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
+                )}
+              </>
+            )}
             <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo registro</Button>
           </div>
         )}
@@ -2823,22 +3456,58 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
       {importMsg && (
         <p className="text-xs" style={{ color: importMsg.ok ? 'var(--status-ok)' : 'var(--status-danger)' }}>{importMsg.text}</p>
       )}
+      {linkMsg && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{linkMsg}</p>}
 
-      {list.length > 0 && (
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-            <input className={`${inputCls} pl-9`} placeholder="Buscar por etiqueta, endereço, falha..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <select className={inputCls} style={{ maxWidth: '220px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">Todos os status</option>
+      {selectMode && (
+        <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+            {selectedIds.length === 0 ? 'Marque os registros que quer excluir de uma vez.' : `${selectedIds.length} registro(s) selecionado(s)`}
+          </p>
+          {selectedIds.length > 0 && (
+            <Button variant="danger" onClick={() => { onBulkDelete(selectedIds); exitSelectMode(); }}><Trash2 size={15} /> Excluir selecionados</Button>
+          )}
+        </div>
+      )}
+
+      {canEdit && list.length > 0 && (
+        <div className="rounded-lg p-3 flex flex-wrap items-center gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Excluir em massa:</span>
+          <select className={inputCls} style={{ maxWidth: '200px', width: 'auto' }} value={statusToDelete} onChange={(e) => setStatusToDelete(e.target.value)}>
             {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select className={inputCls} style={{ maxWidth: '220px' }} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-            <option value="all">Todas as áreas</option>
-            {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <Button variant="danger" onClick={() => onDeleteByStatus(statusToDelete, statusToDeleteCount)} disabled={statusToDeleteCount === 0}>
+            <Trash2 size={15} /> Excluir todos "{statusToDelete}" ({statusToDeleteCount})
+          </Button>
+          <span className="flex-1" />
+          <Button variant="danger" onClick={() => onDeleteAll(list.length)}><Trash2 size={15} /> Apagar todos ({list.length})</Button>
         </div>
+      )}
+
+      {list.length > 0 && (
+        <>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {linkedCount} de {list.length} registro(s) já vinculado(s) a um dispositivo do painel.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+              <input className={`${inputCls} pl-9`} placeholder="Buscar por etiqueta, endereço, falha..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select className={inputCls} style={{ maxWidth: '220px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">Todos os status</option>
+              {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className={inputCls} style={{ maxWidth: '220px' }} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+              <option value="all">Todas as áreas</option>
+              {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <select className={inputCls} style={{ maxWidth: '220px' }} value={linkFilter} onChange={(e) => setLinkFilter(e.target.value)}>
+              <option value="all">Vinculados e não vinculados</option>
+              <option value="linked">Só vinculados a dispositivo</option>
+              <option value="unlinked">Só sem vínculo</option>
+            </select>
+          </div>
+        </>
       )}
 
       {list.length === 0 ? (
@@ -2850,43 +3519,164 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
       ) : (
         <div className="flex flex-col gap-2">
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{filtered.length} de {list.length} registro(s)</p>
-          {filtered.map((r) => (
-            <div key={r.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <div className="flex items-start justify-between gap-2 flex-wrap">
-                <div className="min-w-0">
-                  <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{r.etiqueta || 'Sem etiqueta'}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {r.endereco && <span className="mono-chip">END {r.endereco}</span>}
-                    {r.laco && <span className="mono-chip">Laço {r.laco}</span>}
-                    {r.painel && <span className="mono-chip">Painel {r.painel}</span>}
-                    {r.area && <span>{r.area}</span>}
-                    {r.equipamento && <span>· {r.equipamento}</span>}
+          {filtered.map((r) => {
+            const ctx = deviceContext(r);
+            const isSelected = selectedIds.includes(r.id);
+            return (
+              <div key={r.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: isSelected ? '1px solid var(--accent)' : ctx ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="flex items-start gap-2 min-w-0">
+                    {selectMode && (
+                      <label className="pt-1 cursor-pointer flex-shrink-0" title={isSelected ? 'Remover da seleção' : 'Selecionar'}>
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
+                          className="w-4 h-4 cursor-pointer" style={{ accentColor: 'var(--accent)' }} />
+                      </label>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{r.etiqueta || 'Sem etiqueta'}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {ctx ? (
+                          <>
+                            {ctx.address && <span className="mono-chip">END {ctx.address}</span>}
+                            <span className="font-medium">{ctx.title}</span>
+                            {ctx.sub && <span>· {ctx.sub}</span>}
+                          </>
+                        ) : (
+                          <>
+                            {r.endereco && <span className="mono-chip">END {r.endereco}</span>}
+                            {r.laco && <span className="mono-chip">Laço {r.laco}</span>}
+                            {r.painel && <span className="mono-chip">Painel {r.painel}</span>}
+                            {r.area && <span>{r.area}</span>}
+                          </>
+                        )}
+                        {r.equipamento && <span>· {r.equipamento}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {ctx && <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}>Vinculado</span>}
+                    <span className="text-xs px-2 py-1 rounded-md" style={{ color: indicatorStatusColor(r.status), border: `1px solid ${indicatorStatusColor(r.status)}` }}>
+                      {r.status || 'Sem status'}
+                    </span>
                   </div>
                 </div>
-                <span className="text-xs px-2 py-1 rounded-md flex-shrink-0" style={{ color: indicatorStatusColor(r.status), border: `1px solid ${indicatorStatusColor(r.status)}` }}>
-                  {r.status || 'Sem status'}
-                </span>
+                {r.falha && <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{r.falha}</p>}
+                {r.descritivo && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.descritivo}</p>}
+                {r.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>Explanação:</strong> {r.explanacao}</p>}
+                {r.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>Solução:</strong> {r.solucao}</p>}
+                {r.fotos && r.fotos.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {r.fotos.map((f, i) => (
+                      <img key={i} src={f} alt="" className="w-14 h-14 rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />
+                    ))}
+                  </div>
+                )}
+                {(r.dataDiagnostico || r.dataSolucao) && (
+                  <div className="flex flex-wrap gap-3 text-xs mono" style={{ color: 'var(--text-secondary)' }}>
+                    {r.dataDiagnostico && <span>Diagnóstico: {formatDateBR(r.dataDiagnostico)}</span>}
+                    {r.dataSolucao && <span>Solução: {formatDateBR(r.dataSolucao)}</span>}
+                  </div>
+                )}
+                {canEdit && !selectMode && (
+                  <div className="flex items-center justify-end gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                    <IconButton title="Editar" onClick={() => onEdit(r)}><Pencil size={15} /></IconButton>
+                    <IconButton title="Excluir" danger onClick={() => onDelete(r)}><Trash2 size={15} /></IconButton>
+                  </div>
+                )}
               </div>
-              {r.falha && <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{r.falha}</p>}
-              {r.descritivo && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.descritivo}</p>}
-              {r.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>Explanação:</strong> {r.explanacao}</p>}
-              {r.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>Solução:</strong> {r.solucao}</p>}
-              {(r.dataDiagnostico || r.dataSolucao) && (
-                <div className="flex flex-wrap gap-3 text-xs mono" style={{ color: 'var(--text-secondary)' }}>
-                  {r.dataDiagnostico && <span>Diagnóstico: {formatDateBR(r.dataDiagnostico)}</span>}
-                  {r.dataSolucao && <span>Solução: {formatDateBR(r.dataSolucao)}</span>}
-                </div>
-              )}
-              {canEdit && (
-                <div className="flex items-center justify-end gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-                  <IconButton title="Editar" onClick={() => onEdit(r)}><Pencil size={15} /></IconButton>
-                  <IconButton title="Excluir" danger onClick={() => onDelete(r)}><Trash2 size={15} /></IconButton>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+    </div>
+  );
+}
+
+function ChartsView({ data }) {
+  const indicador = data.indicador || [];
+  const maintenanceLog = data.maintenanceLog || [];
+  const inspectionLog = data.inspectionLog || [];
+
+  const statusData = sortDesc(countBy(indicador, (r) => r.status, 'Sem status')).map((d) => ({ ...d, color: indicatorStatusColor(d.label) }));
+  const areaData = sortDesc(countBy(indicador, (r) => r.area, 'Sem área')).slice(0, 10);
+  const falhaData = sortDesc(countBy(indicador, (r) => r.falha, 'Sem falha')).slice(0, 10);
+
+  const CATEGORY_LABELS = { devices: 'Dispositivos', nacs: 'Circuitos (NAC)', pumpDevices: 'Casa de Bombas', gasDetectors: 'Detectores de gás' };
+  const tipoData = [
+    { label: 'Preventiva', value: maintenanceLog.filter((e) => e.tipo !== 'corretiva').length, color: 'var(--status-ok)' },
+    { label: 'Corretiva', value: maintenanceLog.filter((e) => e.tipo === 'corretiva').length, color: 'var(--status-danger)' },
+    { label: 'Inspeção', value: inspectionLog.length, color: 'var(--accent)' },
+  ].filter((d) => d.value > 0);
+  const categoryData = sortDesc(countBy([...maintenanceLog, ...inspectionLog], (e) => CATEGORY_LABELS[e.category] || e.category, 'Outro'));
+  const monthData = countByMonth([...maintenanceLog, ...inspectionLog], 12);
+
+  const hasIndicador = indicador.length > 0;
+  const hasManutencao = maintenanceLog.length + inspectionLog.length > 0;
+
+  function exportIndicadorCsv() {
+    exportChartCsv('indicador-resumo.csv', ['Categoria', 'Rótulo', 'Quantidade'], [
+      ...statusData.map((d) => ['Status', d.label, d.value]),
+      ...areaData.map((d) => ['Área', d.label, d.value]),
+      ...falhaData.map((d) => ['Falha', d.label, d.value]),
+    ]);
+  }
+  function exportManutencaoCsv() {
+    exportChartCsv('manutencoes-resumo.csv', ['Categoria', 'Rótulo', 'Quantidade'], [
+      ...tipoData.map((d) => ['Tipo', d.label, d.value]),
+      ...categoryData.map((d) => ['Categoria do item', d.label, d.value]),
+      ...monthData.map((d) => ['Mês', d.label, d.value]),
+    ]);
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
+        <div>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Gráficos</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Visão geral do Indicador e das manutenções realizadas nos painéis.</p>
+        </div>
+        <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
+      </div>
+
+      <div className="print-area flex flex-col gap-8 rounded-xl p-4 sm:p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador — diagnóstico e falhas</h3>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{indicador.length} registro(s) no total</p>
+            </div>
+            {hasIndicador && <Button variant="secondary" className="no-print" onClick={exportIndicadorCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
+          </div>
+          {!hasIndicador ? (
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no Indicador ainda.</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-4">
+              <ChartCard title="Status dos registros"><SimplePieChart data={statusData} /></ChartCard>
+              <ChartCard title="Registros por área" subtitle="Onde as falhas mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
+              <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Manutenções realizadas</h3>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{maintenanceLog.length + inspectionLog.length} registro(s) no total</p>
+            </div>
+            {hasManutencao && <Button variant="secondary" className="no-print" onClick={exportManutencaoCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
+          </div>
+          {!hasManutencao ? (
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhuma manutenção ou inspeção registrada ainda.</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-4">
+              <ChartCard title="Por tipo" subtitle="Preventiva, corretiva e inspeção"><SimplePieChart data={tipoData} /></ChartCard>
+              <ChartCard title="Por categoria de equipamento"><SimpleBarChart data={categoryData} /></ChartCard>
+              <ChartCard title="Últimos 12 meses" subtitle="Volume por mês"><SimpleBarChart data={monthData} emptyLabel="Sem manutenções nos últimos 12 meses." /></ChartCard>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -3082,6 +3872,9 @@ async function parseIndicadorXlsx(file) {
 
   const records = rows.map((row) => ({
     id: uid(),
+    deviceId: '',
+    categoria: '',
+    fotos: [],
     etiqueta: String(findIndicadorCol(row, ['ETIQUETA']) || '').trim(),
     endereco: String(findIndicadorCol(row, ['ENDERECO']) || '').trim(),
     laco: String(findIndicadorCol(row, ['LACO']) || '').trim(),
@@ -3105,6 +3898,47 @@ async function parseIndicadorXlsx(file) {
     throw new Error('Nenhum registro foi encontrado nessa planilha. Verifique se é o arquivo do Indicador.');
   }
   return records;
+}
+
+/* Vincula registros do Indicador aos dispositivos reais do painel, cruzando pela coluna
+   "PAINEL - ND" (que corresponde ao Network Address de cada painel no report do Loop
+   Explorer), pelo laço e pelo endereço. Mapeamento tirado diretamente do report LP1 da
+   Nissan (Panel X / Network Address N) — específico deste sistema; painéis fora dessa
+   lista (ex.: 7 = AUTOLEARN/PWT, ou "Notifier") não têm correspondência aqui e ficam sem
+   vínculo, já que pertencem a outro relatório/sistema. */
+const INDICADOR_PANEL_NETWORK_MAP = {
+  '1': 'SECURITY OFFICE', '2': 'PAINT', '3': 'TRIM', '4': 'PLASTIC',
+  '5': 'BODY', '6': 'POWER TRAIN', '8': 'CENTRAL COP',
+};
+
+function normalizeAddressBase(addr) {
+  const m = String(addr || '').match(/(\d+)/);
+  return m ? String(parseInt(m[1], 10)) : '';
+}
+
+function normalizeLoopNumber(v) {
+  const m = String(v ?? '').match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function matchIndicadorRecordToDevice(record, data) {
+  const panelName = INDICADOR_PANEL_NETWORK_MAP[String(record.painel || '').trim()];
+  if (!panelName) return null;
+  const panel = data.panels.find((p) => p.name.trim().toUpperCase() === panelName);
+  if (!panel) return null;
+  const addrBase = normalizeAddressBase(record.endereco);
+  if (!addrBase) return null;
+  const loopNum = normalizeLoopNumber(record.laco);
+  const panelLoops = data.loops.filter((l) => l.panelId === panel.id);
+  const candidateLoops = loopNum !== null
+    ? panelLoops.filter((l) => normalizeLoopNumber(l.name) === loopNum)
+    : panelLoops;
+  const loopsToSearch = candidateLoops.length ? candidateLoops : panelLoops;
+  for (const loop of loopsToSearch) {
+    const device = data.devices.find((d) => d.loopId === loop.id && normalizeAddressBase(d.address) === addrBase);
+    if (device) return device.id;
+  }
+  return null;
 }
 
 function exportDevicesCsv(data) {
