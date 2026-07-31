@@ -5,9 +5,12 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet,
+  FileSpreadsheet, FileText,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 /* ------------------------------------------------------------------ */
 /* Supabase (banco de dados + login de usuários)                      */
@@ -239,8 +242,8 @@ function modelInfo(brandValue, modelValue) {
 function guessDeviceTypeFromCode(code) {
   const c = (code || '').toUpperCase();
   if (c.includes('PULL') || c.includes('AMS')) return 'acionador';
-  if (c.startsWith('ATJ') || c.includes('TERMICO') || c.includes('CALOR')) return 'calor';
-  if (c.startsWith('ALK') || c.startsWith('ALO') || c.startsWith('ALN') || c === 'DIMM') return 'fumaca';
+  if (c.startsWith('ATJ') || c.startsWith('ATG') || c.includes('TERMICO') || c.includes('CALOR')) return 'calor';
+  if (c.startsWith('ALK') || c.startsWith('ALO') || c.startsWith('ALN') || c.startsWith('ALG') || c === 'DIMM') return 'fumaca';
   if (c.startsWith('R2M')) return 'rele';
   if (c === 'SOM-AI' || c.startsWith('SOM')) return 'saida';
   if (c === 'CZM' || c.startsWith('FRCME')) return 'entrada';
@@ -348,6 +351,169 @@ function parseDeviceLabelsCsv(text) {
     if (!inTable) currentTitle = line;
   }
   if (rows.length === 0) throw new Error('Nenhuma linha de dispositivo foi encontrada nesse arquivo.');
+  return rows;
+}
+
+/* ---- Hochiki / VES: relatório do Loop Explorer 1 (.pdf) ----
+   O LP1 exporta um PDF com layout de tabela sem linhas de grade: cada "célula" é
+   posicionada por coordenadas, e o texto de células longas (ex.: "Setting" com dois
+   valores D/N, ou a descrição do local) quebra em linhas visuais que não seguem a
+   ordem de leitura simples. Por isso, em vez de interpretar linha por linha, lemos
+   todas as palavras com suas coordenadas (x,y), localizamos os endereços (coluna da
+   esquerda) e agrupamos as demais palavras numa "banda" vertical ao redor de cada
+   endereço, atribuindo cada palavra à coluna correta pela posição horizontal. */
+
+async function extractPdfWords(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const items = [];
+  let cumY = 0;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    content.items.forEach((item) => {
+      const text = (item.str || '').trim();
+      if (!text) return;
+      items.push({
+        y: cumY + (viewport.height - item.transform[5]),
+        x: item.transform[4],
+        text,
+      });
+    });
+    cumY += viewport.height + 1000;
+  }
+  return items;
+}
+
+const LP1_NAME_X0 = 100;
+const LP1_ADDR_RE = /^\d{3}\.\d{2}$/;
+const LP1_BAND_CAP = 16;
+
+function parseLp1Report(words) {
+  const sorted = [...words].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+  // Reconstrói linhas de texto simples (só pra localizar os cabeçalhos "Panel X" e "X - Loop N (...)")
+  const lines = [];
+  let curY = null, curToks = [];
+  for (const w of sorted) {
+    if (curY === null || Math.abs(w.y - curY) > 3) {
+      if (curToks.length) lines.push({ y: curY, toks: curToks });
+      curToks = [w];
+      curY = w.y;
+    } else {
+      curToks.push(w);
+    }
+  }
+  if (curToks.length) lines.push({ y: curY, toks: curToks });
+
+  const panelLines = [];
+  const loopLines = [];
+  for (const { y, toks } of lines) {
+    toks.sort((a, b) => a.x - b.x);
+    const txt = toks.map((t) => t.text).join(' ');
+    const mPanel = txt.match(/^Panel\s+([A-Z0-9][A-Z0-9 \-/]*)$/);
+    if (mPanel) panelLines.push({ y, name: mPanel[1].trim() });
+    const mLoop = txt.match(/-\s*Loop\s+(\d+)\s*\(/i);
+    if (mLoop) loopLines.push({ y, n: parseInt(mLoop[1], 10) });
+  }
+
+  function contextForY(y) {
+    let panel = null;
+    for (const p of panelLines) { if (p.y <= y) panel = p.name; else break; }
+    let loop = null;
+    for (const l of loopLines) { if (l.y <= y) loop = l.n; else break; }
+    return { panel, loop };
+  }
+
+  const addrWords = sorted.filter((w) => w.x < LP1_NAME_X0 && LP1_ADDR_RE.test(w.text));
+  if (addrWords.length === 0) {
+    throw new Error('Não encontrei endereços de dispositivos nesse PDF. Verifique se é um relatório do Loop Explorer 1 (LP1).');
+  }
+
+  const bands = addrWords.map((w, i) => {
+    const yPrev = i > 0 ? addrWords[i - 1].y : w.y - 1000;
+    const yNext = i < addrWords.length - 1 ? addrWords[i + 1].y : w.y + 1000;
+    const lo = Math.max((yPrev + w.y) / 2, w.y - LP1_BAND_CAP);
+    const hi = Math.min((w.y + yNext) / 2, w.y + LP1_BAND_CAP);
+    return { lo, hi, address: w.text, y: w.y };
+  });
+  const bandLos = bands.map((b) => b.lo);
+
+  function findBandIndex(y) {
+    let lo = 0, hi = bandLos.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (bandLos[mid] <= y) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return ans;
+  }
+
+  const byBand = Array.from({ length: bands.length }, () => []);
+  for (const w of sorted) {
+    const idx = findBandIndex(w.y);
+    if (idx < 0) continue;
+    const band = bands[idx];
+    if (w.y >= band.lo && w.y < band.hi) byBand[idx].push(w);
+  }
+
+  // Palavras "técnicas" das colunas que ficam entre Nome e Texto (Zona, Flags, Ação,
+  // Setting D/N e os Delays) — usadas só para saber onde o Texto realmente começa, já
+  // que não usamos o conteúdo dessas colunas no app.
+  const LP1_TYPE_KEYWORD_RE = /\b(Sensor|Common|Input|Output)\b/;
+  const LP1_ACTION_WORDS = new Set(['Fire', 'Trouble', 'Supervisory', 'Al', 'Temporal', 'Continuous']);
+  // Combinações de Flags realmente usadas neste tipo de relatório (M=Alarme Geral,
+  // P=Pré-alarme, D=Modo Dia, N=Modo Noite, E=Emergência, S=Silenciável, R=Resetável,
+  // L=Latching, O=Saída com atraso, F=Falha, A=Saída de Pré-alarme, B=Bypass, H=Calor).
+  // Usamos uma lista fechada (em vez de qualquer combinação de letras) porque algumas
+  // dessas letras coincidem com o início de textos reais do relatório, como "AM"
+  // (Acionador Manual) ou "HALL".
+  const LP1_KNOWN_FLAGS = new Set(['L', 'S', 'LP', 'LB', 'ML', 'MS', 'MLP', 'MLPB', 'LH', 'MLB', 'MP', 'MLH']);
+  function extractLp1Label(tail) {
+    const tokens = tail.split(/\s+/).filter(Boolean);
+    let idx = 0;
+    // Zona (número curto)
+    while (idx < tokens.length && /^\d{1,3}$/.test(tokens[idx])) idx++;
+    // Flags — só reconhece os combos realmente usados neste relatório (ver lista acima).
+    if (idx < tokens.length && LP1_KNOWN_FLAGS.has(tokens[idx])) idx++;
+    // Ação (pode ser "Fire", ou duas palavras como "Supervisory Al")
+    while (idx < tokens.length && LP1_ACTION_WORDS.has(tokens[idx])) idx++;
+    // Setting dia/noite — formatos "D2,50"/"N2,50" (com vírgula) ou "D150"/"N150" (sem
+    // vírgula, usado por alguns modelos como ATG-EA). Só checa nas duas posições logo
+    // após a Ação (nunca mais adiante), pra não arriscar cortar um código de local que
+    // comece com D/N seguido de números (ex.: "N04" de uma coluna).
+    if (idx < tokens.length && /^D\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
+    if (idx < tokens.length && /^N\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
+    // Delays — números soltos ("00") ou decimais ("0,00", usado por saídas/NAC). Limitado
+    // a no máximo os dois campos de delay (1º e 2º), pra nunca arriscar comer texto real.
+    if (idx < tokens.length && /^\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
+    if (idx < tokens.length && /^\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
+    return tokens.slice(idx).join(' ').trim();
+  }
+
+  const rows = [];
+  bands.forEach((band, i) => {
+    // Monta o texto da linha (exceto o endereço) ordenando os itens da esquerda pra
+    // direita (por x) — não pela posição estimada de cada palavra dentro de um item, já
+    // que o pdfjs pode juntar várias colunas num único bloco de texto. Itens de uma mesma
+    // coluna que quebraram em duas linhas visuais (ex.: "Setting" D acima / N abaixo, ou
+    // o Texto que estoura pra uma segunda linha) compartilham x parecido e ficam juntos.
+    const inBand = byBand[i]
+      .filter((w) => w.text !== band.address)
+      .sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    const rowText = inBand.map((w) => w.text).join(' ').replace(/\s+/g, ' ').trim();
+
+    const typeMatch = rowText.match(LP1_TYPE_KEYWORD_RE);
+    const name = (typeMatch ? rowText.slice(0, typeMatch.index) : '').trim();
+    const tail = typeMatch ? rowText.slice(typeMatch.index + typeMatch[0].length) : '';
+    const label = extractLp1Label(tail);
+
+    const { panel, loop } = contextForY(band.y);
+    if (!panel || !loop || !name) return;
+    rows.push({ address: band.address, node: panel, loop: `LP ${loop}`, type: name, label, title: panel });
+  });
+
+  if (rows.length === 0) throw new Error('Não consegui extrair dispositivos desse relatório LP1. Confira se o PDF não está protegido ou escaneado como imagem.');
   return rows;
 }
 
@@ -1767,6 +1933,21 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     if (view === 'panelDetail' && panelId === id) setView('panels');
   }
 
+  function deletePanelsBulk(ids) {
+    updateData((prev) => {
+      const loopIds = prev.loops.filter((l) => ids.includes(l.panelId)).map((l) => l.id);
+      return {
+        ...prev,
+        panels: prev.panels.filter((p) => !ids.includes(p.id)),
+        loops: prev.loops.filter((l) => !ids.includes(l.panelId)),
+        nacs: prev.nacs.filter((n) => !ids.includes(n.panelId)),
+        devices: prev.devices.filter((d) => !loopIds.includes(d.loopId)),
+      };
+    });
+    setConfirmState(null);
+    if (view === 'panelDetail' && ids.includes(panelId)) setView('panels');
+  }
+
   function submitLoop(values) {
     if (modal.mode === 'create') updateData((prev) => ({ ...prev, loops: [...prev.loops, { id: uid(), panelId: modal.context.panelId, ...values }] }));
     else updateData((prev) => ({ ...prev, loops: prev.loops.map((l) => (l.id === modal.initial.id ? { ...l, ...values } : l)) }));
@@ -1948,7 +2129,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         {view === 'panels' && (
           <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch} canEdit={canEdit}
             onOpenPanel={(id) => { setPanelId(id); setPanelTab('loops'); setView('panelDetail'); }}
-            onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })} />
+            onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })}
+            onBulkDeletePanels={(ids) => setConfirmState({ title: 'Excluir painéis selecionados', message: `Excluir ${ids.length} painel(éis) selecionado(s)? Todos os laços, circuitos e dispositivos vinculados também serão removidos. Essa ação não pode ser desfeita.`, onConfirm: () => deletePanelsBulk(ids) })} />
         )}
 
         {view === 'panelDetail' && panelId && (
@@ -2147,15 +2329,45 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
   );
 }
 
-function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate }) {
+function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, onBulkDeletePanels }) {
   const filtered = data.panels.filter((p) => (p.name + ' ' + (p.location || '')).toLowerCase().includes(search.toLowerCase()));
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  function toggleSelect(id) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function exitSelectMode() { setSelectMode(false); setSelectedIds([]); }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Painéis</h2>
-        {canEdit && <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo painel</Button>}
+        {canEdit && (
+          <div className="flex gap-2">
+            {data.panels.length > 0 && (
+              selectMode ? (
+                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
+              ) : (
+                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
+              )
+            )}
+            <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo painel</Button>
+          </div>
+        )}
       </div>
+
+      {selectMode && (
+        <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+            {selectedIds.length === 0 ? 'Marque os painéis que quer excluir de uma vez.' : `${selectedIds.length} painel(éis) selecionado(s)`}
+          </p>
+          {selectedIds.length > 0 && (
+            <Button variant="danger" onClick={() => { onBulkDeletePanels(selectedIds); exitSelectMode(); }}>
+              <Trash2 size={15} /> Excluir selecionados
+            </Button>
+          )}
+        </div>
+      )}
 
       {data.panels.length > 0 && (
         <div className="relative">
@@ -2179,11 +2391,17 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate })
               ...nacs.map((n) => computeStatus(n.nextMaintenance)),
             ];
             const status = worstStatus(statuses);
-            return (
-              <button key={panel.id} onClick={() => onOpenPanel(panel.id)} className="text-left rounded-xl p-4 flex flex-col gap-2 hover:brightness-110 transition"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            const isSelected = selectedIds.includes(panel.id);
+            const cls = `text-left rounded-xl p-4 flex flex-col gap-2 transition ${selectMode ? 'cursor-pointer' : 'hover:brightness-110'}`;
+            const cardStyle = { background: 'var(--surface)', border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)' };
+            const content = (
+              <>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
+                    {selectMode && (
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(panel.id)}
+                        className="w-4 h-4 cursor-pointer flex-shrink-0" style={{ accentColor: 'var(--accent)' }} />
+                    )}
                     <Cpu size={16} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
                     <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{panel.name}</span>
                   </div>
@@ -2195,7 +2413,12 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate })
                   <span>{nacs.length} NAC{nacs.length === 1 ? '' : 's'}</span>
                   <span>{deviceCount} dispositivo{deviceCount === 1 ? '' : 's'}</span>
                 </div>
-              </button>
+              </>
+            );
+            return selectMode ? (
+              <label key={panel.id} className={cls} style={cardStyle}>{content}</label>
+            ) : (
+              <button key={panel.id} onClick={() => onOpenPanel(panel.id)} className={cls} style={cardStyle}>{content}</button>
             );
           })}
         </div>
@@ -2618,6 +2841,7 @@ function exportDevicesCsv(data) {
 function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
   const [brand, setBrand] = useState('hochiki');
   const [model, setModel] = useState(brandInfo('hochiki').models[0].value);
+  const [hochikiFormat, setHochikiFormat] = useState('lp2');
   const [targetMode, setTargetMode] = useState('new');
   const [targetPanelId, setTargetPanelId] = useState('');
   const [loopChoice, setLoopChoice] = useState(1);
@@ -2668,6 +2892,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
   function handleBrandChange(value) {
     setBrand(value);
     setModel(brandInfo(value).models[0].value);
+    setHochikiFormat('lp2');
     setLoopChoice(1);
     setRows(null); setEntities(null); setTypeMap({}); setError(''); setDone(false);
     setFileNames({}); setNotifierSheets({ modules: null, detectors: null });
@@ -2678,6 +2903,12 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
     setLoopChoice(1);
     setRows(null); setEntities(null); setError(''); setDone(false);
     setFileNames({}); setNotifierSheets({ modules: null, detectors: null });
+  }
+
+  function handleHochikiFormatChange(value) {
+    setHochikiFormat(value);
+    setRows(null); setEntities(null); setTypeMap({}); setError(''); setDone(false);
+    setFileNames({});
   }
 
   function handleHochikiFile(e) {
@@ -2696,6 +2927,21 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       }
     };
     reader.readAsText(file, 'utf-8');
+  }
+
+  async function handleHochikiLp1File(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileNames({ hochikiLp1: file.name });
+    setError(''); setDone(false);
+    try {
+      const words = await extractPdfWords(file);
+      const parsedRows = parseLp1Report(words);
+      seedTypeMapAndBuild(parsedRows);
+    } catch (err) {
+      setError(err.message || 'Não foi possível ler esse arquivo PDF.');
+      setRows(null); setEntities(null);
+    }
   }
 
   async function handleNotifierFile(slot, e) {
@@ -2849,11 +3095,28 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
         )}
 
         {brand === 'hochiki' ? (
-          <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
-            style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-            <Upload size={15} /> Escolher arquivo .csv
-            <input type="file" accept=".csv" onChange={handleHochikiFile} className="hidden" />
-          </label>
+          <div className="flex flex-col gap-2">
+            <Field label="Formato do relatório" hint="O Loop Explorer 2 exporta .csv; o Loop Explorer 1 (mais antigo) exporta .pdf.">
+              <select value={hochikiFormat} onChange={(e) => handleHochikiFormatChange(e.target.value)}
+                className="w-full px-2.5 py-2 rounded-md text-sm sm:w-72" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <option value="lp2">Loop Explorer 2 (.csv)</option>
+                <option value="lp1">Loop Explorer 1 (.pdf)</option>
+              </select>
+            </Field>
+            {hochikiFormat === 'lp2' ? (
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <Upload size={15} /> Escolher arquivo .csv
+                <input type="file" accept=".csv" onChange={handleHochikiFile} className="hidden" />
+              </label>
+            ) : (
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <FileText size={15} /> Escolher arquivo .pdf
+                <input type="file" accept=".pdf" onChange={handleHochikiLp1File} className="hidden" />
+              </label>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -2874,9 +3137,10 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
           </div>
         )}
 
-        {(fileNames.hochiki || fileNames.modules || fileNames.detectors) && (
+        {(fileNames.hochiki || fileNames.hochikiLp1 || fileNames.modules || fileNames.detectors) && (
           <div className="flex flex-col gap-0.5">
             {fileNames.hochiki && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Arquivo: {fileNames.hochiki}</p>}
+            {fileNames.hochikiLp1 && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Arquivo: {fileNames.hochikiLp1}</p>}
             {fileNames.modules && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Módulos: {fileNames.modules}</p>}
             {fileNames.detectors && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Detectores: {fileNames.detectors}</p>}
           </div>
