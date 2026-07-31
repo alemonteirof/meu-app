@@ -5,7 +5,9 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
+  FileSpreadsheet,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 /* ------------------------------------------------------------------ */
 /* Supabase (banco de dados + login de usuários)                      */
@@ -201,6 +203,350 @@ const CLIENTS_KEY = 'pci-clientes-v1';
 const LEGACY_KEY = 'pci-sistema-dados-v1';
 const LAST_CLIENT_KEY = 'pci-ultimo-cliente-v1';
 function clientDataKey(id) { return `pci-dados-cliente-${id}`; }
+
+/* ------------------------------------------------------------------ */
+/* Importação de base de dispositivos — múltiplas marcas de painel     */
+/* ------------------------------------------------------------------ */
+
+const IMPORT_BRANDS = [
+  {
+    value: 'hochiki',
+    label: 'Hochiki / VES',
+    models: [
+      { value: 'generico', label: 'Não especificar / outro modelo', shortLabel: '', loops: null },
+      { value: 'firenet-plus', label: 'FireNET Plus (Hochiki) / Elite RS (VES) — 1 ou 2 laços', shortLabel: 'FireNET Plus / Elite RS', loops: null },
+      { value: 'latitude', label: 'FireNET L@titude (Hochiki) / L@titude (VES) — 2 a 16 laços', shortLabel: 'FireNET L@titude / L@titude', loops: null },
+      { value: 'firenet', label: 'FireNET (Hochiki, descontinuado — sem equivalente VES) — 2 ou 4 laços', shortLabel: 'FireNET (descontinuado)', loops: null },
+    ],
+  },
+  {
+    value: 'notifier',
+    label: 'Notifier (Honeywell)',
+    models: [
+      { value: 'NFS-320', label: 'NFS-320', shortLabel: 'NFS-320', loops: 1 },
+      { value: 'NFS2-640', label: 'NFS2-640', shortLabel: 'NFS2-640', loops: 2 },
+      { value: 'NFS2-3030', label: 'NFS2-3030', shortLabel: 'NFS2-3030', loops: 10 },
+    ],
+  },
+];
+function brandInfo(brandValue) { return IMPORT_BRANDS.find((b) => b.value === brandValue) || IMPORT_BRANDS[0]; }
+function modelInfo(brandValue, modelValue) {
+  const b = brandInfo(brandValue);
+  return b.models.find((m) => m.value === modelValue) || b.models[0];
+}
+
+function guessDeviceTypeFromCode(code) {
+  const c = (code || '').toUpperCase();
+  if (c.includes('PULL') || c.includes('AMS')) return 'acionador';
+  if (c.startsWith('ATJ') || c.includes('TERMICO') || c.includes('CALOR')) return 'calor';
+  if (c.startsWith('ALK') || c.startsWith('ALO') || c.startsWith('ALN') || c === 'DIMM') return 'fumaca';
+  if (c.startsWith('R2M')) return 'rele';
+  if (c === 'SOM-AI' || c.startsWith('SOM')) return 'saida';
+  if (c === 'CZM' || c.startsWith('FRCME')) return 'entrada';
+  return 'entrada';
+}
+
+/* Mapeamento calibrado com os "Type Code Label" reais observados em exports do VeriFire
+   Tools (relatórios de Módulos e Detectores). Correspondência exata primeiro; quando o
+   código não é reconhecido, cai para uma busca por palavra-chave. */
+const NOTIFIER_TYPE_MAP = {
+  // Módulos
+  'MONITOR': 'entrada',
+  'RELAY': 'rele',
+  'MAN RELEASE': 'acionador',
+  'MANUAL RELEASE': 'acionador',
+  'BELL CIRCUIT': 'saida',
+  'RELEASE CKT': 'saida',
+  'RELEASE CIRCUIT': 'saida',
+  'FORM C RESET': 'rele',
+  'TRACK SUPERV': 'entrada',
+  'TRACKING SUPERVISORY': 'entrada',
+  'RF SUPERVSRY': 'entrada',
+  'RF SUPERVISORY': 'entrada',
+  'POWER MONITR': 'entrada',
+  'POWER MONITOR': 'entrada',
+  'ISOLATOR': 'rele',
+  'NAC CIRCUIT': 'saida',
+  'SOUNDER CIRCUIT': 'saida',
+  'DOOR HOLDER': 'saida',
+  'AUX POWER': 'saida',
+  'AUXILIARY POWER': 'saida',
+  // Detectores
+  'PHOTO': 'fumaca',
+  'PHOTOELECTRIC': 'fumaca',
+  'ION': 'fumaca',
+  'IONIZATION': 'fumaca',
+  'MULTI': 'fumaca',
+  'MULTI-CRITERIA': 'fumaca',
+  'DUCT': 'fumaca',
+  'HEAT': 'calor',
+  'FIXED TEMP': 'calor',
+  'ROR': 'calor',
+  'THERMAL': 'calor',
+  'PULL STATION': 'acionador',
+  'MANUAL STATION': 'acionador',
+  'MANUAL PULL': 'acionador',
+};
+
+function guessDeviceTypeFromNotifierCode(code) {
+  const key = (code || '').trim().toUpperCase();
+  if (NOTIFIER_TYPE_MAP[key]) return NOTIFIER_TYPE_MAP[key];
+  if (key.includes('RELEASE') || key.includes('PULL') || key.includes('MANUAL')) return 'acionador';
+  if (key.includes('RELAY') || key.includes('FORM C') || key.includes('ISOLAT')) return 'rele';
+  if (key.includes('BELL') || key.includes('NAC') || key.includes('SOUNDER') || key.includes('DOOR') || key.includes('AUX') || key.includes('CIRCUIT')) return 'saida';
+  if (key.includes('PHOTO') || key.includes('ION') || key.includes('SMOKE') || key.includes('DUCT') || key.includes('MULTI')) return 'fumaca';
+  if (key.includes('HEAT') || key.includes('THERMAL') || key.includes('TEMP') || key.includes('ROR')) return 'calor';
+  if (key.includes('MONITOR') || key.includes('SUPERV') || key.includes('INPUT')) return 'entrada';
+  return 'entrada';
+}
+
+function guessDeviceType(brand, code) {
+  return brand === 'notifier' ? guessDeviceTypeFromNotifierCode(code) : guessDeviceTypeFromCode(code);
+}
+
+/* Modelo real do módulo Notifier, a partir da coluna "FlashScan Type" do report.
+   hasSub indica se o endereço tem sub-endereços (ex.: 056.01/056.02) — nesse caso, o
+   MINI/DUAL MONITOR é fisicamente um módulo de dupla entrada (FDM-1); sem sub-endereço,
+   é um módulo de entrada única (FMM-101). */
+function resolveNotifierModel(flashScanType, hasSub) {
+  const f = (flashScanType || '').trim().toUpperCase();
+  if (!f) return '';
+  if (f === 'MONITOR') return 'FMM-1';
+  if (f === 'RELAY') return 'FRM-1';
+  if (f === 'CONTROL') return 'FCM-1';
+  if (f === 'RELEASE') return 'FCM-1REL';
+  if (f === 'MANUAL STATION') return 'Acionador Manual NGB';
+  if (f.includes('MONITOR') && (f.includes('MINI') || f.includes('DUAL'))) {
+    return hasSub ? 'FDM-1' : 'FMM-101';
+  }
+  // PS MON (Power Monitor) refere-se a fontes auxiliares — ainda sem um código de
+  // modelo específico definido; por ora mostra o próprio FlashScan Type do report.
+  return flashScanType;
+}
+
+/* ---- Hochiki / VES: relatório "Device Labels" em .csv ---- */
+
+function parseDeviceLabelsCsv(text) {
+  const lines = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const rows = [];
+  let currentTitle = null;
+  let inTable = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) { inTable = false; continue; }
+    if (/^-+$/.test(line)) continue;
+    if (line.startsWith('"')) {
+      const cells = (line.match(/"([^"]*)"/g) || []).map((c) => c.slice(1, -1));
+      if (cells.length === 5 && cells[0] === 'Address') { inTable = true; continue; }
+      if (inTable && cells.length === 5) {
+        rows.push({ address: cells[0], node: cells[1], loop: cells[2], type: cells[3], label: cells[4], title: currentTitle });
+        continue;
+      }
+      continue;
+    }
+    if (!inTable) currentTitle = line;
+  }
+  if (rows.length === 0) throw new Error('Nenhuma linha de dispositivo foi encontrada nesse arquivo.');
+  return rows;
+}
+
+/* ---- Notifier (Honeywell): relatórios do VeriFire Tools em .xls/.xlsx/.csv ---- */
+
+function parseCsvLine(line) {
+  const cells = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+      } else cur += ch;
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === ',') { cells.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  cells.push(cur);
+  return cells;
+}
+
+function parseCsvToRows(text) {
+  return String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    .filter((l) => l.length > 0)
+    .map(parseCsvLine);
+}
+
+/** Lê um arquivo .xls/.xlsx (via SheetJS) ou .csv e devolve um array de arrays (linhas x colunas). */
+function readFileAsRows(file) {
+  return new Promise((resolve, reject) => {
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler esse arquivo.'));
+    if (isExcel) {
+      reader.onload = () => {
+        try {
+          const wb = XLSX.read(reader.result, { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+          resolve(rows);
+        } catch (e) { reject(new Error('Não consegui interpretar esse arquivo Excel.')); }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = () => {
+        try { resolve(parseCsvToRows(String(reader.result))); }
+        catch (e) { reject(e); }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+  });
+}
+
+function findColValue(rowObj, ...needles) {
+  const entry = Object.entries(rowObj).find(([k]) => {
+    const up = k.toUpperCase();
+    return needles.every((n) => up.includes(n));
+  });
+  return entry ? entry[1] : '';
+}
+
+/** Interpreta uma planilha exportada do VeriFire Tools (aba de Módulos ou Detectores). */
+function parseNotifierSheet(rowsRaw) {
+  const rows = (rowsRaw || []).filter((r) => (r || []).some((c) => String(c ?? '').trim() !== ''));
+  if (rows.length < 4) throw new Error('Não reconheci esse arquivo como um export do VeriFire Tools da Notifier.');
+
+  let nodeLabel = '', nodeModel = '', nodeAddress = '0';
+  for (const r of rows) {
+    const cell = String(r[0] || '');
+    const m = cell.match(/NodeDetails:\s*\(Address:\s*([^,]+),\s*Type:\s*([^,]+),[^)]*Label:\s*([^)]+)\)/i);
+    if (m) { nodeAddress = m[1].trim(); nodeModel = m[2].trim(); nodeLabel = m[3].trim(); break; }
+  }
+
+  let headerIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const joined = rows[i].map((c) => String(c ?? '').replace(/\n/g, ' ').trim().toUpperCase()).join('|');
+    if (joined.includes('DEVICE') && joined.includes('ADDR')) { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) throw new Error('Não encontrei a tabela de dispositivos nesse arquivo (cabeçalho "Device ADDR" ausente).');
+
+  const headers = rows[headerIdx].map((c) => String(c ?? '').replace(/\n/g, ' ').trim());
+  const dataRows = rows.slice(headerIdx + 1).filter((r) => String(r[0] ?? '').trim() !== '');
+  const objRows = dataRows.map((r) => {
+    const o = {};
+    headers.forEach((h, i) => { o[h] = r[i] !== undefined ? String(r[i]).trim() : ''; });
+    return o;
+  });
+
+  const headerSet = headers.map((h) => h.toUpperCase());
+  const reportKind = headerSet.some((h) => h.includes('MODULE') && h.includes('TYPE'))
+    ? 'modules'
+    : headerSet.some((h) => h.includes('DETECTOR')) ? 'detectors' : 'desconhecido';
+
+  return { nodeLabel, nodeModel, nodeAddress, headers, rows: objRows, reportKind };
+}
+
+/** Converte uma planilha Notifier já interpretada para o formato genérico de linhas usado por buildImportEntities. */
+function notifierSheetToGenericRows(parsedSheet, loopLabel) {
+  return parsedSheet.rows.map((r) => {
+    const address = findColValue(r, 'DEVICE', 'ADDR') || findColValue(r, 'ADDR');
+    const installed = (findColValue(r, 'INSTL') || '').trim().toLowerCase();
+    const typeCodeLabel = findColValue(r, 'TYPE', 'CODE') || findColValue(r, 'MODULE', 'TYPE') || findColValue(r, 'DETECTOR', 'TYPE');
+    const flashScanType = findColValue(r, 'FLASHSCAN', 'TYPE');
+    const customLabel = findColValue(r, 'CUSTOM', 'LABEL');
+    const extendedLabel = findColValue(r, 'EXTENDED', 'LABEL');
+    const label = [customLabel, extendedLabel].filter(Boolean).join(' ').trim();
+    return {
+      address,
+      node: 'painel',
+      loop: loopLabel,
+      type: typeCodeLabel,
+      flashScanType,
+      label: label || address,
+      title: parsedSheet.nodeLabel || 'Painel Notifier',
+      installed: installed !== 'false',
+    };
+    // endereços com INSTL=False são posições vazias no laço (sem dispositivo físico) —
+    // descartadas abaixo junto com linhas sem código de tipo.
+  }).filter((r) => r.address && r.installed && r.type);
+}
+
+/* ---- Agrupamento genérico (comum a todas as marcas) ---- */
+
+function buildImportEntities(rows, typeMap, brand, opts) {
+  const { existingPanel = null, existingLoops = [], panelModel = '' } = opts || {};
+  const panelsByNode = new Map();
+  const loopsByKey = new Map();
+  const deviceGroups = new Map();
+
+  // Alguns módulos MINI/DUAL MONITOR da Notifier (ex.: acionadores duplos) aparecem no
+  // report como DOIS endereços inteiros separados com a mesma etiqueta de local, em vez
+  // de um endereço com sub-endereço (ex.: 25 e 27, ambos "CABINE PRIMER"). Pré-contamos
+  // essas repetições por laço para tratar isso como módulo duplo (FDM-1) também.
+  const miniDualLabelCounts = new Map();
+  if (brand === 'notifier') {
+    for (const r of rows) {
+      const f = (r.flashScanType || '').trim().toUpperCase();
+      if (f.includes('MONITOR') && (f.includes('MINI') || f.includes('DUAL'))) {
+        const key = `${r.node}|${r.loop}|${(r.label || '').trim().toLowerCase()}`;
+        miniDualLabelCounts.set(key, (miniDualLabelCounts.get(key) || 0) + 1);
+      }
+    }
+  }
+
+  for (const r of rows) {
+    if (!panelsByNode.has(r.node)) {
+      const cleanTitle = (r.title || '').replace(/^\d+\s+/, '').trim();
+      panelsByNode.set(r.node, {
+        key: r.node,
+        name: cleanTitle || `Painel ${r.node}`,
+        model: panelModel || '',
+        existingId: existingPanel ? existingPanel.id : null,
+      });
+    }
+    const loopKey = `${r.node}|${r.loop}`;
+    if (!loopsByKey.has(loopKey)) {
+      const loopNiceName = String(r.loop).replace(/^LP\s*(\d+)$/i, 'Laço $1');
+      const matchExisting = existingLoops.find((l) => (l.name || '').trim().toLowerCase() === loopNiceName.trim().toLowerCase());
+      loopsByKey.set(loopKey, { key: loopKey, node: r.node, name: loopNiceName, existingId: matchExisting ? matchExisting.id : null });
+    }
+    const [baseStr, subStr] = String(r.address).split('.');
+    const groupKey = `${loopKey}|${baseStr}`;
+    if (!deviceGroups.has(groupKey)) deviceGroups.set(groupKey, []);
+    const labelKey = `${r.node}|${r.loop}|${(r.label || '').trim().toLowerCase()}`;
+    const pairedByLabel = (miniDualLabelCounts.get(labelKey) || 0) > 1;
+    deviceGroups.get(groupKey).push({ sub: subStr || '00', type: r.type, flashScanType: r.flashScanType, label: r.label, baseStr, loopKey, pairedByLabel });
+  }
+
+  const typeCounts = {};
+  for (const r of rows) typeCounts[r.type] = (typeCounts[r.type] || 0) + 1;
+
+  const devices = [];
+  for (const items of deviceGroups.values()) {
+    const base = items.find((i) => i.sub === '00') || items[0];
+    const subs = items.filter((i) => i.sub !== '00');
+    const hasSub = subs.length > 0;
+    if (subs.length === 0) {
+      const isDual = hasSub || base.pairedByLabel;
+      const modelo = brand === 'notifier' ? resolveNotifierModel(base.flashScanType, isDual) : base.type;
+      devices.push({ loopKey: base.loopKey, address: base.baseStr, type: typeMap[base.type] || 'entrada', modelo, label: base.label });
+    } else {
+      for (const s of subs) {
+        const label = s.label && s.label !== base.label
+          ? (base.label ? `${base.label} — ${s.label}` : s.label)
+          : (base.label || s.label);
+        const modelo = brand === 'notifier' ? resolveNotifierModel(s.flashScanType, true) : s.type;
+        devices.push({ loopKey: s.loopKey, address: `${s.baseStr}.${s.sub}`, type: typeMap[s.type] || 'entrada', modelo, label });
+      }
+    }
+  }
+
+  return {
+    panels: [...panelsByNode.values()],
+    loops: [...loopsByKey.values()],
+    devices,
+    typeCounts,
+  };
+}
 
 const DEVICE_TYPES = [
   { value: 'fumaca', label: 'Detector de fumaça', icon: Cloud },
@@ -1274,6 +1620,50 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     }
   }
 
+  function importCsvEntities(entities) {
+    updateData((prev) => {
+      const panelIdByKey = {};
+      const newPanels = [];
+      entities.panels.forEach((p) => {
+        if (p.existingId) {
+          panelIdByKey[p.key] = p.existingId;
+        } else {
+          const id = uid();
+          panelIdByKey[p.key] = id;
+          newPanels.push({ id, name: p.name, location: '', model: p.model || '', installDate: '', notes: '' });
+        }
+      });
+      const loopIdByKey = {};
+      const newLoops = [];
+      entities.loops.forEach((l) => {
+        if (l.existingId) {
+          loopIdByKey[l.key] = l.existingId;
+        } else {
+          const id = uid();
+          loopIdByKey[l.key] = id;
+          newLoops.push({ id, panelId: panelIdByKey[l.node], name: l.name });
+        }
+      });
+      const newDevices = entities.devices.map((d) => ({
+        id: uid(),
+        loopId: loopIdByKey[d.loopKey],
+        address: d.address,
+        type: d.type,
+        modelo: d.modelo,
+        description: d.label,
+        lastMaintenance: '',
+        nextMaintenance: '',
+        intervalMonths: '',
+      }));
+      return {
+        ...prev,
+        panels: [...prev.panels, ...newPanels],
+        loops: [...prev.loops, ...newLoops],
+        devices: [...prev.devices, ...newDevices],
+      };
+    });
+  }
+
   function updateData(mutator) {
     setData((prev) => {
       const next = mutator(prev);
@@ -1534,7 +1924,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
         {view === 'settings' && (
           <SettingsView client={client} data={data} tab={settingsTab} setTab={setSettingsTab}
-            onUpdateClient={onUpdateClient} onSaveModelPhoto={saveModelPhoto} onRemoveModelPhoto={removeModelPhoto} />
+            onUpdateClient={onUpdateClient} onSaveModelPhoto={saveModelPhoto} onRemoveModelPhoto={removeModelPhoto}
+            onImportCsv={importCsvEntities} />
         )}
       </main>
 
@@ -1772,7 +2163,7 @@ function PanelDetail({
                         <p className="text-xs py-3 text-center" style={{ color: 'var(--text-secondary)' }}>Nenhum dispositivo neste laço ainda.</p>
                       ) : devices.map((d) => (
                         <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
-                          title={DEVICE_TYPE_MAP[d.type]?.label} meta={d.description}
+                          title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                           status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
                           onInspect={() => onInspectDevice(d)} onMaintain={() => onMaintainDevice(d)} onEdit={() => onEditDevice(d)} onDelete={() => onDeleteDevice(d)} />
                       ))}
@@ -1999,13 +2390,14 @@ function ReportView({ data, client, filters, setFilters }) {
   );
 }
 
-function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPhoto, onRemoveModelPhoto }) {
+function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPhoto, onRemoveModelPhoto, onImportCsv }) {
   const TABS = [
     { key: 'cliente', label: 'Cliente', icon: Building2 },
     { key: 'marca', label: 'Marca', icon: Palette },
     { key: 'usuario', label: 'Usuário', icon: UserCog },
     { key: 'modelos', label: 'Modelos', icon: ImagePlus },
     { key: 'operadores', label: 'Operadores', icon: Users },
+    { key: 'importar', label: 'Importar', icon: Upload },
   ];
   return (
     <div className="flex flex-col gap-4">
@@ -2020,6 +2412,294 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
       {tab === 'usuario' && <UserForm client={client} onSave={(user) => onUpdateClient({ user })} onRemove={() => onUpdateClient({ user: null })} />}
       {tab === 'modelos' && <ModelLibraryManager data={data} onSave={onSaveModelPhoto} onRemove={onRemoveModelPhoto} />}
       {tab === 'operadores' && <MembersManager clientId={client.id} />}
+      {tab === 'importar' && <ImportCsvView onImport={onImportCsv} data={data} />}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Importação de base de dados (CSV de painel)                        */
+/* ------------------------------------------------------------------ */
+
+function ImportCsvView({ onImport, data }) {
+  const [brand, setBrand] = useState('hochiki');
+  const [model, setModel] = useState(brandInfo('hochiki').models[0].value);
+  const [targetMode, setTargetMode] = useState('new');
+  const [targetPanelId, setTargetPanelId] = useState('');
+  const [loopChoice, setLoopChoice] = useState(1);
+
+  const [rows, setRows] = useState(null);
+  const [entities, setEntities] = useState(null);
+  const [typeMap, setTypeMap] = useState({});
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const [fileNames, setFileNames] = useState({});
+  const [notifierSheets, setNotifierSheets] = useState({ modules: null, detectors: null });
+
+  const currentModel = modelInfo(brand, model);
+  const existingPanel = targetMode === 'existing' ? (data.panels || []).find((p) => p.id === targetPanelId) : null;
+  const existingLoops = existingPanel ? (data.loops || []).filter((l) => l.panelId === existingPanel.id) : [];
+
+  function targetOpts() {
+    return { existingPanel, existingLoops, panelModel: currentModel.shortLabel || '' };
+  }
+
+  function recomputeFromRows(nextRows, nextTypeMap) {
+    try {
+      setEntities(buildImportEntities(nextRows, nextTypeMap, brand, targetOpts()));
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Não foi possível processar esses dados.');
+      setEntities(null);
+    }
+  }
+
+  function seedTypeMapAndBuild(nextRows) {
+    const seeded = {};
+    const seen = {};
+    nextRows.forEach((r) => { seen[r.type] = true; });
+    Object.keys(seen).forEach((code) => { seeded[code] = guessDeviceType(brand, code); });
+    setRows(nextRows);
+    setTypeMap(seeded);
+    try {
+      setEntities(buildImportEntities(nextRows, seeded, brand, targetOpts()));
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Não foi possível processar esses dados.');
+      setEntities(null);
+    }
+  }
+
+  function handleBrandChange(value) {
+    setBrand(value);
+    setModel(brandInfo(value).models[0].value);
+    setLoopChoice(1);
+    setRows(null); setEntities(null); setTypeMap({}); setError(''); setDone(false);
+    setFileNames({}); setNotifierSheets({ modules: null, detectors: null });
+  }
+
+  function handleModelChange(value) {
+    setModel(value);
+    setLoopChoice(1);
+    setRows(null); setEntities(null); setError(''); setDone(false);
+    setFileNames({}); setNotifierSheets({ modules: null, detectors: null });
+  }
+
+  function handleHochikiFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileNames({ hochiki: file.name });
+    setError(''); setDone(false);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsedRows = parseDeviceLabelsCsv(String(reader.result));
+        seedTypeMapAndBuild(parsedRows);
+      } catch (err) {
+        setError(err.message || 'Não foi possível ler esse arquivo.');
+        setRows(null); setEntities(null);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  async function handleNotifierFile(slot, e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(''); setDone(false);
+    setFileNames((prev) => ({ ...prev, [slot]: file.name }));
+    try {
+      const rawRows = await readFileAsRows(file);
+      const parsedSheet = parseNotifierSheet(rawRows);
+      const nextSheets = { ...notifierSheets, [slot]: parsedSheet };
+      setNotifierSheets(nextSheets);
+      const loopLabel = `LP ${loopChoice}`;
+      const combined = [
+        ...(nextSheets.modules ? notifierSheetToGenericRows(nextSheets.modules, loopLabel) : []),
+        ...(nextSheets.detectors ? notifierSheetToGenericRows(nextSheets.detectors, loopLabel) : []),
+      ];
+      seedTypeMapAndBuild(combined);
+    } catch (err) {
+      setError(err.message || 'Não foi possível ler esse arquivo.');
+    }
+  }
+
+  function handleLoopChoiceChange(value) {
+    setLoopChoice(value);
+    const loopLabel = `LP ${value}`;
+    const combined = [
+      ...(notifierSheets.modules ? notifierSheetToGenericRows(notifierSheets.modules, loopLabel) : []),
+      ...(notifierSheets.detectors ? notifierSheetToGenericRows(notifierSheets.detectors, loopLabel) : []),
+    ];
+    if (combined.length) seedTypeMapAndBuild(combined);
+  }
+
+  function updateTypeMap(code, value) {
+    const next = { ...typeMap, [code]: value };
+    setTypeMap(next);
+    if (rows) recomputeFromRows(rows, next);
+  }
+
+  function handleTargetModeChange(value) {
+    setTargetMode(value);
+    if (value === 'new') setTargetPanelId('');
+    if (rows) recomputeFromRows(rows, typeMap);
+  }
+
+  function handleTargetPanelChange(id) {
+    setTargetPanelId(id);
+    if (rows) {
+      // recompute usando o novo painel selecionado diretamente (o state ainda não atualizou no closure)
+      try {
+        const chosenPanel = (data.panels || []).find((p) => p.id === id);
+        const chosenLoops = chosenPanel ? (data.loops || []).filter((l) => l.panelId === chosenPanel.id) : [];
+        setEntities(buildImportEntities(rows, typeMap, brand, { existingPanel: chosenPanel, existingLoops: chosenLoops, panelModel: currentModel.shortLabel || '' }));
+        setError('');
+      } catch (err) {
+        setError(err.message || 'Não foi possível processar esses dados.');
+      }
+    }
+  }
+
+  function handleConfirm() {
+    onImport(entities);
+    setDone(true);
+    setRows(null);
+    setEntities(null);
+    setNotifierSheets({ modules: null, detectors: null });
+    setFileNames({});
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Importar base de dispositivos</p>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          Envie o relatório exportado do painel. O sistema identifica automaticamente painéis, laços e dispositivos, de acordo com a marca e o modelo selecionados.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Marca do painel">
+            <select value={brand} onChange={(e) => handleBrandChange(e.target.value)}
+              className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              {IMPORT_BRANDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Modelo do painel">
+            <select value={model} onChange={(e) => handleModelChange(e.target.value)}
+              className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              {brandInfo(brand).models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Painel de destino">
+            <select value={targetMode} onChange={(e) => handleTargetModeChange(e.target.value)}
+              className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              <option value="new">Criar novo painel</option>
+              <option value="existing">Usar painel já cadastrado</option>
+            </select>
+          </Field>
+          {targetMode === 'existing' && (
+            <Field label="Selecione o painel">
+              <select value={targetPanelId} onChange={(e) => handleTargetPanelChange(e.target.value)}
+                className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <option value="">Selecione…</option>
+                {(data.panels || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+          )}
+        </div>
+
+        {currentModel.loops > 1 && (
+          <Field label="Laço correspondente a este arquivo" hint="A Notifier não indica o laço no relatório — informe a qual laço esses dispositivos pertencem.">
+            <select value={loopChoice} onChange={(e) => handleLoopChoiceChange(Number(e.target.value))}
+              className="w-full px-2.5 py-2 rounded-md text-sm sm:w-48" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              {Array.from({ length: currentModel.loops }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>Laço {n}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {brand === 'hochiki' ? (
+          <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+            <Upload size={15} /> Escolher arquivo .csv
+            <input type="file" accept=".csv" onChange={handleHochikiFile} className="hidden" />
+          </label>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              A Notifier separa detectores e módulos em relatórios distintos no VeriFire Tools. Envie um ou os dois, conforme disponível (.xls, .xlsx ou .csv).
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <FileSpreadsheet size={15} /> Relatório de módulos
+                <input type="file" accept=".xls,.xlsx,.csv" onChange={(e) => handleNotifierFile('modules', e)} className="hidden" />
+              </label>
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <FileSpreadsheet size={15} /> Relatório de detectores
+                <input type="file" accept=".xls,.xlsx,.csv" onChange={(e) => handleNotifierFile('detectors', e)} className="hidden" />
+              </label>
+            </div>
+          </div>
+        )}
+
+        {(fileNames.hochiki || fileNames.modules || fileNames.detectors) && (
+          <div className="flex flex-col gap-0.5">
+            {fileNames.hochiki && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Arquivo: {fileNames.hochiki}</p>}
+            {fileNames.modules && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Módulos: {fileNames.modules}</p>}
+            {fileNames.detectors && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Detectores: {fileNames.detectors}</p>}
+          </div>
+        )}
+        {error && <p className="text-xs" style={{ color: 'var(--status-danger)' }}>{error}</p>}
+        {done && <p className="text-xs" style={{ color: 'var(--status-ok)' }}>Importação concluída! Confira em "Painéis".</p>}
+      </div>
+
+      {entities && (
+        <>
+          <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Confirme a categoria de cada tipo de dispositivo</p>
+            <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+              Identifiquei estes códigos no arquivo. Ajuste se alguma categoria não estiver certa.
+            </p>
+            {Object.keys(entities.typeCounts).map((code) => (
+              <div key={code} className="flex items-center justify-between gap-2 rounded-md p-2" style={{ background: 'var(--surface-raised)' }}>
+                <div className="min-w-0">
+                  <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{code}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{entities.typeCounts[code]} ocorrência(s)</p>
+                </div>
+                <select value={typeMap[code] || 'entrada'} onChange={(e) => updateTypeMap(code, e.target.value)}
+                  className="px-2 py-1 rounded-md text-xs flex-shrink-0" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                  {DEVICE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Resumo antes de importar</p>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              {entities.panels.length} painel(éis) novo(s) · {entities.loops.length} laço(s) · {entities.devices.length} dispositivo(s)
+            </p>
+            {targetMode === 'existing' && existingPanel && (
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                Os dispositivos serão adicionados ao painel <strong>{existingPanel.name}</strong>. Laços com nome igual a um já existente serão reaproveitados; os demais serão criados.
+              </p>
+            )}
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              Isso vai <strong>adicionar</strong> novos registros à lista atual (não substitui o que já existe). Importar o mesmo arquivo duas vezes cria duplicados.
+            </p>
+            <Button variant="primary" onClick={handleConfirm} disabled={targetMode === 'existing' && !existingPanel}>
+              <Upload size={15} /> Confirmar importação
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
