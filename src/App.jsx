@@ -76,6 +76,7 @@ if (typeof window !== 'undefined') {
 /* ------------------------------------------------------------------ */
 /* Autenticação global + níveis de acesso (admin / operador / visualizador) */
 /* ------------------------------------------------------------------ */
+const ROLE_LABELS = { admin: 'Admin', operador: 'Operador', visualizador: 'Visualizador' };
 const AuthContext = React.createContext({ role: 'admin', email: null, signOut: () => {} });
 function useAuth() { return React.useContext(AuthContext); }
 
@@ -1580,9 +1581,11 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
 
 function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const { role, signOut } = useAuth();
+  const canEdit = role !== 'visualizador';
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [lastImport, setLastImport] = useState(null);
 
   const [view, setView] = useState('dashboard');
   const [panelId, setPanelId] = useState(null);
@@ -1621,6 +1624,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
 
   function importCsvEntities(entities) {
+    let createdPanelIds = [];
+    let createdLoopIds = [];
+    let createdDeviceIds = [];
     updateData((prev) => {
       const panelIdByKey = {};
       const newPanels = [];
@@ -1655,6 +1661,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         nextMaintenance: '',
         intervalMonths: '',
       }));
+      createdPanelIds = newPanels.map((p) => p.id);
+      createdLoopIds = newLoops.map((l) => l.id);
+      createdDeviceIds = newDevices.map((d) => d.id);
       return {
         ...prev,
         panels: [...prev.panels, ...newPanels],
@@ -1662,6 +1671,23 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         devices: [...prev.devices, ...newDevices],
       };
     });
+    setLastImport({
+      panelIds: createdPanelIds,
+      loopIds: createdLoopIds,
+      deviceIds: createdDeviceIds,
+      summary: `${createdPanelIds.length} painel(éis) novo(s), ${createdLoopIds.length} laço(s) novo(s) e ${createdDeviceIds.length} dispositivo(s)`,
+    });
+  }
+
+  function undoLastImport() {
+    if (!lastImport) return;
+    updateData((prev) => ({
+      ...prev,
+      devices: prev.devices.filter((d) => !lastImport.deviceIds.includes(d.id)),
+      loops: prev.loops.filter((l) => !lastImport.loopIds.includes(l.id)),
+      panels: prev.panels.filter((p) => !lastImport.panelIds.includes(p.id)),
+    }));
+    setLastImport(null);
   }
 
   function updateData(mutator) {
@@ -1819,6 +1845,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs px-2 py-1 rounded-md mono" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                {ROLE_LABELS[role] || role}
+              </span>
               {saveError && (
                 <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
                   {role === 'visualizador' ? 'Somente leitura' : 'Falha ao salvar'}
@@ -1841,21 +1870,21 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-20">
         {view === 'dashboard' && (
-          <Dashboard data={data} counts={counts} attentionItems={attentionItems}
+          <Dashboard data={data} counts={counts} attentionItems={attentionItems} canEdit={canEdit}
             onMaintain={(it) => openMaintainModal(it.category, it, it.title)}
             onInspect={(it) => openInspectModal(it.category, it, it.title)}
             onGoPanels={() => setView('panels')} />
         )}
 
         {view === 'panels' && (
-          <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch}
+          <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch} canEdit={canEdit}
             onOpenPanel={(id) => { setPanelId(id); setPanelTab('loops'); setView('panelDetail'); }}
             onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })} />
         )}
 
         {view === 'panelDetail' && panelId && (
           <PanelDetail
-            data={data} panelId={panelId} tab={panelTab} setTab={setPanelTab}
+            data={data} panelId={panelId} tab={panelTab} setTab={setPanelTab} canEdit={canEdit}
             expandedLoops={expandedLoops} setExpandedLoops={setExpandedLoops}
             onBack={() => setView('panels')}
             onEditPanel={(p) => setModal({ type: 'panel', mode: 'edit', initial: p })}
@@ -1893,7 +1922,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         {view === 'pumphouse' && (
           <SimpleListView
             title="Casa de Bombas" description="Bombas, válvulas, painéis de controle e demais equipamentos do sistema de bombeamento."
-            icon={Droplet} data={data} category="pumpDevices"
+            icon={Droplet} data={data} category="pumpDevices" canEdit={canEdit}
             onCreate={() => setModal({ type: 'pump', mode: 'create', initial: null })}
             onEdit={(p) => setModal({ type: 'pump', mode: 'edit', initial: p })}
             onDelete={(p) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir "${p.name}"?`, onConfirm: () => deletePumpDevice(p.id) })}
@@ -1905,7 +1934,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         {view === 'gas' && (
           <SimpleListView
             title="Detectores de Gases" description="Detectores fixos de gases inflamáveis ou tóxicos instalados na edificação."
-            icon={Wind} data={data} category="gasDetectors"
+            icon={Wind} data={data} category="gasDetectors" canEdit={canEdit}
             onCreate={() => setModal({ type: 'gas', mode: 'create', initial: null })}
             onEdit={(g) => setModal({ type: 'gas', mode: 'edit', initial: g })}
             onDelete={(g) => setConfirmState({ title: 'Excluir detector', message: `Excluir "${g.name}"?`, onConfirm: () => deleteGasDetector(g.id) })}
@@ -1925,7 +1954,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         {view === 'settings' && (
           <SettingsView client={client} data={data} tab={settingsTab} setTab={setSettingsTab}
             onUpdateClient={onUpdateClient} onSaveModelPhoto={saveModelPhoto} onRemoveModelPhoto={removeModelPhoto}
-            onImportCsv={importCsvEntities} />
+            onImportCsv={importCsvEntities} lastImport={lastImport} onUndoImport={undoLastImport} />
         )}
       </main>
 
@@ -1995,7 +2024,7 @@ function StatCard({ label, value, color, icon: Icon }) {
   );
 }
 
-function Dashboard({ data, counts, attentionItems, onMaintain, onInspect, onGoPanels }) {
+function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspect, onGoPanels }) {
   const total = counts.overdue + counts.soon + counts.ok + counts.none;
   const todayLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -2003,7 +2032,7 @@ function Dashboard({ data, counts, attentionItems, onMaintain, onInspect, onGoPa
     return (
       <EmptyState icon={Cpu} title="Nenhum equipamento cadastrado ainda"
         description="Comece cadastrando o primeiro painel de detecção e alarme de incêndio. Depois você poderá adicionar laços, circuitos e dispositivos endereçáveis."
-        actionLabel="Cadastrar primeiro painel" onAction={onGoPanels} />
+        actionLabel={canEdit ? 'Cadastrar primeiro painel' : undefined} onAction={canEdit ? onGoPanels : undefined} />
     );
   }
 
@@ -2033,7 +2062,7 @@ function Dashboard({ data, counts, attentionItems, onMaintain, onInspect, onGoPa
             {attentionItems.slice(0, 12).map((it) => (
               <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
                 status={{ ...computeStatus(it.nextMaintenance), lastMaintenance: it.lastMaintenance, operationalStatus: it.operationalStatus }}
-                onMaintain={() => onMaintain(it)} onInspect={() => onInspect(it)} />
+                onMaintain={canEdit ? () => onMaintain(it) : undefined} onInspect={canEdit ? () => onInspect(it) : undefined} />
             ))}
           </div>
         )}
@@ -2042,14 +2071,14 @@ function Dashboard({ data, counts, attentionItems, onMaintain, onInspect, onGoPa
   );
 }
 
-function PanelsList({ data, search, setSearch, onOpenPanel, onCreate }) {
+function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate }) {
   const filtered = data.panels.filter((p) => (p.name + ' ' + (p.location || '')).toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Painéis</h2>
-        <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo painel</Button>
+        {canEdit && <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo painel</Button>}
       </div>
 
       {data.panels.length > 0 && (
@@ -2062,7 +2091,7 @@ function PanelsList({ data, search, setSearch, onOpenPanel, onCreate }) {
       {data.panels.length === 0 ? (
         <EmptyState icon={Cpu} title="Nenhum painel cadastrado"
           description="Cadastre o painel de detecção e alarme de incêndio. Em seguida você poderá adicionar laços (loops), circuitos de saída (NACs) e os dispositivos endereçáveis."
-          actionLabel="Cadastrar painel" onAction={onCreate} />
+          actionLabel={canEdit ? 'Cadastrar painel' : undefined} onAction={canEdit ? onCreate : undefined} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           {filtered.map((panel) => {
@@ -2100,11 +2129,12 @@ function PanelsList({ data, search, setSearch, onOpenPanel, onCreate }) {
 }
 
 function PanelDetail({
-  data, panelId, tab, setTab, expandedLoops, setExpandedLoops, onBack, onEditPanel, onDeletePanel,
+  data, panelId, tab, setTab, canEdit, expandedLoops, setExpandedLoops, onBack, onEditPanel, onDeletePanel,
   onCreateLoop, onEditLoop, onDeleteLoop, onCreateNac, onEditNac, onDeleteNac,
   onCreateDevice, onEditDevice, onDeleteDevice, onMaintainDevice, onInspectDevice, onMaintainNac, onInspectNac,
 }) {
   const panel = data.panels.find((p) => p.id === panelId);
+  const [deviceSearch, setDeviceSearch] = useState('');
   if (!panel) return null;
   const loops = data.loops.filter((l) => l.panelId === panelId);
   const nacs = data.nacs.filter((n) => n.panelId === panelId);
@@ -2120,10 +2150,12 @@ function PanelDetail({
           <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.name}</h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{[panel.location, panel.model].filter(Boolean).join(' · ') || 'Sem informações adicionais'}</p>
         </div>
-        <div className="flex gap-1">
-          <IconButton title="Editar painel" onClick={() => onEditPanel(panel)}><Pencil size={16} /></IconButton>
-          <IconButton title="Excluir painel" danger onClick={() => onDeletePanel(panel)}><Trash2 size={16} /></IconButton>
-        </div>
+        {canEdit && (
+          <div className="flex gap-1">
+            <IconButton title="Editar painel" onClick={() => onEditPanel(panel)}><Pencil size={16} /></IconButton>
+            <IconButton title="Excluir painel" danger onClick={() => onDeletePanel(panel)}><Trash2 size={16} /></IconButton>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
@@ -2133,63 +2165,91 @@ function PanelDetail({
 
       {tab === 'loops' && (
         <div className="flex flex-col gap-3">
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => onCreateLoop(panelId)}><Plus size={15} /> Novo laço</Button>
-          </div>
+          {canEdit && (
+            <div className="flex justify-end">
+              <Button variant="primary" onClick={() => onCreateLoop(panelId)}><Plus size={15} /> Novo laço</Button>
+            </div>
+          )}
           {loops.length === 0 ? (
             <EmptyState icon={Cpu} title="Nenhum laço cadastrado" description="Adicione um laço para começar a cadastrar detectores, acionadores e módulos endereçáveis."
-              actionLabel="Adicionar laço" onAction={() => onCreateLoop(panelId)} />
+              actionLabel={canEdit ? 'Adicionar laço' : undefined} onAction={canEdit ? () => onCreateLoop(panelId) : undefined} />
           ) : (
-            loops.map((loop) => {
-              const devices = data.devices.filter((d) => d.loopId === loop.id).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
-              const status = worstStatus(devices.map((d) => computeStatus(d.nextMaintenance)));
-              const expanded = !!expandedLoops[loop.id];
-              return (
-                <div key={loop.id} className="rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center gap-2 p-3.5">
-                    <button className="flex items-center gap-2 flex-1 min-w-0 text-left" onClick={() => setExpandedLoops((prev) => ({ ...prev, [loop.id]: !prev[loop.id] }))}>
-                      {expanded ? <ChevronDown size={16} style={{ color: 'var(--text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--text-secondary)' }} />}
-                      <Led color={status.color} pulse={status.key === 'overdue'} />
-                      <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{loop.name}</span>
-                      <span className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>{devices.length} dispositivo{devices.length === 1 ? '' : 's'}</span>
-                    </button>
-                    <IconButton title="Novo dispositivo" onClick={() => onCreateDevice(loop.id)}><Plus size={15} /></IconButton>
-                    <IconButton title="Editar laço" onClick={() => onEditLoop(loop)}><Pencil size={15} /></IconButton>
-                    <IconButton title="Excluir laço" danger onClick={() => onDeleteLoop(loop)}><Trash2 size={15} /></IconButton>
-                  </div>
-                  {expanded && (
-                    <div className="px-3.5 pb-3.5 flex flex-col gap-2">
-                      {devices.length === 0 ? (
-                        <p className="text-xs py-3 text-center" style={{ color: 'var(--text-secondary)' }}>Nenhum dispositivo neste laço ainda.</p>
-                      ) : devices.map((d) => (
-                        <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
-                          title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
-                          status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
-                          onInspect={() => onInspectDevice(d)} onMaintain={() => onMaintainDevice(d)} onEdit={() => onEditDevice(d)} onDelete={() => onDeleteDevice(d)} />
-                      ))}
-                    </div>
-                  )}
+            <>
+              {loops.some((l) => data.devices.some((d) => d.loopId === l.id)) && (
+                <div className="relative">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+                  <input className={`${inputCls} pl-9`} placeholder="Buscar dispositivo por endereço, modelo ou local..."
+                    value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} />
                 </div>
-              );
-            })
+              )}
+              {loops.map((loop) => {
+                const q = deviceSearch.trim().toLowerCase();
+                const allDevices = data.devices.filter((d) => d.loopId === loop.id).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
+                const devices = q
+                  ? allDevices.filter((d) => `${d.address} ${d.modelo || ''} ${d.description || ''}`.toLowerCase().includes(q))
+                  : allDevices;
+                if (q && devices.length === 0) return null;
+                const status = worstStatus(allDevices.map((d) => computeStatus(d.nextMaintenance)));
+                const expanded = q ? true : !!expandedLoops[loop.id];
+                return (
+                  <div key={loop.id} className="rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <div className="flex items-center gap-2 p-3.5">
+                      <button className="flex items-center gap-2 flex-1 min-w-0 text-left" onClick={() => setExpandedLoops((prev) => ({ ...prev, [loop.id]: !prev[loop.id] }))}>
+                        {expanded ? <ChevronDown size={16} style={{ color: 'var(--text-secondary)' }} /> : <ChevronRight size={16} style={{ color: 'var(--text-secondary)' }} />}
+                        <Led color={status.color} pulse={status.key === 'overdue'} />
+                        <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{loop.name}</span>
+                        <span className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>
+                          {q ? `${devices.length} de ${allDevices.length}` : allDevices.length} dispositivo{allDevices.length === 1 ? '' : 's'}
+                        </span>
+                      </button>
+                      {canEdit && (
+                        <>
+                          <IconButton title="Novo dispositivo" onClick={() => onCreateDevice(loop.id)}><Plus size={15} /></IconButton>
+                          <IconButton title="Editar laço" onClick={() => onEditLoop(loop)}><Pencil size={15} /></IconButton>
+                          <IconButton title="Excluir laço" danger onClick={() => onDeleteLoop(loop)}><Trash2 size={15} /></IconButton>
+                        </>
+                      )}
+                    </div>
+                    {expanded && (
+                      <div className="px-3.5 pb-3.5 flex flex-col gap-2">
+                        {devices.length === 0 ? (
+                          <p className="text-xs py-3 text-center" style={{ color: 'var(--text-secondary)' }}>
+                            {q ? 'Nenhum dispositivo corresponde à busca.' : 'Nenhum dispositivo neste laço ainda.'}
+                          </p>
+                        ) : devices.map((d) => (
+                          <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
+                            title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
+                            status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
+                            onInspect={canEdit ? () => onInspectDevice(d) : undefined} onMaintain={canEdit ? () => onMaintainDevice(d) : undefined}
+                            onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
           )}
         </div>
       )}
 
       {tab === 'nacs' && (
         <div className="flex flex-col gap-3">
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => onCreateNac(panelId)}><Plus size={15} /> Novo circuito</Button>
-          </div>
+          {canEdit && (
+            <div className="flex justify-end">
+              <Button variant="primary" onClick={() => onCreateNac(panelId)}><Plus size={15} /> Novo circuito</Button>
+            </div>
+          )}
           {nacs.length === 0 ? (
             <EmptyState icon={Bell} title="Nenhum circuito de saída cadastrado" description="Cadastre os circuitos (NACs) que alimentam sirenes, strobos e demais dispositivos de notificação."
-              actionLabel="Adicionar circuito" onAction={() => onCreateNac(panelId)} />
+              actionLabel={canEdit ? 'Adicionar circuito' : undefined} onAction={canEdit ? () => onCreateNac(panelId) : undefined} />
           ) : (
             <div className="grid sm:grid-cols-2 gap-3">
               {nacs.map((n) => (
                 <TrackableCard key={n.id} icon={Bell} address={null} title={n.name} meta={n.description}
                   status={{ ...computeStatus(n.nextMaintenance), lastMaintenance: n.lastMaintenance, operationalStatus: n.operationalStatus }}
-                  onInspect={() => onInspectNac(n)} onMaintain={() => onMaintainNac(n)} onEdit={() => onEditNac(n)} onDelete={() => onDeleteNac(n)} />
+                  onInspect={canEdit ? () => onInspectNac(n) : undefined} onMaintain={canEdit ? () => onMaintainNac(n) : undefined}
+                  onEdit={canEdit ? () => onEditNac(n) : undefined} onDelete={canEdit ? () => onDeleteNac(n) : undefined} />
               ))}
             </div>
           )}
@@ -2199,7 +2259,7 @@ function PanelDetail({
   );
 }
 
-function SimpleListView({ title, description, icon, data, category, onCreate, onEdit, onDelete, onMaintain, onInspect, renderMeta }) {
+function SimpleListView({ title, description, icon, data, category, canEdit, onCreate, onEdit, onDelete, onMaintain, onInspect, renderMeta }) {
   const list = data[category];
   return (
     <div className="flex flex-col gap-4">
@@ -2208,16 +2268,18 @@ function SimpleListView({ title, description, icon, data, category, onCreate, on
           <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{description}</p>
         </div>
-        <Button variant="primary" onClick={onCreate}><Plus size={16} /> Adicionar</Button>
+        {canEdit && <Button variant="primary" onClick={onCreate}><Plus size={16} /> Adicionar</Button>}
       </div>
       {list.length === 0 ? (
-        <EmptyState icon={icon} title="Nenhum item cadastrado" description="Adicione o primeiro equipamento para começar a acompanhar as manutenções." actionLabel="Adicionar" onAction={onCreate} />
+        <EmptyState icon={icon} title="Nenhum item cadastrado" description="Adicione o primeiro equipamento para começar a acompanhar as manutenções."
+          actionLabel={canEdit ? 'Adicionar' : undefined} onAction={canEdit ? onCreate : undefined} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           {list.map((item) => (
             <TrackableCard key={item.id} icon={icon} photo={photoForModelo(data, item.modelo)} address={null} title={item.name} meta={renderMeta(item)}
               status={{ ...computeStatus(item.nextMaintenance), lastMaintenance: item.lastMaintenance, operationalStatus: item.operationalStatus }}
-              onInspect={() => onInspect(item)} onMaintain={() => onMaintain(item)} onEdit={() => onEdit(item)} onDelete={() => onDelete(item)} />
+              onInspect={canEdit ? () => onInspect(item) : undefined} onMaintain={canEdit ? () => onMaintain(item) : undefined}
+              onEdit={canEdit ? () => onEdit(item) : undefined} onDelete={canEdit ? () => onDelete(item) : undefined} />
           ))}
         </div>
       )}
@@ -2390,7 +2452,7 @@ function ReportView({ data, client, filters, setFilters }) {
   );
 }
 
-function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPhoto, onRemoveModelPhoto, onImportCsv }) {
+function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPhoto, onRemoveModelPhoto, onImportCsv, lastImport, onUndoImport }) {
   const TABS = [
     { key: 'cliente', label: 'Cliente', icon: Building2 },
     { key: 'marca', label: 'Marca', icon: Palette },
@@ -2412,7 +2474,7 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
       {tab === 'usuario' && <UserForm client={client} onSave={(user) => onUpdateClient({ user })} onRemove={() => onUpdateClient({ user: null })} />}
       {tab === 'modelos' && <ModelLibraryManager data={data} onSave={onSaveModelPhoto} onRemove={onRemoveModelPhoto} />}
       {tab === 'operadores' && <MembersManager clientId={client.id} />}
-      {tab === 'importar' && <ImportCsvView onImport={onImportCsv} data={data} />}
+      {tab === 'importar' && <ImportCsvView onImport={onImportCsv} data={data} lastImport={lastImport} onUndoImport={onUndoImport} />}
     </div>
   );
 }
@@ -2421,7 +2483,37 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
 /* Importação de base de dados (CSV de painel)                        */
 /* ------------------------------------------------------------------ */
 
-function ImportCsvView({ onImport, data }) {
+/* Exporta a base atual de dispositivos (todos os painéis/laços do cliente) em CSV,
+   pronta para abrir no Excel (separador ; e BOM para acentuação). */
+function exportDevicesCsv(data) {
+  const header = ['Painel', 'Modelo do Painel', 'Laço', 'Endereço', 'Categoria', 'Modelo do Dispositivo', 'Descrição', 'Última Manutenção', 'Próxima Manutenção'];
+  const rows = data.devices.map((d) => {
+    const loop = data.loops.find((l) => l.id === d.loopId);
+    const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+    return [
+      panel?.name || '', panel?.model || '', loop?.name || '', d.address,
+      DEVICE_TYPE_MAP[d.type]?.label || d.type || '', d.modelo || '', d.description || '',
+      formatDateBR(d.lastMaintenance), formatDateBR(d.nextMaintenance),
+    ];
+  }).sort((a, b) => a[0].localeCompare(b[0]) || a[2].localeCompare(b[2], undefined, { numeric: true }) || a[3].localeCompare(b[3], undefined, { numeric: true }));
+
+  const escapeCell = (v) => {
+    const s = String(v ?? '');
+    return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [header, ...rows].map((r) => r.map(escapeCell).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dispositivos-${todayISO()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
   const [brand, setBrand] = useState('hochiki');
   const [model, setModel] = useState(brandInfo('hochiki').models[0].value);
   const [targetMode, setTargetMode] = useState('new');
@@ -2435,6 +2527,7 @@ function ImportCsvView({ onImport, data }) {
   const [done, setDone] = useState(false);
   const [fileNames, setFileNames] = useState({});
   const [notifierSheets, setNotifierSheets] = useState({ modules: null, detectors: null });
+  const [confirmUndo, setConfirmUndo] = useState(false);
 
   const currentModel = modelInfo(brand, model);
   const existingPanel = targetMode === 'existing' ? (data.panels || []).find((p) => p.id === targetPanelId) : null;
@@ -2568,10 +2661,40 @@ function ImportCsvView({ onImport, data }) {
     setEntities(null);
     setNotifierSheets({ modules: null, detectors: null });
     setFileNames({});
+    setConfirmUndo(false);
   }
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Base de dispositivos atual</p>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {data.devices.length} dispositivo(s) cadastrado(s) neste cliente.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => exportDevicesCsv(data)} disabled={data.devices.length === 0}>
+          <Upload size={15} style={{ transform: 'rotate(180deg)' }} /> Exportar base (.csv)
+        </Button>
+      </div>
+
+      {lastImport && (
+        <div className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Última importação</p>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{lastImport.summary}</p>
+          </div>
+          {confirmUndo ? (
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setConfirmUndo(false)}>Cancelar</Button>
+              <Button variant="danger" onClick={() => { onUndoImport(); setConfirmUndo(false); }}>Confirmar, desfazer</Button>
+            </div>
+          ) : (
+            <Button variant="secondary" onClick={() => setConfirmUndo(true)}><Trash2 size={15} /> Desfazer última importação</Button>
+          )}
+        </div>
+      )}
+
       <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Importar base de dispositivos</p>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
