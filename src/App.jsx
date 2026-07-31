@@ -5,7 +5,7 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet, FileText,
+  FileSpreadsheet, FileText, Activity,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -759,6 +759,14 @@ const GAS_TYPE_SUGGESTIONS = [
   'GLP', 'Gás Natural (GN)', 'Monóxido de carbono (CO)', 'Metano (CH4)', 'Amônia (NH3)',
 ];
 
+const INDICATOR_STATUS_OPTIONS = ['Resolvido', 'Andamento', 'Intermitente', 'Falso Positivo', 'Aguardando'];
+function indicatorStatusColor(status) {
+  if (status === 'Resolvido') return 'var(--status-ok)';
+  if (status === 'Andamento' || status === 'Intermitente') return 'var(--status-warn)';
+  if (status === 'Aguardando') return 'var(--status-danger)';
+  return 'var(--text-secondary)';
+}
+
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
   { key: 'panels', label: 'Painéis', icon: Cpu },
@@ -766,12 +774,13 @@ const NAV_ITEMS = [
   { key: 'gas', label: 'Detectores de Gases', icon: Wind },
   { key: 'report', label: 'Relatório', icon: ClipboardList },
   { key: 'history', label: 'Histórico', icon: Clock },
+  { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
 
 const emptyData = () => ({
   panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
-  maintenanceLog: [], modelPhotos: {},
+  maintenanceLog: [], modelPhotos: {}, indicador: [],
 });
 
 /* ------------------------------------------------------------------ */
@@ -1324,6 +1333,70 @@ function GasDetectorForm({ initial, onSubmit, onCancel }) {
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit">Salvar detector</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
+  const [v, setV] = useState(initial || {
+    etiqueta: '', endereco: '', laco: '', equipamento: '', painel: '', area: '', falha: '', descritivo: '',
+    status: 'Andamento', explanacao: '', dataDiagnostico: '', dataIntervencao1: '', dataIntervencao2: '',
+    dataIntervencao3: '', dataIntervencao4: '', dataSolucao: '', solucao: '',
+  });
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (v.etiqueta.trim() || v.falha.trim()) onSubmit(v); }}>
+      <Field label="Etiqueta / Localização *"><input autoFocus className={inputCls} value={v.etiqueta}
+        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: SECURITY OFFICE CORREDOR SL REUNIÃO" required /></Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Endereço"><input className={`${inputCls} mono`} value={v.endereco}
+          onChange={(e) => setV({ ...v, endereco: e.target.value })} placeholder="017" /></Field>
+        <Field label="Laço"><input className={inputCls} value={v.laco}
+          onChange={(e) => setV({ ...v, laco: e.target.value })} placeholder="1" /></Field>
+        <Field label="Painel"><input className={inputCls} value={v.painel}
+          onChange={(e) => setV({ ...v, painel: e.target.value })} placeholder="1" /></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Equipamento"><input className={inputCls} value={v.equipamento}
+          onChange={(e) => setV({ ...v, equipamento: e.target.value })} placeholder="Ex.: Sensor de fumaça" /></Field>
+        <Field label="Área">
+          <input className={inputCls} list="indicador-area-list" value={v.area}
+            onChange={(e) => setV({ ...v, area: e.target.value })} placeholder="Ex.: BODY" />
+          <datalist id="indicador-area-list">{areaSuggestions.map((s) => <option key={s} value={s} />)}</datalist>
+        </Field>
+      </div>
+      <Field label="Falha"><input className={inputCls} value={v.falha}
+        onChange={(e) => setV({ ...v, falha: e.target.value })} placeholder="Ex.: Dispositivo Desconectado" /></Field>
+      <Field label="Descritivo"><textarea rows={2} className={inputCls} value={v.descritivo}
+        onChange={(e) => setV({ ...v, descritivo: e.target.value })} /></Field>
+      <Field label="Status">
+        <select className={inputCls} value={v.status} onChange={(e) => setV({ ...v, status: e.target.value })}>
+          {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </Field>
+      <Field label="Explanação"><textarea rows={2} className={inputCls} value={v.explanacao}
+        onChange={(e) => setV({ ...v, explanacao: e.target.value })} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Data diagnóstico"><input type="date" className={inputCls} value={v.dataDiagnostico}
+          onChange={(e) => setV({ ...v, dataDiagnostico: e.target.value })} /></Field>
+        <Field label="Data solução"><input type="date" className={inputCls} value={v.dataSolucao}
+          onChange={(e) => setV({ ...v, dataSolucao: e.target.value })} /></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Intervenção 1"><input type="date" className={inputCls} value={v.dataIntervencao1}
+          onChange={(e) => setV({ ...v, dataIntervencao1: e.target.value })} /></Field>
+        <Field label="Intervenção 2"><input type="date" className={inputCls} value={v.dataIntervencao2}
+          onChange={(e) => setV({ ...v, dataIntervencao2: e.target.value })} /></Field>
+        <Field label="Intervenção 3"><input type="date" className={inputCls} value={v.dataIntervencao3}
+          onChange={(e) => setV({ ...v, dataIntervencao3: e.target.value })} /></Field>
+        <Field label="Intervenção 4"><input type="date" className={inputCls} value={v.dataIntervencao4}
+          onChange={(e) => setV({ ...v, dataIntervencao4: e.target.value })} /></Field>
+      </div>
+      <Field label="Solução"><textarea rows={2} className={inputCls} value={v.solucao}
+        onChange={(e) => setV({ ...v, solucao: e.target.value })} /></Field>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar registro</Button>
       </FormActions>
     </form>
   );
@@ -1998,6 +2071,25 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     setConfirmState(null);
   }
 
+  function submitIndicador(values) {
+    if (modal.mode === 'create') updateData((prev) => ({ ...prev, indicador: [...(prev.indicador || []), { id: uid(), ...values }] }));
+    else updateData((prev) => ({ ...prev, indicador: (prev.indicador || []).map((r) => (r.id === modal.initial.id ? { ...r, ...values } : r)) }));
+    closeModal();
+  }
+  function deleteIndicador(id) {
+    updateData((prev) => ({ ...prev, indicador: (prev.indicador || []).filter((r) => r.id !== id) }));
+    setConfirmState(null);
+  }
+  async function handleImportIndicador(file) {
+    try {
+      const records = await parseIndicadorXlsx(file);
+      updateData((prev) => ({ ...prev, indicador: [...(prev.indicador || []), ...records] }));
+      return { ok: true, count: records.length };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Não foi possível importar essa planilha.' };
+    }
+  }
+
   function submitMaintenance(values) {
     const { category, id } = modal.context;
     updateData((prev) => {
@@ -2204,6 +2296,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           <HistoryView data={data} filter={historyFilter} setFilter={setHistoryFilter} />
         )}
 
+        {view === 'indicador' && (
+          <IndicadorView data={data} canEdit={canEdit}
+            onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
+            onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
+            onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
+            onImportFile={handleImportIndicador} />
+        )}
+
         {view === 'settings' && (
           <SettingsView client={client} data={data} tab={settingsTab} setTab={setSettingsTab}
             onUpdateClient={onUpdateClient} onSaveModelPhoto={saveModelPhoto} onRemoveModelPhoto={removeModelPhoto}
@@ -2239,6 +2339,12 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       {modal?.type === 'gas' && (
         <Modal title={modal.mode === 'create' ? 'Novo detector de gás' : 'Editar detector'} onClose={closeModal} wide>
           <GasDetectorForm initial={modal.initial} onSubmit={submitGasDetector} onCancel={closeModal} />
+        </Modal>
+      )}
+      {modal?.type === 'indicador' && (
+        <Modal title={modal.mode === 'create' ? 'Novo registro do Indicador' : 'Editar registro'} onClose={closeModal} wide>
+          <IndicadorForm initial={modal.initial} areaSuggestions={[...new Set((data.indicador || []).map((r) => r.area).filter(Boolean))].sort()}
+            onSubmit={submitIndicador} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'maintenance' && (
@@ -2664,6 +2770,127 @@ function HistoryView({ data, filter, setFilter }) {
   );
 }
 
+function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile }) {
+  const list = data.indicador || [];
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [areaFilter, setAreaFilter] = useState('all');
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+
+  const areaOptions = [...new Set(list.map((r) => r.area).filter(Boolean))].sort();
+
+  const filtered = list.filter((r) => {
+    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    if (areaFilter !== 'all' && r.area !== areaFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const hay = `${r.etiqueta} ${r.endereco} ${r.equipamento} ${r.area} ${r.falha} ${r.descritivo}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => (b.dataDiagnostico || '').localeCompare(a.dataDiagnostico || ''));
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportMsg(null);
+    const res = await onImportFile(file);
+    setImporting(false);
+    setImportMsg(res.ok ? { ok: true, text: `${res.count} registro(s) importado(s).` } : { ok: false, text: res.error });
+    e.target.value = '';
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Histórico de diagnóstico e falhas identificadas no sistema.</p>
+        </div>
+        {canEdit && (
+          <div className="flex gap-2">
+            <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
+              <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
+              <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" disabled={importing} />
+            </label>
+            <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo registro</Button>
+          </div>
+        )}
+      </div>
+
+      {importMsg && (
+        <p className="text-xs" style={{ color: importMsg.ok ? 'var(--status-ok)' : 'var(--status-danger)' }}>{importMsg.text}</p>
+      )}
+
+      {list.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+            <input className={`${inputCls} pl-9`} placeholder="Buscar por etiqueta, endereço, falha..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <select className={inputCls} style={{ maxWidth: '220px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="all">Todos os status</option>
+            {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className={inputCls} style={{ maxWidth: '220px' }} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+            <option value="all">Todas as áreas</option>
+            {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <EmptyState icon={Activity} title="Nenhum registro no indicador"
+          description="Importe a planilha de histórico de diagnóstico ou cadastre o primeiro registro manualmente."
+          actionLabel={canEdit ? 'Novo registro' : undefined} onAction={canEdit ? onCreate : undefined} />
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: 'var(--text-secondary)' }}>Nenhum registro corresponde aos filtros.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{filtered.length} de {list.length} registro(s)</p>
+          {filtered.map((r) => (
+            <div key={r.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{r.etiqueta || 'Sem etiqueta'}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {r.endereco && <span className="mono-chip">END {r.endereco}</span>}
+                    {r.laco && <span className="mono-chip">Laço {r.laco}</span>}
+                    {r.painel && <span className="mono-chip">Painel {r.painel}</span>}
+                    {r.area && <span>{r.area}</span>}
+                    {r.equipamento && <span>· {r.equipamento}</span>}
+                  </div>
+                </div>
+                <span className="text-xs px-2 py-1 rounded-md flex-shrink-0" style={{ color: indicatorStatusColor(r.status), border: `1px solid ${indicatorStatusColor(r.status)}` }}>
+                  {r.status || 'Sem status'}
+                </span>
+              </div>
+              {r.falha && <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{r.falha}</p>}
+              {r.descritivo && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.descritivo}</p>}
+              {r.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>Explanação:</strong> {r.explanacao}</p>}
+              {r.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>Solução:</strong> {r.solucao}</p>}
+              {(r.dataDiagnostico || r.dataSolucao) && (
+                <div className="flex flex-wrap gap-3 text-xs mono" style={{ color: 'var(--text-secondary)' }}>
+                  {r.dataDiagnostico && <span>Diagnóstico: {formatDateBR(r.dataDiagnostico)}</span>}
+                  {r.dataSolucao && <span>Solução: {formatDateBR(r.dataSolucao)}</span>}
+                </div>
+              )}
+              {canEdit && (
+                <div className="flex items-center justify-end gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                  <IconButton title="Editar" onClick={() => onEdit(r)}><Pencil size={15} /></IconButton>
+                  <IconButton title="Excluir" danger onClick={() => onDelete(r)}><Trash2 size={15} /></IconButton>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReportView({ data, client, filters, setFilters }) {
   const items = allTrackableItems(data);
   const panelOptions = data.panels.map((p) => ({ value: p.id, label: p.name }));
@@ -2810,6 +3037,76 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
 
 /* Exporta a base atual de dispositivos (todos os painéis/laços do cliente) em CSV,
    pronta para abrir no Excel (separador ; e BOM para acentuação). */
+/* ------------------------------------------------------------------ */
+/* Indicador: histórico de diagnóstico e falhas (planilha "Indicador SDAI") */
+/* ------------------------------------------------------------------ */
+
+function normalizeHeader(h) {
+  return String(h || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+}
+
+function findIndicadorCol(row, includes, excludes = []) {
+  const entry = Object.entries(row).find(([k]) => {
+    const nk = normalizeHeader(k);
+    return includes.every((n) => nk.includes(n)) && !excludes.some((n) => nk.includes(n));
+  });
+  return entry ? entry[1] : '';
+}
+
+function excelValueToISODate(val) {
+  if (val === null || val === undefined || val === '') return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    const off = val.getTimezoneOffset();
+    const local = new Date(val.getTime() - off * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+  const s = String(val).trim();
+  if (!s || /^nat$/i.test(s)) return '';
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`;
+  return '';
+}
+
+/** Lê a planilha "Indicador" (histórico de diagnóstico/falhas) e devolve os registros
+    já no formato usado pelo app, tolerando pequenas variações de cabeçalho (acentos,
+    espaços extras) já que casa por conteúdo normalizado, não pelo texto exato. */
+async function parseIndicadorXlsx(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const sheetName = wb.SheetNames.find((n) => /indicador/i.test(n)) || wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+  const records = rows.map((row) => ({
+    id: uid(),
+    etiqueta: String(findIndicadorCol(row, ['ETIQUETA']) || '').trim(),
+    endereco: String(findIndicadorCol(row, ['ENDERECO']) || '').trim(),
+    laco: String(findIndicadorCol(row, ['LACO']) || '').trim(),
+    equipamento: String(findIndicadorCol(row, ['EQUIPAMENTO']) || '').trim(),
+    painel: String(findIndicadorCol(row, ['PAINEL']) || '').trim(),
+    area: String(findIndicadorCol(row, ['AREA']) || '').trim(),
+    falha: String(findIndicadorCol(row, ['FALHA']) || '').trim(),
+    descritivo: String(findIndicadorCol(row, ['DESCRITIVO']) || '').trim(),
+    status: String(findIndicadorCol(row, ['STATUS']) || '').trim(),
+    explanacao: String(findIndicadorCol(row, ['EXPLANA']) || '').trim(),
+    dataDiagnostico: excelValueToISODate(findIndicadorCol(row, ['DIAGNOSTICO'])),
+    dataIntervencao1: excelValueToISODate(findIndicadorCol(row, ['INTERVEN', '1'])),
+    dataIntervencao2: excelValueToISODate(findIndicadorCol(row, ['INTERVEN', '2'])),
+    dataIntervencao3: excelValueToISODate(findIndicadorCol(row, ['INTERVEN', '3'])),
+    dataIntervencao4: excelValueToISODate(findIndicadorCol(row, ['INTERVEN', '4'])),
+    dataSolucao: excelValueToISODate(findIndicadorCol(row, ['DATA', 'SOLU'])),
+    solucao: String(findIndicadorCol(row, ['SOLU'], ['DATA']) || '').trim(),
+  })).filter((r) => r.etiqueta || r.falha || r.descritivo);
+
+  if (records.length === 0) {
+    throw new Error('Nenhum registro foi encontrado nessa planilha. Verifique se é o arquivo do Indicador.');
+  }
+  return records;
+}
+
 function exportDevicesCsv(data) {
   const header = ['Painel', 'Modelo do Painel', 'Laço', 'Endereço', 'Categoria', 'Modelo do Dispositivo', 'Descrição', 'Última Manutenção', 'Próxima Manutenção'];
   const rows = data.devices.map((d) => {
