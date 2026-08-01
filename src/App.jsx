@@ -1549,40 +1549,142 @@ function RvtItemForm({ data, onAdd }) {
   );
 }
 
+function RvtFieldLabel({ children }) {
+  return <p className="text-[9px] uppercase font-semibold mb-0.5" style={{ color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
+}
+
 function RvtDetail({ report, client, onBack }) {
+  const resolvidos = report.itens.filter((it) => it.status === 'Resolvido').length;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
         <Button variant="secondary" onClick={onBack}><ArrowLeft size={15} /> Voltar</Button>
         <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
       </div>
-      <div className="print-area rounded-xl p-4 sm:p-6 flex flex-col gap-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Relatório de Visita Técnica (RVT) — {client.name}</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Data da visita: {formatDateBR(report.data)}{report.tecnico ? ` · Técnico: ${report.tecnico}` : ''} · {report.itens.length} item(ns)
-          </p>
+
+      <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="rvt-brand-band">
+          <div className="flex items-center gap-3 flex-wrap" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="rvt-wordmark">
+              <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: '#fff' }} /></div>
+              <div className="rvt-wordmark-text">
+                <div className="maj">M.A.J</div>
+                <div className="sol">Soluções</div>
+              </div>
+            </div>
+            <div className="rvt-divider-v" />
+            <div className="flex items-center gap-3">
+              {client.branding?.logoData
+                ? <img src={client.branding.logoData} alt="" className="w-10 h-10 rounded-lg object-cover" style={{ border: '1px solid rgba(255,255,255,0.4)' }} />
+                : null}
+              <div>
+                <p className="font-display font-semibold text-base" style={{ color: '#fff' }}>{client.name}</p>
+                {client.address && <p className="text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>{client.address}</p>}
+              </div>
+            </div>
+          </div>
+          <div className="text-right" style={{ position: 'relative', zIndex: 1 }}>
+            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÉCNICA</p>
+            <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>RVT · {formatDateBR(report.data)}</p>
+          </div>
         </div>
+
+        <div className="flex flex-col gap-5 p-4 sm:p-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+            <RvtFieldLabel>Data da visita</RvtFieldLabel>
+            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(report.data)}</p>
+          </div>
+          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+            <RvtFieldLabel>Técnico responsável</RvtFieldLabel>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{report.tecnico || '—'}</p>
+          </div>
+          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+            <RvtFieldLabel>Itens registrados</RvtFieldLabel>
+            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{report.itens.length}</p>
+          </div>
+          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+            <RvtFieldLabel>Resolvidos na visita</RvtFieldLabel>
+            <p className="text-sm font-medium mono" style={{ color: 'var(--status-ok)' }}>{resolvidos} de {report.itens.length}</p>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-3">
           {report.itens.map((it, i) => (
-            <div key={it.id} className="rounded-lg p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)' }}>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                {i + 1}. {it.etiqueta || 'Item'}{it.endereco ? ` · END ${it.endereco}` : ''}{it.laco ? ` · ${it.laco}` : ''}{it.painel ? ` · ${it.painel}` : ''}
-              </p>
-              {it.equipamento && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.equipamento}</p>}
-              <p className="text-xs mt-1" style={{ color: 'var(--text-primary)' }}><strong>Falha:</strong> {it.falha}</p>
-              {it.descritivo && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.descritivo}</p>}
-              <p className="text-xs mt-1" style={{ color: indicatorStatusColor(it.status) }}>Status: {it.status || 'Sem status'}</p>
-              {it.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>Explanação:</strong> {it.explanacao}</p>}
-              {it.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>Solução:</strong> {it.solucao}</p>}
-              {it.dataIntervencao && <p className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>Intervenção: {formatDateBR(it.dataIntervencao)}</p>}
+            <div key={it.id} className="rvt-item-card rounded-lg p-4" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>
+              <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold mono"
+                    style={{ background: 'var(--accent)', color: '#fff' }}>{i + 1}</span>
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta || 'Item'}</p>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-md flex-shrink-0 font-medium"
+                  style={{ color: indicatorStatusColor(it.status), border: `1px solid ${indicatorStatusColor(it.status)}` }}>
+                  {it.status || 'Sem status'}
+                </span>
+              </div>
+
+              {(it.endereco || it.laco || it.painel || it.equipamento) && (
+                <div className="flex flex-wrap items-center gap-2 mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {it.endereco && <span className="mono-chip">END {it.endereco}</span>}
+                  {it.laco && <span className="mono-chip">{it.laco}</span>}
+                  {it.painel && <span>{it.painel}</span>}
+                  {it.equipamento && <span>· {it.equipamento}</span>}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                <div>
+                  <RvtFieldLabel>Falha</RvtFieldLabel>
+                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{it.falha || '—'}</p>
+                </div>
+                {it.dataIntervencao && (
+                  <div>
+                    <RvtFieldLabel>Data de intervenção</RvtFieldLabel>
+                    <p className="text-xs mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(it.dataIntervencao)}</p>
+                  </div>
+                )}
+              </div>
+
+              {it.descritivo && (
+                <div className="mb-2">
+                  <RvtFieldLabel>Descritivo</RvtFieldLabel>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.descritivo}</p>
+                </div>
+              )}
+              {it.explanacao && (
+                <div className="mb-2">
+                  <RvtFieldLabel>Explanação</RvtFieldLabel>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.explanacao}</p>
+                </div>
+              )}
+              {it.solucao && (
+                <div className="mb-2 rounded-md p-2" style={{ background: 'rgba(79,138,109,0.08)' }}>
+                  <RvtFieldLabel>Solução aplicada</RvtFieldLabel>
+                  <p className="text-xs" style={{ color: 'var(--status-ok)' }}>{it.solucao}</p>
+                </div>
+              )}
+
               {it.fotos && it.fotos.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {it.fotos.map((f, fi) => <img key={fi} src={f} alt="" className="w-24 h-24 rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />)}
+                <div className="mt-3">
+                  <RvtFieldLabel>Registro fotográfico</RvtFieldLabel>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-1">
+                    {it.fotos.map((f, fi) => (
+                      <img key={fi} src={f} alt="" className="w-full aspect-square rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           ))}
+        </div>
+
+        <div className="rvt-footer-band">
+          <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
+          <p className="text-[10px]" style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
+          </p>
+        </div>
         </div>
       </div>
     </div>
@@ -4506,6 +4608,39 @@ function PageStyles() {
       input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
       input[type="color"] { padding: 2px; background: var(--surface-raised); }
 
+      /* ---- Identidade de marca no RVT (cabeçalho, cards, rodapé) ---- */
+      .rvt-brand-band {
+        position: relative; background: var(--accent); color: var(--accent-contrast);
+        padding: 18px 20px; display: flex; justify-content: space-between; align-items: center;
+        gap: 14px; flex-wrap: wrap; overflow: hidden;
+      }
+      .rvt-brand-band::after {
+        content: ''; position: absolute; top: 0; right: 0; width: 110px; height: 100%;
+        background: rgba(0,0,0,0.14); clip-path: polygon(45% 0, 100% 0, 100% 100%, 100% 100%);
+      }
+      .rvt-brand-band::before {
+        content: ''; position: absolute; top: -20px; left: -20px; width: 80px; height: 80px;
+        background: repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 14px);
+      }
+      .rvt-wordmark { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+      .rvt-wordmark-icon {
+        width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.55);
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      }
+      .rvt-wordmark-text .maj { font-family: Georgia, 'Times New Roman', serif; font-size: 14px; font-weight: 700; letter-spacing: 0.03em; line-height: 1; }
+      .rvt-wordmark-text .sol { font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.75); }
+      .rvt-divider-v { width: 1px; height: 30px; background: rgba(255,255,255,0.3); }
+      .rvt-summary-card { border-top: 3px solid var(--accent); }
+      .rvt-item-card { border-left: 4px solid var(--accent); }
+      .rvt-footer-band {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        padding-top: 12px; border-top: 2px solid var(--accent);
+      }
+      .rvt-footer-icon {
+        width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--accent);
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      }
+
       @media print {
         @page { size: A4 landscape; margin: 12mm; }
         body * { visibility: hidden; }
@@ -4516,6 +4651,7 @@ function PageStyles() {
           --text-primary: #15181a; --text-secondary: #55605c;
           background: #fff !important; border: none !important;
         }
+        .print-area img { break-inside: avoid; }
         .no-print { display: none !important; }
       }
     `}</style>
