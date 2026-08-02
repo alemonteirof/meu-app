@@ -111,29 +111,34 @@ function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg)' }}>
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex flex-col items-center gap-3 mb-4">
-          <BrandLogo boxSize={56} size={28} />
-          <h1 className="font-display text-lg font-semibold text-center" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
-        </div>
-        <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          className="w-full mb-3 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-        <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Senha</label>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-          className="w-full mb-4 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-        {error && <p className="text-xs mb-3" style={{ color: 'var(--status-danger)' }}>{error}</p>}
-        {info && <p className="text-xs mb-3" style={{ color: 'var(--accent)' }}>{info}</p>}
-        <button type="submit" disabled={loading} className="w-full py-2 rounded-lg text-sm font-medium mb-3"
-          style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none', cursor: 'pointer' }}>
-          {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
-        </button>
-        <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
-          className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-          {mode === 'login' ? 'Não tem conta? Criar uma' : 'Já tem conta? Entrar'}
-        </button>
-      </form>
+    <div className="login-bg">
+      <div className="login-banner" aria-hidden="true" />
+      <div className="login-content">
+        <img src="/maj-emblem.png" alt="" aria-hidden="true" className="login-emblem"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="flex flex-col items-center gap-3 mb-4">
+            <BrandLogo boxSize={56} size={28} />
+            <h1 className="font-display text-lg font-semibold text-center" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
+          </div>
+          <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+            className="w-full mb-3 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+          <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Senha</label>
+          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+            className="w-full mb-4 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+          {error && <p className="text-xs mb-3" style={{ color: 'var(--status-danger)' }}>{error}</p>}
+          {info && <p className="text-xs mb-3" style={{ color: 'var(--accent)' }}>{info}</p>}
+          <button type="submit" disabled={loading} className="w-full py-2 rounded-lg text-sm font-medium mb-3"
+            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none', cursor: 'pointer' }}>
+            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+          </button>
+          <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
+            className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            {mode === 'login' ? 'Não tem conta? Criar uma' : 'Já tem conta? Entrar'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -1404,6 +1409,7 @@ function RvtItemForm({ data, onAdd }) {
   const [deviceId, setDeviceId] = useState('');
   const [simpleId, setSimpleId] = useState('');
   const [manualLabel, setManualLabel] = useState('');
+  const [deviceQuery, setDeviceQuery] = useState('');
   const [falha, setFalha] = useState('');
   const [descritivo, setDescritivo] = useState('');
   const [status, setStatus] = useState('Resolvido');
@@ -1414,10 +1420,15 @@ function RvtItemForm({ data, onAdd }) {
 
   const panelLoops = data.loops.filter((l) => l.panelId === panelId);
   const loopDevices = data.devices.filter((d) => d.loopId === loopId).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
+  const deviceQ = deviceQuery.trim().toLowerCase();
+  const filteredLoopDevices = deviceQ
+    ? loopDevices.filter((d) => d.id === deviceId
+        || `${d.address} ${DEVICE_TYPE_MAP[d.type]?.label || ''} ${d.modelo || ''} ${d.description || ''}`.toLowerCase().includes(deviceQ))
+    : loopDevices;
 
   function handleCategoriaChange(val) {
     setCategoria(val);
-    setPanelId(''); setLoopId(''); setDeviceId(''); setSimpleId(''); setManualLabel('');
+    setPanelId(''); setLoopId(''); setDeviceId(''); setSimpleId(''); setManualLabel(''); setDeviceQuery('');
   }
 
   function resolveSelected() {
@@ -1476,21 +1487,28 @@ function RvtItemForm({ data, onAdd }) {
       {categoria === 'devices' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label="Painel">
-            <select className={inputCls} value={panelId} onChange={(e) => { setPanelId(e.target.value); setLoopId(''); setDeviceId(''); }}>
+            <select className={inputCls} value={panelId} onChange={(e) => { setPanelId(e.target.value); setLoopId(''); setDeviceId(''); setDeviceQuery(''); }}>
               <option value="">Selecione…</option>
               {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
           <Field label="Laço">
-            <select className={inputCls} value={loopId} onChange={(e) => { setLoopId(e.target.value); setDeviceId(''); }} disabled={!panelId}>
+            <select className={inputCls} value={loopId} onChange={(e) => { setLoopId(e.target.value); setDeviceId(''); setDeviceQuery(''); }} disabled={!panelId}>
               <option value="">Selecione…</option>
               {panelLoops.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </Field>
-          <Field label="Dispositivo (endereço)">
+          <Field label={`Dispositivo (endereço)${loopId && loopDevices.length > 8 ? ` — ${filteredLoopDevices.length} de ${loopDevices.length}` : ''}`}>
+            {loopId && loopDevices.length > 8 && (
+              <div className="relative mb-1.5">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+                <input className={`${inputCls} pl-8`} placeholder="Buscar por endereço, tipo ou descrição..."
+                  value={deviceQuery} onChange={(e) => setDeviceQuery(e.target.value)} />
+              </div>
+            )}
             <select className={inputCls} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} disabled={!loopId}>
               <option value="">Selecione…</option>
-              {loopDevices.map((d) => (
+              {filteredLoopDevices.map((d) => (
                 <option key={d.id} value={d.id}>{d.address} — {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
               ))}
             </select>
@@ -1555,6 +1573,13 @@ function RvtFieldLabel({ children }) {
 
 function RvtDetail({ report, client, onBack }) {
   const resolvidos = report.itens.filter((it) => it.status === 'Resolvido').length;
+
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = `RVT - ${client.name} - ${formatDateBR(report.data)}`;
+    return () => { document.title = prevTitle; };
+  }, [client.name, report.data]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
@@ -4611,7 +4636,7 @@ function PageStyles() {
       /* ---- Identidade de marca no RVT (cabeçalho, cards, rodapé) ---- */
       .rvt-brand-band {
         position: relative; background: var(--accent); color: var(--accent-contrast);
-        padding: 18px 20px; display: flex; justify-content: space-between; align-items: center;
+        padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;
         gap: 14px; flex-wrap: wrap; overflow: hidden;
       }
       .rvt-brand-band::after {
@@ -4624,7 +4649,7 @@ function PageStyles() {
       }
       .rvt-wordmark { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
       .rvt-wordmark-icon {
-        width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.55);
+        width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.55);
         display: flex; align-items: center; justify-content: center; flex-shrink: 0;
       }
       .rvt-wordmark-text .maj { font-family: Georgia, 'Times New Roman', serif; font-size: 14px; font-weight: 700; letter-spacing: 0.03em; line-height: 1; }
@@ -4641,6 +4666,31 @@ function PageStyles() {
         display: flex; align-items: center; justify-content: center; flex-shrink: 0;
       }
 
+      /* ---- Fundo da tela de login: faixa diagonal vinho fixa no topo + emblema real acima do card ---- */
+      .login-bg { position: relative; min-height: 100vh; background: var(--bg); display: flex; flex-direction: column; }
+      .login-banner {
+        position: relative; flex-shrink: 0; width: 100%; height: 132px;
+        background: linear-gradient(160deg, var(--accent) 0%, #6f2424 100%);
+        clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
+      }
+      .login-banner::after {
+        content: ''; position: absolute; top: 0; right: 0; width: 220px; height: 100%;
+        background: repeating-linear-gradient(70deg, rgba(255,255,255,0.10) 0 2px, transparent 2px 12px);
+        opacity: 0.6;
+      }
+      .login-content {
+        flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 24px; position: relative;
+      }
+      .login-content::before {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(ellipse 800px 500px at 50% 15%, rgba(139,47,47,0.10), transparent 65%);
+      }
+      .login-emblem {
+        width: 108px; height: auto; margin-bottom: 8px; position: relative; z-index: 1;
+        filter: drop-shadow(0 4px 14px rgba(0,0,0,0.5));
+      }
+
       @media print {
         @page { size: A4 landscape; margin: 12mm; }
         body * { visibility: hidden; }
@@ -4651,7 +4701,16 @@ function PageStyles() {
           --text-primary: #15181a; --text-secondary: #55605c;
           background: #fff !important; border: none !important;
         }
+        .print-area, .print-area * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
         .print-area img { break-inside: avoid; }
+        .rvt-brand-band { break-inside: avoid; page-break-inside: avoid; }
+        .rvt-summary-card { break-inside: avoid; }
+        .rvt-item-card { break-inside: avoid; page-break-inside: avoid; }
+        .rvt-footer-band { break-inside: avoid; page-break-inside: avoid; break-before: avoid; }
         .no-print { display: none !important; }
       }
     `}</style>
