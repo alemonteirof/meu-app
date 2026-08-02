@@ -112,10 +112,9 @@ function LoginScreen() {
 
   return (
     <div className="login-bg">
-      <div className="login-banner" aria-hidden="true" />
+      <img src="/maj-emblem.png" alt="" aria-hidden="true" className="login-watermark"
+        onError={(e) => { e.currentTarget.style.display = 'none'; }} />
       <div className="login-content">
-        <img src="/maj-emblem.png" alt="" aria-hidden="true" className="login-emblem"
-          onError={(e) => { e.currentTarget.style.display = 'none'; }} />
         <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div className="flex flex-col items-center gap-3 mb-4">
             <BrandLogo boxSize={56} size={28} />
@@ -4666,29 +4665,19 @@ function PageStyles() {
         display: flex; align-items: center; justify-content: center; flex-shrink: 0;
       }
 
-      /* ---- Fundo da tela de login: faixa diagonal vinho fixa no topo + emblema real acima do card ---- */
-      .login-bg { position: relative; min-height: 100vh; background: var(--bg); display: flex; flex-direction: column; }
-      .login-banner {
-        position: relative; flex-shrink: 0; width: 100%; height: 132px;
-        background: linear-gradient(160deg, var(--accent) 0%, #6f2424 100%);
-        clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
+      /* ---- Fundo da tela de login: emblema real como marca d'água no canto (mescla v1 + v6) ---- */
+      .login-bg { position: relative; min-height: 100vh; background: var(--bg); overflow: hidden; }
+      .login-bg::before {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(ellipse 900px 600px at 50% 40%, rgba(139,47,47,0.12), transparent 68%);
       }
-      .login-banner::after {
-        content: ''; position: absolute; top: 0; right: 0; width: 220px; height: 100%;
-        background: repeating-linear-gradient(70deg, rgba(255,255,255,0.10) 0 2px, transparent 2px 12px);
-        opacity: 0.6;
+      .login-watermark {
+        position: absolute; width: 620px; height: auto; right: -120px; bottom: -110px;
+        opacity: 0.14; pointer-events: none; user-select: none;
       }
       .login-content {
-        flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        padding: 24px; position: relative;
-      }
-      .login-content::before {
-        content: ''; position: absolute; inset: 0; pointer-events: none;
-        background: radial-gradient(ellipse 800px 500px at 50% 15%, rgba(139,47,47,0.10), transparent 65%);
-      }
-      .login-emblem {
-        width: 108px; height: auto; margin-bottom: 8px; position: relative; z-index: 1;
-        filter: drop-shadow(0 4px 14px rgba(0,0,0,0.5));
+        position: relative; z-index: 1; min-height: 100vh;
+        display: flex; align-items: center; justify-content: center; padding: 24px;
       }
 
       @media print {
