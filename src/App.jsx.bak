@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Droplet, Wind, Clock, Plus, X, Pencil, Trash2,
   ChevronDown, ChevronRight, ArrowLeft, Cloud, Thermometer, Hand, LogOut,
@@ -13,13 +13,9 @@ import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 /* ------------------------------------------------------------------ */
-/* Supabase (banco de dados + login de usuÃ¡rios)                      */
+/* Supabase (banco de dados + login de usuários)                      */
 /* ------------------------------------------------------------------ */
 import { createClient } from '@supabase/supabase-js';
-import ToolChecklistForm from './components/ToolChecklistForm';
-import ToolChecklistScreen from './components/ToolChecklistScreen';
-import ToolChecklistHistory from './components/ToolChecklistHistory';
-
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -28,10 +24,10 @@ export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabase
 /* ------------------------------------------------------------------ */
 /* Storage: window.storage -> Supabase (tabela kv_store)               */
 /* ------------------------------------------------------------------ */
-/* Todo o app jÃ¡ lÃª/grava dados atravÃ©s de window.storage.get/set/    */
+/* Todo o app já lê/grava dados através de window.storage.get/set/    */
 /* delete/list. Aqui plugamos essa mesma interface no Supabase quando  */
 /* as chaves VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY existirem, ou  */
-/* caÃ­mos de volta para o localStorage do navegador (Ãºtil para testar */
+/* caímos de volta para o localStorage do navegador (útil para testar */
 /* localmente antes de configurar o Supabase).                        */
 if (typeof window !== 'undefined') {
   if (supabase) {
@@ -81,7 +77,7 @@ if (typeof window !== 'undefined') {
 }
 
 /* ------------------------------------------------------------------ */
-/* AutenticaÃ§Ã£o global + nÃ­veis de acesso (admin / operador / visualizador) */
+/* Autenticação global + níveis de acesso (admin / operador / visualizador) */
 /* ------------------------------------------------------------------ */
 const ROLE_LABELS = { admin: 'Admin', operador: 'Operador', visualizador: 'Visualizador' };
 const AuthContext = React.createContext({ role: 'admin', email: null, signOut: () => {} });
@@ -105,10 +101,10 @@ function LoginScreen() {
       } else {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        setInfo('Conta criada! Um administrador precisa liberar seu nÃ­vel de acesso antes que vocÃª possa usar o sistema plenamente.');
+        setInfo('Conta criada! Um administrador precisa liberar seu nível de acesso antes que você possa usar o sistema plenamente.');
       }
     } catch (err) {
-      setError(err.message || 'NÃ£o foi possÃ­vel entrar.');
+      setError(err.message || 'Não foi possível entrar.');
     } finally {
       setLoading(false);
     }
@@ -122,7 +118,7 @@ function LoginScreen() {
         <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div className="flex flex-col items-center gap-3 mb-4">
             <BrandLogo boxSize={56} size={28} />
-            <h1 className="font-display text-lg font-semibold text-center" style={{ color: 'var(--text-primary)' }}>Centro de Controle de ManutenÃ§Ã£o</h1>
+            <h1 className="font-display text-lg font-semibold text-center" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
           </div>
           <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
@@ -138,7 +134,7 @@ function LoginScreen() {
           </button>
           <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
             className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            {mode === 'login' ? 'NÃ£o tem conta? Criar uma' : 'JÃ¡ tem conta? Entrar'}
+            {mode === 'login' ? 'Não tem conta? Criar uma' : 'Já tem conta? Entrar'}
           </button>
         </form>
       </div>
@@ -157,7 +153,7 @@ function BrandLogo({ size = 18, boxSize = 36, rounded = true }) {
     );
   }
   return (
-    <img src="/maj-logo-icon.png" alt="MAJ SoluÃ§Ãµes"
+    <img src="/maj-logo-icon.png" alt="MAJ Soluções"
       style={{ height: boxSize, width: 'auto', maxWidth: boxSize * 3.5, objectFit: 'contain', flexShrink: 0 }}
       onError={() => setFailed(true)} />
   );
@@ -218,7 +214,7 @@ const LAST_CLIENT_KEY = 'pci-ultimo-cliente-v1';
 function clientDataKey(id) { return `pci-dados-cliente-${id}`; }
 
 /* ------------------------------------------------------------------ */
-/* ImportaÃ§Ã£o de base de dispositivos â€” mÃºltiplas marcas de painel     */
+/* Importação de base de dispositivos — múltiplas marcas de painel     */
 /* ------------------------------------------------------------------ */
 
 const IMPORT_BRANDS = [
@@ -226,10 +222,10 @@ const IMPORT_BRANDS = [
     value: 'hochiki',
     label: 'Hochiki / VES',
     models: [
-      { value: 'generico', label: 'NÃ£o especificar / outro modelo', shortLabel: '', loops: null },
-      { value: 'firenet-plus', label: 'FireNET Plus (Hochiki) / Elite RS (VES) â€” 1 ou 2 laÃ§os', shortLabel: 'FireNET Plus / Elite RS', loops: null },
-      { value: 'latitude', label: 'FireNET L@titude (Hochiki) / L@titude (VES) â€” 2 a 16 laÃ§os', shortLabel: 'FireNET L@titude / L@titude', loops: null },
-      { value: 'firenet', label: 'FireNET (Hochiki, descontinuado â€” sem equivalente VES) â€” 2 ou 4 laÃ§os', shortLabel: 'FireNET (descontinuado)', loops: null },
+      { value: 'generico', label: 'Não especificar / outro modelo', shortLabel: '', loops: null },
+      { value: 'firenet-plus', label: 'FireNET Plus (Hochiki) / Elite RS (VES) — 1 ou 2 laços', shortLabel: 'FireNET Plus / Elite RS', loops: null },
+      { value: 'latitude', label: 'FireNET L@titude (Hochiki) / L@titude (VES) — 2 a 16 laços', shortLabel: 'FireNET L@titude / L@titude', loops: null },
+      { value: 'firenet', label: 'FireNET (Hochiki, descontinuado — sem equivalente VES) — 2 ou 4 laços', shortLabel: 'FireNET (descontinuado)', loops: null },
     ],
   },
   {
@@ -260,10 +256,10 @@ function guessDeviceTypeFromCode(code) {
 }
 
 /* Mapeamento calibrado com os "Type Code Label" reais observados em exports do VeriFire
-   Tools (relatÃ³rios de MÃ³dulos e Detectores). CorrespondÃªncia exata primeiro; quando o
-   cÃ³digo nÃ£o Ã© reconhecido, cai para uma busca por palavra-chave. */
+   Tools (relatórios de Módulos e Detectores). Correspondência exata primeiro; quando o
+   código não é reconhecido, cai para uma busca por palavra-chave. */
 const NOTIFIER_TYPE_MAP = {
-  // MÃ³dulos
+  // Módulos
   'MONITOR': 'entrada',
   'RELAY': 'rele',
   'MAN RELEASE': 'acionador',
@@ -317,10 +313,10 @@ function guessDeviceType(brand, code) {
   return brand === 'notifier' ? guessDeviceTypeFromNotifierCode(code) : guessDeviceTypeFromCode(code);
 }
 
-/* Modelo real do mÃ³dulo Notifier, a partir da coluna "FlashScan Type" do report.
-   hasSub indica se o endereÃ§o tem sub-endereÃ§os (ex.: 056.01/056.02) â€” nesse caso, o
-   MINI/DUAL MONITOR Ã© fisicamente um mÃ³dulo de dupla entrada (FDM-1); sem sub-endereÃ§o,
-   Ã© um mÃ³dulo de entrada Ãºnica (FMM-101). */
+/* Modelo real do módulo Notifier, a partir da coluna "FlashScan Type" do report.
+   hasSub indica se o endereço tem sub-endereços (ex.: 056.01/056.02) — nesse caso, o
+   MINI/DUAL MONITOR é fisicamente um módulo de dupla entrada (FDM-1); sem sub-endereço,
+   é um módulo de entrada única (FMM-101). */
 function resolveNotifierModel(flashScanType, hasSub) {
   const f = (flashScanType || '').trim().toUpperCase();
   if (!f) return '';
@@ -332,12 +328,12 @@ function resolveNotifierModel(flashScanType, hasSub) {
   if (f.includes('MONITOR') && (f.includes('MINI') || f.includes('DUAL'))) {
     return hasSub ? 'FDM-1' : 'FMM-101';
   }
-  // PS MON (Power Monitor) refere-se a fontes auxiliares â€” ainda sem um cÃ³digo de
-  // modelo especÃ­fico definido; por ora mostra o prÃ³prio FlashScan Type do report.
+  // PS MON (Power Monitor) refere-se a fontes auxiliares — ainda sem um código de
+  // modelo específico definido; por ora mostra o próprio FlashScan Type do report.
   return flashScanType;
 }
 
-/* ---- Hochiki / VES: relatÃ³rio "Device Labels" em .csv ---- */
+/* ---- Hochiki / VES: relatório "Device Labels" em .csv ---- */
 
 function parseDeviceLabelsCsv(text) {
   const lines = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -363,14 +359,14 @@ function parseDeviceLabelsCsv(text) {
   return rows;
 }
 
-/* ---- Hochiki / VES: relatÃ³rio do Loop Explorer 1 (.pdf) ----
-   O LP1 exporta um PDF com layout de tabela sem linhas de grade: cada "cÃ©lula" Ã©
-   posicionada por coordenadas, e o texto de cÃ©lulas longas (ex.: "Setting" com dois
-   valores D/N, ou a descriÃ§Ã£o do local) quebra em linhas visuais que nÃ£o seguem a
+/* ---- Hochiki / VES: relatório do Loop Explorer 1 (.pdf) ----
+   O LP1 exporta um PDF com layout de tabela sem linhas de grade: cada "célula" é
+   posicionada por coordenadas, e o texto de células longas (ex.: "Setting" com dois
+   valores D/N, ou a descrição do local) quebra em linhas visuais que não seguem a
    ordem de leitura simples. Por isso, em vez de interpretar linha por linha, lemos
-   todas as palavras com suas coordenadas (x,y), localizamos os endereÃ§os (coluna da
+   todas as palavras com suas coordenadas (x,y), localizamos os endereços (coluna da
    esquerda) e agrupamos as demais palavras numa "banda" vertical ao redor de cada
-   endereÃ§o, atribuindo cada palavra Ã  coluna correta pela posiÃ§Ã£o horizontal. */
+   endereço, atribuindo cada palavra à coluna correta pela posição horizontal. */
 
 async function extractPdfWords(file) {
   const buf = await file.arrayBuffer();
@@ -402,7 +398,7 @@ const LP1_BAND_CAP = 16;
 function parseLp1Report(words) {
   const sorted = [...words].sort((a, b) => (a.y - b.y) || (a.x - b.x));
 
-  // ReconstrÃ³i linhas de texto simples (sÃ³ pra localizar os cabeÃ§alhos "Panel X" e "X - Loop N (...)")
+  // Reconstrói linhas de texto simples (só pra localizar os cabeçalhos "Panel X" e "X - Loop N (...)")
   const lines = [];
   let curY = null, curToks = [];
   for (const w of sorted) {
@@ -437,7 +433,7 @@ function parseLp1Report(words) {
 
   const addrWords = sorted.filter((w) => w.x < LP1_NAME_X0 && LP1_ADDR_RE.test(w.text));
   if (addrWords.length === 0) {
-    throw new Error('NÃ£o encontrei endereÃ§os de dispositivos nesse PDF. Verifique se Ã© um relatÃ³rio do Loop Explorer 1 (LP1).');
+    throw new Error('Não encontrei endereços de dispositivos nesse PDF. Verifique se é um relatório do Loop Explorer 1 (LP1).');
   }
 
   const bands = addrWords.map((w, i) => {
@@ -466,35 +462,35 @@ function parseLp1Report(words) {
     if (w.y >= band.lo && w.y < band.hi) byBand[idx].push(w);
   }
 
-  // Palavras "tÃ©cnicas" das colunas que ficam entre Nome e Texto (Zona, Flags, AÃ§Ã£o,
-  // Setting D/N e os Delays) â€” usadas sÃ³ para saber onde o Texto realmente comeÃ§a, jÃ¡
-  // que nÃ£o usamos o conteÃºdo dessas colunas no app.
+  // Palavras "técnicas" das colunas que ficam entre Nome e Texto (Zona, Flags, Ação,
+  // Setting D/N e os Delays) — usadas só para saber onde o Texto realmente começa, já
+  // que não usamos o conteúdo dessas colunas no app.
   const LP1_TYPE_KEYWORD_RE = /\b(Sensor|Common|Input|Output)\b/;
   const LP1_ACTION_WORDS = new Set(['Fire', 'Trouble', 'Supervisory', 'Al', 'Temporal', 'Continuous']);
-  // CombinaÃ§Ãµes de Flags realmente usadas neste tipo de relatÃ³rio (M=Alarme Geral,
-  // P=PrÃ©-alarme, D=Modo Dia, N=Modo Noite, E=EmergÃªncia, S=SilenciÃ¡vel, R=ResetÃ¡vel,
-  // L=Latching, O=SaÃ­da com atraso, F=Falha, A=SaÃ­da de PrÃ©-alarme, B=Bypass, H=Calor).
-  // Usamos uma lista fechada (em vez de qualquer combinaÃ§Ã£o de letras) porque algumas
-  // dessas letras coincidem com o inÃ­cio de textos reais do relatÃ³rio, como "AM"
+  // Combinações de Flags realmente usadas neste tipo de relatório (M=Alarme Geral,
+  // P=Pré-alarme, D=Modo Dia, N=Modo Noite, E=Emergência, S=Silenciável, R=Resetável,
+  // L=Latching, O=Saída com atraso, F=Falha, A=Saída de Pré-alarme, B=Bypass, H=Calor).
+  // Usamos uma lista fechada (em vez de qualquer combinação de letras) porque algumas
+  // dessas letras coincidem com o início de textos reais do relatório, como "AM"
   // (Acionador Manual) ou "HALL".
   const LP1_KNOWN_FLAGS = new Set(['L', 'S', 'LP', 'LB', 'ML', 'MS', 'MLP', 'MLPB', 'LH', 'MLB', 'MP', 'MLH']);
   function extractLp1Label(tail) {
     const tokens = tail.split(/\s+/).filter(Boolean);
     let idx = 0;
-    // Zona (nÃºmero curto)
+    // Zona (número curto)
     while (idx < tokens.length && /^\d{1,3}$/.test(tokens[idx])) idx++;
-    // Flags â€” sÃ³ reconhece os combos realmente usados neste relatÃ³rio (ver lista acima).
+    // Flags — só reconhece os combos realmente usados neste relatório (ver lista acima).
     if (idx < tokens.length && LP1_KNOWN_FLAGS.has(tokens[idx])) idx++;
-    // AÃ§Ã£o (pode ser "Fire", ou duas palavras como "Supervisory Al")
+    // Ação (pode ser "Fire", ou duas palavras como "Supervisory Al")
     while (idx < tokens.length && LP1_ACTION_WORDS.has(tokens[idx])) idx++;
-    // Setting dia/noite â€” formatos "D2,50"/"N2,50" (com vÃ­rgula) ou "D150"/"N150" (sem
-    // vÃ­rgula, usado por alguns modelos como ATG-EA). SÃ³ checa nas duas posiÃ§Ãµes logo
-    // apÃ³s a AÃ§Ã£o (nunca mais adiante), pra nÃ£o arriscar cortar um cÃ³digo de local que
-    // comece com D/N seguido de nÃºmeros (ex.: "N04" de uma coluna).
+    // Setting dia/noite — formatos "D2,50"/"N2,50" (com vírgula) ou "D150"/"N150" (sem
+    // vírgula, usado por alguns modelos como ATG-EA). Só checa nas duas posições logo
+    // após a Ação (nunca mais adiante), pra não arriscar cortar um código de local que
+    // comece com D/N seguido de números (ex.: "N04" de uma coluna).
     if (idx < tokens.length && /^D\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
     if (idx < tokens.length && /^N\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
-    // Delays â€” nÃºmeros soltos ("00") ou decimais ("0,00", usado por saÃ­das/NAC). Limitado
-    // a no mÃ¡ximo os dois campos de delay (1Âº e 2Âº), pra nunca arriscar comer texto real.
+    // Delays — números soltos ("00") ou decimais ("0,00", usado por saídas/NAC). Limitado
+    // a no máximo os dois campos de delay (1º e 2º), pra nunca arriscar comer texto real.
     if (idx < tokens.length && /^\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
     if (idx < tokens.length && /^\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
     return tokens.slice(idx).join(' ').trim();
@@ -502,9 +498,9 @@ function parseLp1Report(words) {
 
   const rows = [];
   bands.forEach((band, i) => {
-    // Monta o texto da linha (exceto o endereÃ§o) ordenando os itens da esquerda pra
-    // direita (por x) â€” nÃ£o pela posiÃ§Ã£o estimada de cada palavra dentro de um item, jÃ¡
-    // que o pdfjs pode juntar vÃ¡rias colunas num Ãºnico bloco de texto. Itens de uma mesma
+    // Monta o texto da linha (exceto o endereço) ordenando os itens da esquerda pra
+    // direita (por x) — não pela posição estimada de cada palavra dentro de um item, já
+    // que o pdfjs pode juntar várias colunas num único bloco de texto. Itens de uma mesma
     // coluna que quebraram em duas linhas visuais (ex.: "Setting" D acima / N abaixo, ou
     // o Texto que estoura pra uma segunda linha) compartilham x parecido e ficam juntos.
     const inBand = byBand[i]
@@ -522,11 +518,11 @@ function parseLp1Report(words) {
     rows.push({ address: band.address, node: panel, loop: `LP ${loop}`, type: name, label, title: panel });
   });
 
-  if (rows.length === 0) throw new Error('NÃ£o consegui extrair dispositivos desse relatÃ³rio LP1. Confira se o PDF nÃ£o estÃ¡ protegido ou escaneado como imagem.');
+  if (rows.length === 0) throw new Error('Não consegui extrair dispositivos desse relatório LP1. Confira se o PDF não está protegido ou escaneado como imagem.');
   return rows;
 }
 
-/* ---- Notifier (Honeywell): relatÃ³rios do VeriFire Tools em .xls/.xlsx/.csv ---- */
+/* ---- Notifier (Honeywell): relatórios do VeriFire Tools em .xls/.xlsx/.csv ---- */
 
 function parseCsvLine(line) {
   const cells = [];
@@ -552,12 +548,12 @@ function parseCsvToRows(text) {
     .map(parseCsvLine);
 }
 
-/** LÃª um arquivo .xls/.xlsx (via SheetJS) ou .csv e devolve um array de arrays (linhas x colunas). */
+/** Lê um arquivo .xls/.xlsx (via SheetJS) ou .csv e devolve um array de arrays (linhas x colunas). */
 function readFileAsRows(file) {
   return new Promise((resolve, reject) => {
     const isExcel = /\.xlsx?$/i.test(file.name);
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('NÃ£o foi possÃ­vel ler esse arquivo.'));
+    reader.onerror = () => reject(new Error('Não foi possível ler esse arquivo.'));
     if (isExcel) {
       reader.onload = () => {
         try {
@@ -565,7 +561,7 @@ function readFileAsRows(file) {
           const sheet = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
           resolve(rows);
-        } catch (e) { reject(new Error('NÃ£o consegui interpretar esse arquivo Excel.')); }
+        } catch (e) { reject(new Error('Não consegui interpretar esse arquivo Excel.')); }
       };
       reader.readAsArrayBuffer(file);
     } else {
@@ -586,10 +582,10 @@ function findColValue(rowObj, ...needles) {
   return entry ? entry[1] : '';
 }
 
-/** Interpreta uma planilha exportada do VeriFire Tools (aba de MÃ³dulos ou Detectores). */
+/** Interpreta uma planilha exportada do VeriFire Tools (aba de Módulos ou Detectores). */
 function parseNotifierSheet(rowsRaw) {
   const rows = (rowsRaw || []).filter((r) => (r || []).some((c) => String(c ?? '').trim() !== ''));
-  if (rows.length < 4) throw new Error('NÃ£o reconheci esse arquivo como um export do VeriFire Tools da Notifier.');
+  if (rows.length < 4) throw new Error('Não reconheci esse arquivo como um export do VeriFire Tools da Notifier.');
 
   let nodeLabel = '', nodeModel = '', nodeAddress = '0';
   for (const r of rows) {
@@ -603,7 +599,7 @@ function parseNotifierSheet(rowsRaw) {
     const joined = rows[i].map((c) => String(c ?? '').replace(/\n/g, ' ').trim().toUpperCase()).join('|');
     if (joined.includes('DEVICE') && joined.includes('ADDR')) { headerIdx = i; break; }
   }
-  if (headerIdx === -1) throw new Error('NÃ£o encontrei a tabela de dispositivos nesse arquivo (cabeÃ§alho "Device ADDR" ausente).');
+  if (headerIdx === -1) throw new Error('Não encontrei a tabela de dispositivos nesse arquivo (cabeçalho "Device ADDR" ausente).');
 
   const headers = rows[headerIdx].map((c) => String(c ?? '').replace(/\n/g, ' ').trim());
   const dataRows = rows.slice(headerIdx + 1).filter((r) => String(r[0] ?? '').trim() !== '');
@@ -621,7 +617,7 @@ function parseNotifierSheet(rowsRaw) {
   return { nodeLabel, nodeModel, nodeAddress, headers, rows: objRows, reportKind };
 }
 
-/** Converte uma planilha Notifier jÃ¡ interpretada para o formato genÃ©rico de linhas usado por buildImportEntities. */
+/** Converte uma planilha Notifier já interpretada para o formato genérico de linhas usado por buildImportEntities. */
 function notifierSheetToGenericRows(parsedSheet, loopLabel) {
   return parsedSheet.rows.map((r) => {
     const address = findColValue(r, 'DEVICE', 'ADDR') || findColValue(r, 'ADDR');
@@ -641,12 +637,12 @@ function notifierSheetToGenericRows(parsedSheet, loopLabel) {
       title: parsedSheet.nodeLabel || 'Painel Notifier',
       installed: installed !== 'false',
     };
-    // endereÃ§os com INSTL=False sÃ£o posiÃ§Ãµes vazias no laÃ§o (sem dispositivo fÃ­sico) â€”
-    // descartadas abaixo junto com linhas sem cÃ³digo de tipo.
+    // endereços com INSTL=False são posições vazias no laço (sem dispositivo físico) —
+    // descartadas abaixo junto com linhas sem código de tipo.
   }).filter((r) => r.address && r.installed && r.type);
 }
 
-/* ---- Agrupamento genÃ©rico (comum a todas as marcas) ---- */
+/* ---- Agrupamento genérico (comum a todas as marcas) ---- */
 
 function buildImportEntities(rows, typeMap, brand, opts) {
   const { existingPanel = null, existingLoops = [], panelModel = '' } = opts || {};
@@ -654,10 +650,10 @@ function buildImportEntities(rows, typeMap, brand, opts) {
   const loopsByKey = new Map();
   const deviceGroups = new Map();
 
-  // Alguns mÃ³dulos MINI/DUAL MONITOR da Notifier (ex.: acionadores duplos) aparecem no
-  // report como DOIS endereÃ§os inteiros separados com a mesma etiqueta de local, em vez
-  // de um endereÃ§o com sub-endereÃ§o (ex.: 25 e 27, ambos "CABINE PRIMER"). PrÃ©-contamos
-  // essas repetiÃ§Ãµes por laÃ§o para tratar isso como mÃ³dulo duplo (FDM-1) tambÃ©m.
+  // Alguns módulos MINI/DUAL MONITOR da Notifier (ex.: acionadores duplos) aparecem no
+  // report como DOIS endereços inteiros separados com a mesma etiqueta de local, em vez
+  // de um endereço com sub-endereço (ex.: 25 e 27, ambos "CABINE PRIMER"). Pré-contamos
+  // essas repetições por laço para tratar isso como módulo duplo (FDM-1) também.
   const miniDualLabelCounts = new Map();
   if (brand === 'notifier') {
     for (const r of rows) {
@@ -681,7 +677,7 @@ function buildImportEntities(rows, typeMap, brand, opts) {
     }
     const loopKey = `${r.node}|${r.loop}`;
     if (!loopsByKey.has(loopKey)) {
-      const loopNiceName = String(r.loop).replace(/^LP\s*(\d+)$/i, 'LaÃ§o $1');
+      const loopNiceName = String(r.loop).replace(/^LP\s*(\d+)$/i, 'Laço $1');
       const matchExisting = existingLoops.find((l) => (l.name || '').trim().toLowerCase() === loopNiceName.trim().toLowerCase());
       loopsByKey.set(loopKey, { key: loopKey, node: r.node, name: loopNiceName, existingId: matchExisting ? matchExisting.id : null });
     }
@@ -708,7 +704,7 @@ function buildImportEntities(rows, typeMap, brand, opts) {
     } else {
       for (const s of subs) {
         const label = s.label && s.label !== base.label
-          ? (base.label ? `${base.label} â€” ${s.label}` : s.label)
+          ? (base.label ? `${base.label} — ${s.label}` : s.label)
           : (base.label || s.label);
         const modelo = brand === 'notifier' ? resolveNotifierModel(s.flashScanType, true) : s.type;
         devices.push({ loopKey: s.loopKey, address: `${s.baseStr}.${s.sub}`, type: typeMap[s.type] || 'entrada', modelo, label });
@@ -725,12 +721,12 @@ function buildImportEntities(rows, typeMap, brand, opts) {
 }
 
 const DEVICE_TYPES = [
-  { value: 'fumaca', label: 'Detector de fumaÃ§a', icon: Cloud },
+  { value: 'fumaca', label: 'Detector de fumaça', icon: Cloud },
   { value: 'calor', label: 'Detector de calor', icon: Thermometer },
   { value: 'acionador', label: 'Acionador manual', icon: Hand },
-  { value: 'saida', label: 'MÃ³dulo de saÃ­da', icon: LogOut },
-  { value: 'entrada', label: 'MÃ³dulo de entrada', icon: LogIn },
-  { value: 'rele', label: 'MÃ³dulo de relÃ©', icon: ToggleLeft },
+  { value: 'saida', label: 'Módulo de saída', icon: LogOut },
+  { value: 'entrada', label: 'Módulo de entrada', icon: LogIn },
+  { value: 'rele', label: 'Módulo de relé', icon: ToggleLeft },
 ];
 const DEVICE_TYPE_MAP = Object.fromEntries(DEVICE_TYPES.map((t) => [t.value, t]));
 
@@ -744,28 +740,28 @@ const INTERVAL_OPTIONS = [
 
 const OPERATIONAL_STATUS_OPTIONS = [
   { value: 'operante', label: 'Operante' },
-  { value: 'nao_operante', label: 'NÃ£o operante' },
-  { value: 'em_manutencao', label: 'Em manutenÃ§Ã£o' },
+  { value: 'nao_operante', label: 'Não operante' },
+  { value: 'em_manutencao', label: 'Em manutenção' },
 ];
 const APPEARANCE_OPTIONS = [
-  { value: 'otimo', label: 'Ã“timo' },
+  { value: 'otimo', label: 'Ótimo' },
   { value: 'bom', label: 'Bom' },
-  { value: 'aceitavel', label: 'AceitÃ¡vel' },
+  { value: 'aceitavel', label: 'Aceitável' },
   { value: 'necessita_troca', label: 'Necessita troca' },
 ];
 const COMM_OPTIONS = [
   { value: 'operante', label: 'Operante' },
-  { value: 'nao_operante', label: 'NÃ£o operante' },
+  { value: 'nao_operante', label: 'Não operante' },
 ];
 
 const PUMP_TYPE_SUGGESTIONS = [
-  'Bomba principal elÃ©trica', 'Bomba principal diesel', 'Bomba jockey',
-  'Painel de controle da bomba', 'VÃ¡lvula de governo', 'ManÃ´metro',
-  'Chave de fluxo', 'ReservatÃ³rio de Ã¡gua', 'Quadro de transferÃªncia automÃ¡tica',
+  'Bomba principal elétrica', 'Bomba principal diesel', 'Bomba jockey',
+  'Painel de controle da bomba', 'Válvula de governo', 'Manômetro',
+  'Chave de fluxo', 'Reservatório de água', 'Quadro de transferência automática',
 ];
 
 const GAS_TYPE_SUGGESTIONS = [
-  'GLP', 'GÃ¡s Natural (GN)', 'MonÃ³xido de carbono (CO)', 'Metano (CH4)', 'AmÃ´nia (NH3)',
+  'GLP', 'Gás Natural (GN)', 'Monóxido de carbono (CO)', 'Metano (CH4)', 'Amônia (NH3)',
 ];
 
 const INDICATOR_STATUS_OPTIONS = ['Resolvido', 'Andamento', 'Intermitente', 'Falso Positivo', 'Aguardando'];
@@ -778,15 +774,15 @@ function indicatorStatusColor(status) {
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
-  { key: 'panels', label: 'PainÃ©is', icon: Cpu },
+  { key: 'panels', label: 'Painéis', icon: Cpu },
   { key: 'pumphouse', label: 'Casa de Bombas', icon: Droplet },
   { key: 'gas', label: 'Detectores de Gases', icon: Wind },
-  { key: 'report', label: 'RelatÃ³rio', icon: ClipboardList },
-  { key: 'history', label: 'HistÃ³rico', icon: Clock },
+  { key: 'report', label: 'Relatório', icon: ClipboardList },
+  { key: 'history', label: 'Histórico', icon: Clock },
   { key: 'rvt', label: 'RVT', icon: Camera },
   { key: 'indicador', label: 'Indicador', icon: Activity },
-  { key: 'graficos', label: 'GrÃ¡ficos', icon: BarChart3 },
-  { key: 'settings', label: 'ConfiguraÃ§Ãµes', icon: Settings },
+  { key: 'graficos', label: 'Gráficos', icon: BarChart3 },
+  { key: 'settings', label: 'Configurações', icon: Settings },
 ];
 
 const emptyData = () => ({
@@ -821,7 +817,7 @@ function addMonthsToDate(dateStr, months) {
 }
 
 function formatDateBR(dateStr) {
-  if (!dateStr) return 'â€”';
+  if (!dateStr) return '—';
   const [y, m, d] = dateStr.split('-');
   return `${d}/${m}/${y}`;
 }
@@ -835,7 +831,7 @@ function computeStatus(nextDate) {
   const diffDays = Math.round((next - today) / 86400000);
   if (diffDays < 0) {
     const n = Math.abs(diffDays);
-    return { key: 'overdue', label: `Vencido hÃ¡ ${n} dia${n === 1 ? '' : 's'}`, color: 'var(--status-danger)' };
+    return { key: 'overdue', label: `Vencido há ${n} dia${n === 1 ? '' : 's'}`, color: 'var(--status-danger)' };
   }
   if (diffDays === 0) return { key: 'soon', label: 'Vence hoje', color: 'var(--status-warn)' };
   if (diffDays <= 30) return { key: 'soon', label: `Vence em ${diffDays} dia${diffDays === 1 ? '' : 's'}`, color: 'var(--status-warn)' };
@@ -853,7 +849,7 @@ function worstStatus(statuses) {
 
 function labelFor(options, value) {
   const found = options.find((o) => o.value === value);
-  return found ? found.label : 'â€”';
+  return found ? found.label : '—';
 }
 
 function operStatusColor(v) {
@@ -899,15 +895,15 @@ function compressImageFile(file, maxDim = 480, quality = 0.75) {
         ctx.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', quality));
       };
-      img.onerror = () => reject(new Error('NÃ£o foi possÃ­vel ler a imagem'));
+      img.onerror = () => reject(new Error('Não foi possível ler a imagem'));
       img.src = e.target.result;
     };
-    reader.onerror = () => reject(new Error('NÃ£o foi possÃ­vel ler o arquivo'));
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo'));
     reader.readAsDataURL(file);
   });
 }
 
-/* Upload de mÃºltiplas fotos (com atalho de cÃ¢mera no celular), comprimindo cada uma. */
+/* Upload de múltiplas fotos (com atalho de câmera no celular), comprimindo cada uma. */
 function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
   const [busy, setBusy] = useState(false);
   async function handleChange(e) {
@@ -998,7 +994,7 @@ function allTrackableItems(data) {
       id: d.id, category: 'devices', panelId: panel ? panel.id : null,
       title: DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo',
       address: d.address, modelo: d.modelo || '',
-      meta: `${panel ? panel.name : 'â€”'} Â· ${loop ? loop.name : 'â€”'}${d.description ? ' Â· ' + d.description : ''}`,
+      meta: `${panel ? panel.name : '—'} · ${loop ? loop.name : '—'}${d.description ? ' · ' + d.description : ''}`,
       nextMaintenance: d.nextMaintenance, lastMaintenance: d.lastMaintenance,
       operationalStatus: d.operationalStatus || '', appearance: d.appearance || '',
       localComm: d.localComm || '', networkComm: d.networkComm || '',
@@ -1011,7 +1007,7 @@ function allTrackableItems(data) {
     const panel = data.panels.find((p) => p.id === n.panelId);
     items.push({
       id: n.id, category: 'nacs', panelId: panel ? panel.id : null, title: n.name, address: null, modelo: '',
-      meta: `${panel ? panel.name : 'â€”'} Â· Circuito de saÃ­da${n.description ? ' Â· ' + n.description : ''}`,
+      meta: `${panel ? panel.name : '—'} · Circuito de saída${n.description ? ' · ' + n.description : ''}`,
       nextMaintenance: n.nextMaintenance, lastMaintenance: n.lastMaintenance,
       operationalStatus: n.operationalStatus || '', appearance: n.appearance || '',
       localComm: n.localComm || '', networkComm: n.networkComm || '',
@@ -1022,7 +1018,7 @@ function allTrackableItems(data) {
   data.pumpDevices.forEach((p) => {
     items.push({
       id: p.id, category: 'pumpDevices', panelId: null, title: p.name, address: null, modelo: p.modelo || '',
-      meta: `Casa de Bombas${p.type ? ' Â· ' + p.type : ''}`,
+      meta: `Casa de Bombas${p.type ? ' · ' + p.type : ''}`,
       nextMaintenance: p.nextMaintenance, lastMaintenance: p.lastMaintenance,
       operationalStatus: p.operationalStatus || '', appearance: p.appearance || '',
       localComm: p.localComm || '', networkComm: p.networkComm || '',
@@ -1033,7 +1029,7 @@ function allTrackableItems(data) {
   data.gasDetectors.forEach((g) => {
     items.push({
       id: g.id, category: 'gasDetectors', panelId: null, title: g.name, address: null, modelo: g.modelo || '',
-      meta: g.location || 'Detector de gÃ¡s fixo',
+      meta: g.location || 'Detector de gás fixo',
       nextMaintenance: g.nextMaintenance, lastMaintenance: g.lastMaintenance,
       operationalStatus: g.operationalStatus || '', appearance: g.appearance || '',
       localComm: g.localComm || '', networkComm: g.networkComm || '',
@@ -1051,25 +1047,25 @@ function getItemLabelAndContext(data, category, itemId) {
     const loop = data.loops.find((l) => l.id === dItem.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
     const typeLabel = DEVICE_TYPE_MAP[dItem.type]?.label || 'Dispositivo';
-    return { label: `${typeLabel} Â· End. ${dItem.address}`, context: `${panel ? panel.name : 'â€”'} Â· ${loop ? loop.name : 'â€”'}` };
+    return { label: `${typeLabel} · End. ${dItem.address}`, context: `${panel ? panel.name : '—'} · ${loop ? loop.name : '—'}` };
   }
   if (category === 'nacs') {
     const n = data.nacs.find((x) => x.id === itemId);
     if (!n) return { label: 'Circuito removido', context: '' };
     const panel = data.panels.find((p) => p.id === n.panelId);
-    return { label: n.name, context: panel ? panel.name : 'â€”' };
+    return { label: n.name, context: panel ? panel.name : '—' };
   }
   if (category === 'pumpDevices') {
     const p = data.pumpDevices.find((x) => x.id === itemId);
     if (!p) return { label: 'Dispositivo removido', context: 'Casa de Bombas' };
-    return { label: p.name, context: `Casa de Bombas${p.type ? ' Â· ' + p.type : ''}` };
+    return { label: p.name, context: `Casa de Bombas${p.type ? ' · ' + p.type : ''}` };
   }
   if (category === 'gasDetectors') {
     const g = data.gasDetectors.find((x) => x.id === itemId);
     if (!g) return { label: 'Detector removido', context: '' };
-    return { label: g.name, context: g.location || 'Detector de gÃ¡s fixo' };
+    return { label: g.name, context: g.location || 'Detector de gás fixo' };
   }
-  return { label: 'â€”', context: '' };
+  return { label: '—', context: '' };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1161,7 +1157,7 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-/* Sticky action row used by every form â€” keeps Save/Cancel reachable without
+/* Sticky action row used by every form — keeps Save/Cancel reachable without
    scrolling all the way down, even on short mobile viewports. */
 function FormActions({ children }) {
   return (
@@ -1189,7 +1185,7 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
     <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: selected ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
       <div className="flex items-start gap-3">
         {selectable ? (
-          <label className="pt-1.5 cursor-pointer" title={selected ? 'Remover da seleÃ§Ã£o' : 'Selecionar'}>
+          <label className="pt-1.5 cursor-pointer" title={selected ? 'Remover da seleção' : 'Selecionar'}>
             <input type="checkbox" checked={!!selected} onChange={onToggleSelect} className="w-4 h-4 cursor-pointer" style={{ accentColor: 'var(--accent)' }} />
           </label>
         ) : (
@@ -1204,7 +1200,7 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
           </div>
           {meta && <div className="text-xs mt-1 truncate" style={{ color: 'var(--text-secondary)' }}>{meta}</div>}
           <div className="text-xs mt-1.5 mono" style={{ color: 'var(--text-secondary)' }}>
-            Ãšltima manutenÃ§Ã£o: {formatDateBR(status && status.lastMaintenance)}
+            Última manutenção: {formatDateBR(status && status.lastMaintenance)}
           </div>
           {!!indicadorCount && (
             <div className="text-xs mt-1 flex items-center gap-1" style={{ color: 'var(--accent)' }}>
@@ -1213,7 +1209,7 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
           )}
           {status && status.operationalStatus === 'nao_operante' && (
             <div className="text-xs mt-1 font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
-              <AlertTriangle size={11} /> NÃ£o operante
+              <AlertTriangle size={11} /> Não operante
             </div>
           )}
         </div>
@@ -1221,8 +1217,8 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
       </div>
       {!selectable && (
         <div className="flex items-center justify-end gap-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-          {onInspect && <IconButton title="Registrar inspeÃ§Ã£o" onClick={onInspect}><ClipboardCheck size={15} /></IconButton>}
-          {onMaintain && <IconButton title="Registrar manutenÃ§Ã£o" onClick={onMaintain}><Wrench size={15} /></IconButton>}
+          {onInspect && <IconButton title="Registrar inspeção" onClick={onInspect}><ClipboardCheck size={15} /></IconButton>}
+          {onMaintain && <IconButton title="Registrar manutenção" onClick={onMaintain}><Wrench size={15} /></IconButton>}
           {onEdit && <IconButton title="Editar" onClick={onEdit}><Pencil size={15} /></IconButton>}
           {onDelete && <IconButton title="Excluir" danger onClick={onDelete}><Trash2 size={15} /></IconButton>}
         </div>
@@ -1239,19 +1235,19 @@ function MaintenanceScheduleFields({ values, setValues }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Ãšltima manutenÃ§Ã£o">
+        <Field label="Última manutenção">
           <input type="date" className={inputCls} value={values.lastMaintenance || ''}
             onChange={(e) => setValues((v) => ({ ...v, lastMaintenance: e.target.value }))} />
         </Field>
-        <Field label="PrÃ³xima manutenÃ§Ã£o">
+        <Field label="Próxima manutenção">
           <input type="date" className={inputCls} value={values.nextMaintenance || ''}
             onChange={(e) => setValues((v) => ({ ...v, nextMaintenance: e.target.value }))} />
         </Field>
       </div>
-      <Field label="Periodicidade" hint="Usada para calcular a prÃ³xima data automaticamente ao registrar uma manutenÃ§Ã£o.">
+      <Field label="Periodicidade" hint="Usada para calcular a próxima data automaticamente ao registrar uma manutenção.">
         <select className={inputCls} value={values.intervalMonths || ''}
           onChange={(e) => setValues((v) => ({ ...v, intervalMonths: e.target.value }))}>
-          <option value="">NÃ£o definida</option>
+          <option value="">Não definida</option>
           {INTERVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </Field>
@@ -1263,15 +1259,15 @@ function PanelForm({ initial, onSubmit, onCancel }) {
   const [v, setV] = useState(initial || { name: '', location: '', model: '', installDate: '', notes: '' });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="IdentificaÃ§Ã£o do painel *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Painel Central â€” TÃ©rreo" required /></Field>
-      <Field label="LocalizaÃ§Ã£o"><input className={inputCls} value={v.location}
-        onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Sala de seguranÃ§a, Bloco A" /></Field>
+      <Field label="Identificação do painel *"><input autoFocus className={inputCls} value={v.name}
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Painel Central — Térreo" required /></Field>
+      <Field label="Localização"><input className={inputCls} value={v.location}
+        onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Sala de segurança, Bloco A" /></Field>
       <Field label="Marca / Modelo"><input className={inputCls} value={v.model}
         onChange={(e) => setV({ ...v, model: e.target.value })} placeholder="Ex.: Intelbras / Notifier..." /></Field>
-      <Field label="Data de instalaÃ§Ã£o"><input type="date" className={inputCls} value={v.installDate}
+      <Field label="Data de instalação"><input type="date" className={inputCls} value={v.installDate}
         onChange={(e) => setV({ ...v, installDate: e.target.value })} /></Field>
-      <Field label="ObservaÃ§Ãµes"><textarea rows={3} className={inputCls} value={v.notes}
+      <Field label="Observações"><textarea rows={3} className={inputCls} value={v.notes}
         onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
@@ -1285,11 +1281,11 @@ function LoopForm({ initial, onSubmit, onCancel }) {
   const [v, setV] = useState(initial || { name: '' });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="Nome / nÃºmero do laÃ§o *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: LaÃ§o 1" required /></Field>
+      <Field label="Nome / número do laço *"><input autoFocus className={inputCls} value={v.name}
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Laço 1" required /></Field>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit">Salvar laÃ§o</Button>
+        <Button variant="primary" type="submit">Salvar laço</Button>
       </FormActions>
     </form>
   );
@@ -1299,9 +1295,9 @@ function NacForm({ initial, onSubmit, onCancel }) {
   const [v, setV] = useState(initial || { name: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="Nome / nÃºmero do circuito (NAC) *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: NAC 1 â€” Sirenes 1Âº pavimento" required /></Field>
-      <Field label="DescriÃ§Ã£o"><input className={inputCls} value={v.description}
+      <Field label="Nome / número do circuito (NAC) *"><input autoFocus className={inputCls} value={v.name}
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: NAC 1 — Sirenes 1º pavimento" required /></Field>
+      <Field label="Descrição"><input className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Dispositivos conectados: sirenes, strobos..." /></Field>
       <MaintenanceScheduleFields values={v} setValues={setV} />
       <FormActions>
@@ -1319,7 +1315,7 @@ function DeviceForm({ initial, onSubmit, onCancel }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.address.trim()) onSubmit(v); }}>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="EndereÃ§o *"><input autoFocus className={`${inputCls} mono`} value={v.address}
+        <Field label="Endereço *"><input autoFocus className={`${inputCls} mono`} value={v.address}
           onChange={(e) => setV({ ...v, address: e.target.value })} placeholder="001" required /></Field>
         <Field label="Tipo de dispositivo *">
           <select className={inputCls} value={v.type} onChange={(e) => setV({ ...v, type: e.target.value })}>
@@ -1330,8 +1326,8 @@ function DeviceForm({ initial, onSubmit, onCancel }) {
       <Field label="Modelo do equipamento" hint="Usado para agrupar uma mesma foto entre todos os dispositivos deste modelo.">
         <input className={inputCls} value={v.modelo || ''} onChange={(e) => setV({ ...v, modelo: e.target.value })} placeholder="Ex.: ALO-V" />
       </Field>
-      <Field label="DescriÃ§Ã£o / localizaÃ§Ã£o"><input className={inputCls} value={v.description}
-        onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Corredor 2Âº andar, prÃ³x. sala 204" /></Field>
+      <Field label="Descrição / localização"><input className={inputCls} value={v.description}
+        onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Corredor 2º andar, próx. sala 204" /></Field>
       <MaintenanceScheduleFields values={v} setValues={setV} />
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
@@ -1347,17 +1343,17 @@ function PumpDeviceForm({ initial, onSubmit, onCancel }) {
   });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="IdentificaÃ§Ã£o *"><input autoFocus className={inputCls} value={v.name}
+      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.name}
         onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Bomba principal 01" required /></Field>
       <Field label="Tipo de equipamento">
         <input className={inputCls} list="pump-type-list" value={v.type}
-          onChange={(e) => setV({ ...v, type: e.target.value })} placeholder="Ex.: Bomba principal elÃ©trica" />
+          onChange={(e) => setV({ ...v, type: e.target.value })} placeholder="Ex.: Bomba principal elétrica" />
         <datalist id="pump-type-list">{PUMP_TYPE_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
       <Field label="Modelo do equipamento" hint="Usado para agrupar uma mesma foto entre equipamentos do mesmo modelo.">
         <input className={inputCls} value={v.modelo || ''} onChange={(e) => setV({ ...v, modelo: e.target.value })} placeholder="Ex.: Grundfos CR32" />
       </Field>
-      <Field label="ObservaÃ§Ãµes / localizaÃ§Ã£o"><input className={inputCls} value={v.description}
+      <Field label="Observações / localização"><input className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
       <MaintenanceScheduleFields values={v} setValues={setV} />
       <FormActions>
@@ -1374,9 +1370,9 @@ function GasDetectorForm({ initial, onSubmit, onCancel }) {
   });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="IdentificaÃ§Ã£o *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Detector de gÃ¡s â€” Cozinha" required /></Field>
-      <Field label="GÃ¡s monitorado">
+      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.name}
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Detector de gás — Cozinha" required /></Field>
+      <Field label="Gás monitorado">
         <input className={inputCls} list="gas-type-list" value={v.gasType}
           onChange={(e) => setV({ ...v, gasType: e.target.value })} placeholder="Ex.: GLP" />
         <datalist id="gas-type-list">{GAS_TYPE_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
@@ -1384,8 +1380,8 @@ function GasDetectorForm({ initial, onSubmit, onCancel }) {
       <Field label="Modelo do equipamento" hint="Usado para agrupar uma mesma foto entre detectores do mesmo modelo.">
         <input className={inputCls} value={v.modelo || ''} onChange={(e) => setV({ ...v, modelo: e.target.value })} placeholder="Ex.: MSA Gas Guard" />
       </Field>
-      <Field label="LocalizaÃ§Ã£o"><input className={inputCls} value={v.location}
-        onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Casa de gÃ¡s, Ã¡rea externa" /></Field>
+      <Field label="Localização"><input className={inputCls} value={v.location}
+        onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Casa de gás, área externa" /></Field>
       <MaintenanceScheduleFields values={v} setValues={setV} />
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
@@ -1397,14 +1393,14 @@ function GasDetectorForm({ initial, onSubmit, onCancel }) {
 
 const RVT_CATEGORY_OPTIONS = [
   { value: 'devices', label: 'Dispositivo do painel' },
-  { value: 'nacs', label: 'Circuito de saÃ­da (NAC)' },
+  { value: 'nacs', label: 'Circuito de saída (NAC)' },
   { value: 'pumpDevices', label: 'Casa de Bombas' },
-  { value: 'gasDetectors', label: 'Detector de GÃ¡s' },
-  { value: 'outro', label: 'Outro / nÃ£o listado' },
+  { value: 'gasDetectors', label: 'Detector de Gás' },
+  { value: 'outro', label: 'Outro / não listado' },
 ];
 
-/** FormulÃ¡rio de "adicionar item" do RVT â€” os campos de local (painel/laÃ§o/dispositivo)
-    ficam travados nos cadastros jÃ¡ existentes, pra nÃ£o deixar o tÃ©cnico digitar errado. */
+/** Formulário de "adicionar item" do RVT — os campos de local (painel/laço/dispositivo)
+    ficam travados nos cadastros já existentes, pra não deixar o técnico digitar errado. */
 function RvtItemForm({ data, onAdd }) {
   const [categoria, setCategoria] = useState('devices');
   const [panelId, setPanelId] = useState('');
@@ -1462,7 +1458,7 @@ function RvtItemForm({ data, onAdd }) {
     if (categoria === 'gasDetectors' && simpleId) {
       const it = data.gasDetectors.find((g) => g.id === simpleId);
       if (!it) return null;
-      return { deviceId: it.id, categoria: 'gasDetectors', etiqueta: it.name, endereco: '', laco: '', painel: '', equipamento: 'Detector de GÃ¡s', area: '' };
+      return { deviceId: it.id, categoria: 'gasDetectors', etiqueta: it.name, endereco: '', laco: '', painel: '', equipamento: 'Detector de Gás', area: '' };
     }
     if (categoria === 'outro' && manualLabel.trim()) {
       return { deviceId: '', categoria: '', etiqueta: manualLabel.trim(), endereco: '', laco: '', painel: '', equipamento: '', area: '' };
@@ -1491,28 +1487,28 @@ function RvtItemForm({ data, onAdd }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label="Painel">
             <select className={inputCls} value={panelId} onChange={(e) => { setPanelId(e.target.value); setLoopId(''); setDeviceId(''); setDeviceQuery(''); }}>
-              <option value="">Selecioneâ€¦</option>
+              <option value="">Selecione…</option>
               {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
-          <Field label="LaÃ§o">
+          <Field label="Laço">
             <select className={inputCls} value={loopId} onChange={(e) => { setLoopId(e.target.value); setDeviceId(''); setDeviceQuery(''); }} disabled={!panelId}>
-              <option value="">Selecioneâ€¦</option>
+              <option value="">Selecione…</option>
               {panelLoops.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </Field>
-          <Field label={`Dispositivo (endereÃ§o)${loopId && loopDevices.length > 8 ? ` â€” ${filteredLoopDevices.length} de ${loopDevices.length}` : ''}`}>
+          <Field label={`Dispositivo (endereço)${loopId && loopDevices.length > 8 ? ` — ${filteredLoopDevices.length} de ${loopDevices.length}` : ''}`}>
             {loopId && loopDevices.length > 8 && (
               <div className="relative mb-1.5">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                <input className={`${inputCls} pl-8`} placeholder="Buscar por endereÃ§o, tipo ou descriÃ§Ã£o..."
+                <input className={`${inputCls} pl-8`} placeholder="Buscar por endereço, tipo ou descrição..."
                   value={deviceQuery} onChange={(e) => setDeviceQuery(e.target.value)} />
               </div>
             )}
             <select className={inputCls} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} disabled={!loopId}>
-              <option value="">Selecioneâ€¦</option>
+              <option value="">Selecione…</option>
               {filteredLoopDevices.map((d) => (
-                <option key={d.id} value={d.id}>{d.address} â€” {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
+                <option key={d.id} value={d.id}>{d.address} — {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
               ))}
             </select>
           </Field>
@@ -1521,10 +1517,10 @@ function RvtItemForm({ data, onAdd }) {
       {categoria === 'nacs' && (
         <Field label="Circuito (NAC)">
           <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecioneâ€¦</option>
+            <option value="">Selecione…</option>
             {data.nacs.map((n) => {
               const panel = data.panels.find((p) => p.id === n.panelId);
-              return <option key={n.id} value={n.id}>{n.name}{panel ? ` â€” ${panel.name}` : ''}</option>;
+              return <option key={n.id} value={n.id}>{n.name}{panel ? ` — ${panel.name}` : ''}</option>;
             })}
           </select>
         </Field>
@@ -1532,15 +1528,15 @@ function RvtItemForm({ data, onAdd }) {
       {categoria === 'pumpDevices' && (
         <Field label="Equipamento da Casa de Bombas">
           <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecioneâ€¦</option>
+            <option value="">Selecione…</option>
             {data.pumpDevices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
       )}
       {categoria === 'gasDetectors' && (
-        <Field label="Detector de GÃ¡s">
+        <Field label="Detector de Gás">
           <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecioneâ€¦</option>
+            <option value="">Selecione…</option>
             {data.gasDetectors.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </Field>
@@ -1559,13 +1555,13 @@ function RvtItemForm({ data, onAdd }) {
             {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </Field>
-        <Field label="Data de intervenÃ§Ã£o"><input type="date" className={inputCls} value={dataIntervencao} onChange={(e) => setDataIntervencao(e.target.value)} /></Field>
+        <Field label="Data de intervenção"><input type="date" className={inputCls} value={dataIntervencao} onChange={(e) => setDataIntervencao(e.target.value)} /></Field>
       </div>
-      <Field label="ExplanaÃ§Ã£o"><textarea rows={2} className={inputCls} value={explanacao} onChange={(e) => setExplanacao(e.target.value)} /></Field>
-      <Field label="SoluÃ§Ã£o"><textarea rows={2} className={inputCls} value={solucao} onChange={(e) => setSolucao(e.target.value)} /></Field>
+      <Field label="Explanação"><textarea rows={2} className={inputCls} value={explanacao} onChange={(e) => setExplanacao(e.target.value)} /></Field>
+      <Field label="Solução"><textarea rows={2} className={inputCls} value={solucao} onChange={(e) => setSolucao(e.target.value)} /></Field>
       <MultiPhotoUpload photos={fotos} onChange={setFotos} />
 
-      <Button variant="primary" type="button" onClick={handleAdd} disabled={!canAdd}><Plus size={16} /> Adicionar item ao relatÃ³rio</Button>
+      <Button variant="primary" type="button" onClick={handleAdd} disabled={!canAdd}><Plus size={16} /> Adicionar item ao relatório</Button>
     </div>
   );
 }
@@ -1597,7 +1593,7 @@ function RvtDetail({ report, client, onBack }) {
               <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: '#fff' }} /></div>
               <div className="rvt-wordmark-text">
                 <div className="maj">M.A.J</div>
-                <div className="sol">SoluÃ§Ãµes</div>
+                <div className="sol">Soluções</div>
               </div>
             </div>
             <div className="rvt-divider-v" />
@@ -1612,8 +1608,8 @@ function RvtDetail({ report, client, onBack }) {
             </div>
           </div>
           <div className="text-right" style={{ position: 'relative', zIndex: 1 }}>
-            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÃ“RIO DE VISITA TÃ‰CNICA</p>
-            <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>RVT Â· {formatDateBR(report.data)}</p>
+            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÉCNICA</p>
+            <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>RVT · {formatDateBR(report.data)}</p>
           </div>
         </div>
 
@@ -1624,8 +1620,8 @@ function RvtDetail({ report, client, onBack }) {
             <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(report.data)}</p>
           </div>
           <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>TÃ©cnico responsÃ¡vel</RvtFieldLabel>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{report.tecnico || 'â€”'}</p>
+            <RvtFieldLabel>Técnico responsável</RvtFieldLabel>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{report.tecnico || '—'}</p>
           </div>
           <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
             <RvtFieldLabel>Itens registrados</RvtFieldLabel>
@@ -1657,18 +1653,18 @@ function RvtDetail({ report, client, onBack }) {
                   {it.endereco && <span className="mono-chip">END {it.endereco}</span>}
                   {it.laco && <span className="mono-chip">{it.laco}</span>}
                   {it.painel && <span>{it.painel}</span>}
-                  {it.equipamento && <span>Â· {it.equipamento}</span>}
+                  {it.equipamento && <span>· {it.equipamento}</span>}
                 </div>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
                 <div>
                   <RvtFieldLabel>Falha</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{it.falha || 'â€”'}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{it.falha || '—'}</p>
                 </div>
                 {it.dataIntervencao && (
                   <div>
-                    <RvtFieldLabel>Data de intervenÃ§Ã£o</RvtFieldLabel>
+                    <RvtFieldLabel>Data de intervenção</RvtFieldLabel>
                     <p className="text-xs mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(it.dataIntervencao)}</p>
                   </div>
                 )}
@@ -1682,20 +1678,20 @@ function RvtDetail({ report, client, onBack }) {
               )}
               {it.explanacao && (
                 <div className="mb-2">
-                  <RvtFieldLabel>ExplanaÃ§Ã£o</RvtFieldLabel>
+                  <RvtFieldLabel>Explanação</RvtFieldLabel>
                   <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.explanacao}</p>
                 </div>
               )}
               {it.solucao && (
                 <div className="mb-2 rounded-md p-2" style={{ background: 'rgba(79,138,109,0.08)' }}>
-                  <RvtFieldLabel>SoluÃ§Ã£o aplicada</RvtFieldLabel>
+                  <RvtFieldLabel>Solução aplicada</RvtFieldLabel>
                   <p className="text-xs" style={{ color: 'var(--status-ok)' }}>{it.solucao}</p>
                 </div>
               )}
 
               {it.fotos && it.fotos.length > 0 && (
                 <div className="mt-3">
-                  <RvtFieldLabel>Registro fotogrÃ¡fico</RvtFieldLabel>
+                  <RvtFieldLabel>Registro fotográfico</RvtFieldLabel>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-1">
                     {it.fotos.map((f, fi) => (
                       <img key={fi} src={f} alt="" className="w-full aspect-square rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />
@@ -1710,7 +1706,7 @@ function RvtDetail({ report, client, onBack }) {
         <div className="rvt-footer-band">
           <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
           <p className="text-[10px]" style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Documento gerado pelo Centro de Controle de ManutenÃ§Ã£o â€” M.A.J Eletro EletrÃ´nica LTDA Â· CNPJ: 45.893.915/0001-01
+            Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
           </p>
         </div>
         </div>
@@ -1744,13 +1740,13 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Novo RelatÃ³rio de Visita TÃ©cnica (RVT)</h2>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Novo Relatório de Visita Técnica (RVT)</h2>
           <Button variant="secondary" onClick={() => { setMode('list'); setQueue([]); }}><ArrowLeft size={15} /> Cancelar</Button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Data da visita *"><input type="date" className={inputCls} value={visitDate} required onChange={(e) => setVisitDate(e.target.value)} /></Field>
-          <Field label="TÃ©cnico responsÃ¡vel"><input className={inputCls} value={tecnico} onChange={(e) => setTecnico(e.target.value)} placeholder="Nome do tÃ©cnico" /></Field>
+          <Field label="Técnico responsável"><input className={inputCls} value={tecnico} onChange={(e) => setTecnico(e.target.value)} placeholder="Nome do técnico" /></Field>
         </div>
 
         {queue.length > 0 && (
@@ -1759,8 +1755,8 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
             {queue.map((it) => (
               <div key={it.id} className="rounded-lg p-3 flex items-start justify-between gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` Â· END ${it.endereco}` : ''}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.falha} â€” {it.status}{it.fotos?.length ? ` Â· ${it.fotos.length} foto(s)` : ''}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.falha} — {it.status}{it.fotos?.length ? ` · ${it.fotos.length} foto(s)` : ''}</p>
                 </div>
                 <IconButton title="Remover" danger onClick={() => handleRemoveItem(it.id)}><Trash2 size={15} /></IconButton>
               </div>
@@ -1771,7 +1767,7 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
         <RvtItemForm data={data} onAdd={handleAddItem} />
 
         <Button variant="primary" onClick={handleSave} disabled={queue.length === 0}>
-          <CheckCircle2 size={16} /> Salvar relatÃ³rio de visita ({queue.length} item{queue.length === 1 ? '' : 's'})
+          <CheckCircle2 size={16} /> Salvar relatório de visita ({queue.length} item{queue.length === 1 ? '' : 's'})
         </Button>
       </div>
     );
@@ -1781,7 +1777,7 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT â€” RelatÃ³rios de Visita TÃ©cnica</h2>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT — Relatórios de Visita Técnica</h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registros de campo, com fotos, que alimentam o Indicador automaticamente.</p>
         </div>
         {canEdit && <Button variant="primary" onClick={() => setMode('new')}><Plus size={16} /> Novo RVT</Button>}
@@ -1789,19 +1785,19 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
 
       {reports.length === 0 ? (
         <EmptyState icon={Camera} title="Nenhum RVT registrado ainda"
-          description="Crie o primeiro relatÃ³rio de visita tÃ©cnica, selecionando os dispositivos direto dos painÃ©is jÃ¡ cadastrados."
+          description="Crie o primeiro relatório de visita técnica, selecionando os dispositivos direto dos painéis já cadastrados."
           actionLabel={canEdit ? 'Novo RVT' : undefined} onAction={canEdit ? () => setMode('new') : undefined} />
       ) : (
         <div className="flex flex-col gap-2">
           {[...reports].sort((a, b) => b.data.localeCompare(a.data)).map((r) => (
             <div key={r.id} className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.data)}{r.tecnico ? ` â€” ${r.tecnico}` : ''}</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.data)}{r.tecnico ? ` — ${r.tecnico}` : ''}</p>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.itens.length} item(ns) registrado(s)</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => setViewingId(r.id)}><FileText size={15} /> Ver / Imprimir</Button>
-                {canEdit && <IconButton title="Excluir relatÃ³rio" danger onClick={() => onDeleteReport(r)}><Trash2 size={15} /></IconButton>}
+                {canEdit && <IconButton title="Excluir relatório" danger onClick={() => onDeleteReport(r)}><Trash2 size={15} /></IconButton>}
               </div>
             </div>
           ))}
@@ -1819,20 +1815,20 @@ function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
   });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.etiqueta.trim() || v.falha.trim()) onSubmit(v); }}>
-      <Field label="Etiqueta / LocalizaÃ§Ã£o *"><input autoFocus className={inputCls} value={v.etiqueta}
-        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: SECURITY OFFICE CORREDOR SL REUNIÃƒO" required /></Field>
+      <Field label="Etiqueta / Localização *"><input autoFocus className={inputCls} value={v.etiqueta}
+        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: SECURITY OFFICE CORREDOR SL REUNIÃO" required /></Field>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="EndereÃ§o"><input className={`${inputCls} mono`} value={v.endereco}
+        <Field label="Endereço"><input className={`${inputCls} mono`} value={v.endereco}
           onChange={(e) => setV({ ...v, endereco: e.target.value })} placeholder="017" /></Field>
-        <Field label="LaÃ§o"><input className={inputCls} value={v.laco}
+        <Field label="Laço"><input className={inputCls} value={v.laco}
           onChange={(e) => setV({ ...v, laco: e.target.value })} placeholder="1" /></Field>
         <Field label="Painel"><input className={inputCls} value={v.painel}
           onChange={(e) => setV({ ...v, painel: e.target.value })} placeholder="1" /></Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Equipamento"><input className={inputCls} value={v.equipamento}
-          onChange={(e) => setV({ ...v, equipamento: e.target.value })} placeholder="Ex.: Sensor de fumaÃ§a" /></Field>
-        <Field label="Ãrea">
+          onChange={(e) => setV({ ...v, equipamento: e.target.value })} placeholder="Ex.: Sensor de fumaça" /></Field>
+        <Field label="Área">
           <input className={inputCls} list="indicador-area-list" value={v.area}
             onChange={(e) => setV({ ...v, area: e.target.value })} placeholder="Ex.: BODY" />
           <datalist id="indicador-area-list">{areaSuggestions.map((s) => <option key={s} value={s} />)}</datalist>
@@ -1847,25 +1843,25 @@ function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
           {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </Field>
-      <Field label="ExplanaÃ§Ã£o"><textarea rows={2} className={inputCls} value={v.explanacao}
+      <Field label="Explanação"><textarea rows={2} className={inputCls} value={v.explanacao}
         onChange={(e) => setV({ ...v, explanacao: e.target.value })} /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Data diagnÃ³stico"><input type="date" className={inputCls} value={v.dataDiagnostico}
+        <Field label="Data diagnóstico"><input type="date" className={inputCls} value={v.dataDiagnostico}
           onChange={(e) => setV({ ...v, dataDiagnostico: e.target.value })} /></Field>
-        <Field label="Data soluÃ§Ã£o"><input type="date" className={inputCls} value={v.dataSolucao}
+        <Field label="Data solução"><input type="date" className={inputCls} value={v.dataSolucao}
           onChange={(e) => setV({ ...v, dataSolucao: e.target.value })} /></Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="IntervenÃ§Ã£o 1"><input type="date" className={inputCls} value={v.dataIntervencao1}
+        <Field label="Intervenção 1"><input type="date" className={inputCls} value={v.dataIntervencao1}
           onChange={(e) => setV({ ...v, dataIntervencao1: e.target.value })} /></Field>
-        <Field label="IntervenÃ§Ã£o 2"><input type="date" className={inputCls} value={v.dataIntervencao2}
+        <Field label="Intervenção 2"><input type="date" className={inputCls} value={v.dataIntervencao2}
           onChange={(e) => setV({ ...v, dataIntervencao2: e.target.value })} /></Field>
-        <Field label="IntervenÃ§Ã£o 3"><input type="date" className={inputCls} value={v.dataIntervencao3}
+        <Field label="Intervenção 3"><input type="date" className={inputCls} value={v.dataIntervencao3}
           onChange={(e) => setV({ ...v, dataIntervencao3: e.target.value })} /></Field>
-        <Field label="IntervenÃ§Ã£o 4"><input type="date" className={inputCls} value={v.dataIntervencao4}
+        <Field label="Intervenção 4"><input type="date" className={inputCls} value={v.dataIntervencao4}
           onChange={(e) => setV({ ...v, dataIntervencao4: e.target.value })} /></Field>
       </div>
-      <Field label="SoluÃ§Ã£o"><textarea rows={2} className={inputCls} value={v.solucao}
+      <Field label="Solução"><textarea rows={2} className={inputCls} value={v.solucao}
         onChange={(e) => setV({ ...v, solucao: e.target.value })} /></Field>
       <div className="mb-4">
         <MultiPhotoUpload photos={v.fotos} onChange={(fotos) => setV({ ...v, fotos })} />
@@ -1891,19 +1887,19 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
   }
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
-      <Field label="Tipo de manutenÃ§Ã£o">
+      <Field label="Tipo de manutenção">
         <select className={inputCls} value={v.tipo} onChange={(e) => setV({ ...v, tipo: e.target.value })}>
           <option value="preventiva">Preventiva</option>
           <option value="corretiva">Corretiva</option>
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Data da manutenÃ§Ã£o *"><input type="date" className={inputCls} value={v.date} required
+        <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
           onChange={(e) => handleDateChange(e.target.value)} /></Field>
-        <Field label="TÃ©cnico responsÃ¡vel"><input className={inputCls} value={v.technician}
-          onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do tÃ©cnico" /></Field>
+        <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
+          onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do técnico" /></Field>
       </div>
-      <Field label="ObservaÃ§Ãµes / serviÃ§o realizado"><textarea rows={3} className={inputCls} value={v.description}
+      <Field label="Observações / serviço realizado"><textarea rows={3} className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Teste funcional, limpeza, troca de bateria..." /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Periodicidade">
@@ -1912,7 +1908,7 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
             {INTERVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="PrÃ³xima manutenÃ§Ã£o"><input type="date" className={inputCls} value={v.nextDate}
+        <Field label="Próxima manutenção"><input type="date" className={inputCls} value={v.nextDate}
           onChange={(e) => setV({ ...v, nextDate: e.target.value })} /></Field>
       </div>
       <FormActions>
@@ -1934,21 +1930,21 @@ function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
       <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-        Este registro serÃ¡ aplicado aos <strong>{count} dispositivos selecionados</strong>, com a mesma data, tÃ©cnico e observaÃ§Ãµes.
+        Este registro será aplicado aos <strong>{count} dispositivos selecionados</strong>, com a mesma data, técnico e observações.
       </p>
-      <Field label="Tipo de manutenÃ§Ã£o">
+      <Field label="Tipo de manutenção">
         <select className={inputCls} value={v.tipo} onChange={(e) => setV({ ...v, tipo: e.target.value })}>
           <option value="preventiva">Preventiva</option>
           <option value="corretiva">Corretiva</option>
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Data da manutenÃ§Ã£o *"><input type="date" className={inputCls} value={v.date} required
+        <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
           onChange={(e) => handleDateChange(e.target.value)} /></Field>
-        <Field label="TÃ©cnico responsÃ¡vel"><input className={inputCls} value={v.technician}
-          onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do tÃ©cnico" /></Field>
+        <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
+          onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do técnico" /></Field>
       </div>
-      <Field label="ObservaÃ§Ãµes / serviÃ§o realizado"><textarea rows={3} className={inputCls} value={v.description}
+      <Field label="Observações / serviço realizado"><textarea rows={3} className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Limpeza preventiva, troca de bateria..." /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Periodicidade">
@@ -1957,7 +1953,7 @@ function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
             {INTERVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="PrÃ³xima manutenÃ§Ã£o"><input type="date" className={inputCls} value={v.nextDate}
+        <Field label="Próxima manutenção"><input type="date" className={inputCls} value={v.nextDate}
           onChange={(e) => setV({ ...v, nextDate: e.target.value })} /></Field>
       </div>
       <FormActions>
@@ -1982,36 +1978,36 @@ function InspectionForm({ item, onSubmit, onCancel }) {
       <div className="grid grid-cols-2 gap-3">
         <Field label="Status">
           <select className={inputCls} value={v.operationalStatus} onChange={(e) => setV({ ...v, operationalStatus: e.target.value })}>
-            <option value="">NÃ£o avaliado</option>
+            <option value="">Não avaliado</option>
             {OPERATIONAL_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="AparÃªncia / visual">
+        <Field label="Aparência / visual">
           <select className={inputCls} value={v.appearance} onChange={(e) => setV({ ...v, appearance: e.target.value })}>
-            <option value="">NÃ£o avaliado</option>
+            <option value="">Não avaliado</option>
             {APPEARANCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="ComunicaÃ§Ã£o local">
+        <Field label="Comunicação local">
           <select className={inputCls} value={v.localComm} onChange={(e) => setV({ ...v, localComm: e.target.value })}>
-            <option value="">NÃ£o avaliado</option>
+            <option value="">Não avaliado</option>
             {COMM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="ComunicaÃ§Ã£o em rede">
+        <Field label="Comunicação em rede">
           <select className={inputCls} value={v.networkComm} onChange={(e) => setV({ ...v, networkComm: e.target.value })}>
-            <option value="">NÃ£o avaliado</option>
+            <option value="">Não avaliado</option>
             {COMM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="Ãšltima inspeÃ§Ã£o"><input type="date" className={inputCls} value={v.lastInspection}
+        <Field label="Última inspeção"><input type="date" className={inputCls} value={v.lastInspection}
           onChange={(e) => setV({ ...v, lastInspection: e.target.value })} /></Field>
-        <Field label="PrÃ³xima inspeÃ§Ã£o"><input type="date" className={inputCls} value={v.nextInspection}
+        <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.nextInspection}
           onChange={(e) => setV({ ...v, nextInspection: e.target.value })} /></Field>
       </div>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Salvar inspeÃ§Ã£o</Button>
+        <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Salvar inspeção</Button>
       </FormActions>
     </form>
   );
@@ -2022,14 +2018,14 @@ function ClientForm({ initial, onSubmit, onCancel, embedded }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }} className={embedded ? 'max-w-lg' : ''}>
       <Field label="Nome do cliente *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: CondomÃ­nio Alfa" required /></Field>
-      <Field label="EndereÃ§o"><input className={inputCls} value={v.address}
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Condomínio Alfa" required /></Field>
+      <Field label="Endereço"><input className={inputCls} value={v.address}
         onChange={(e) => setV({ ...v, address: e.target.value })} /></Field>
       <Field label="Contato"><input className={inputCls} value={v.contact}
         onChange={(e) => setV({ ...v, contact: e.target.value })} placeholder="Telefone ou e-mail" /></Field>
       <FormActions>
         {!embedded && <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>}
-        <Button variant="primary" type="submit">{embedded ? 'Salvar alteraÃ§Ãµes' : 'Salvar cliente'}</Button>
+        <Button variant="primary" type="submit">{embedded ? 'Salvar alterações' : 'Salvar cliente'}</Button>
       </FormActions>
     </form>
   );
@@ -2047,18 +2043,18 @@ function UserForm({ client, onSave, onRemove }) {
       <Field label="Telefone"><input className={inputCls} value={v.phone}
         onChange={(e) => setV({ ...v, phone: e.target.value })} /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="UsuÃ¡rio (login) *"><input className={inputCls} value={v.username}
+        <Field label="Usuário (login) *"><input className={inputCls} value={v.username}
           onChange={(e) => setV({ ...v, username: e.target.value })} required /></Field>
         <Field label="Senha *"><input type="password" className={inputCls} value={v.password}
           onChange={(e) => setV({ ...v, password: e.target.value })} required /></Field>
       </div>
       <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-        Este acesso fica salvo apenas neste navegador e serve para identificar quem usa o sistema deste cliente â€”
-        nÃ£o Ã© uma autenticaÃ§Ã£o segura de servidor.
+        Este acesso fica salvo apenas neste navegador e serve para identificar quem usa o sistema deste cliente —
+        não é uma autenticação segura de servidor.
       </p>
       <div className="flex items-center justify-between gap-2">
-        {existing ? <Button variant="danger" type="button" onClick={onRemove}><Trash2 size={14} /> Remover usuÃ¡rio</Button> : <span />}
-        <Button variant="primary" type="submit">{existing ? 'Atualizar usuÃ¡rio' : 'Criar usuÃ¡rio'}</Button>
+        {existing ? <Button variant="danger" type="button" onClick={onRemove}><Trash2 size={14} /> Remover usuário</Button> : <span />}
+        <Button variant="primary" type="submit">{existing ? 'Atualizar usuário' : 'Criar usuário'}</Button>
       </div>
     </form>
   );
@@ -2103,7 +2099,7 @@ function BrandingForm({ client, onSave }) {
         imgClassName="w-16 h-16 rounded-lg object-cover" />
 
       <div>
-        <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>Cor da capa (cartÃ£o do cliente)</p>
+        <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>Cor da capa (cartão do cliente)</p>
         <div className="flex items-center gap-3">
           <input type="color" value={coverColor} onChange={(e) => setCoverColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer" style={{ border: '1px solid var(--border)' }} />
           <span className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>{coverColor}</span>
@@ -2164,8 +2160,8 @@ function ModelLibraryManager({ data, onSave, onRemove }) {
   return (
     <div className="flex flex-col gap-4 max-w-2xl">
       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Associe uma foto a cada modelo de equipamento. A foto vale para todos os dispositivos que usam esse modelo â€”
-        por exemplo, uma Ãºnica foto para todos os detectores "ALO-V".
+        Associe uma foto a cada modelo de equipamento. A foto vale para todos os dispositivos que usam esse modelo —
+        por exemplo, uma única foto para todos os detectores "ALO-V".
       </p>
       <form onSubmit={handleAddModel} className="flex gap-2">
         <input className={inputCls} placeholder="Nome do modelo (ex.: ALO-V)" value={newModel} onChange={(e) => setNewModel(e.target.value)} />
@@ -2211,7 +2207,7 @@ function LoginGate({ client, onSuccess, onBack }) {
   function handleSubmit(e) {
     e.preventDefault();
     if (username === client.user.username && password === client.user.password) onSuccess();
-    else setError('UsuÃ¡rio ou senha incorretos.');
+    else setError('Usuário ou senha incorretos.');
   }
 
   return (
@@ -2223,13 +2219,13 @@ function LoginGate({ client, onSuccess, onBack }) {
             ? <img src={client.branding.logoData} alt="" className="w-14 h-14 rounded-lg object-cover" />
             : <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-raised)' }}><KeyRound size={20} style={{ color: 'var(--text-secondary)' }} /></div>}
           <h2 className="font-display font-semibold text-base" style={{ color: 'var(--text-primary)' }}>{client.name}</h2>
-          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Entre com o usuÃ¡rio deste cliente</p>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Entre com o usuário deste cliente</p>
         </div>
-        <Field label="UsuÃ¡rio"><input className={inputCls} autoFocus value={username} onChange={(e) => setUsername(e.target.value)} required /></Field>
+        <Field label="Usuário"><input className={inputCls} autoFocus value={username} onChange={(e) => setUsername(e.target.value)} required /></Field>
         <Field label="Senha"><input type="password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
         {error && <p className="text-xs mb-3" style={{ color: 'var(--status-danger)' }}>{error}</p>}
         <Button variant="primary" type="submit" className="mt-1">Entrar</Button>
-        <button type="button" onClick={onBack} className="text-xs mt-3 text-center" style={{ color: 'var(--text-secondary)' }}>â† Trocar cliente</button>
+        <button type="button" onClick={onBack} className="text-xs mt-3 text-center" style={{ color: 'var(--text-secondary)' }}>← Trocar cliente</button>
       </form>
     </div>
   );
@@ -2254,7 +2250,7 @@ function ClientCard({ client, onSelect, onEdit, onDelete }) {
         </div>
       </button>
       <div className="flex items-center justify-between gap-1 px-3.5 pb-3">
-        {client.user ? <span className="mono-chip">usuÃ¡rio configurado</span> : <span />}
+        {client.user ? <span className="mono-chip">usuário configurado</span> : <span />}
         {(onEdit || onDelete) && (
           <div className="flex gap-1">
             {onEdit && <IconButton title="Editar cliente" onClick={onEdit}><Pencil size={14} /></IconButton>}
@@ -2284,7 +2280,7 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 text-center">
           <BrandLogo boxSize={40} size={20} />
           <div>
-            <h1 className="font-display font-semibold text-lg sm:text-2xl" style={{ color: 'var(--text-primary)' }}>Centro de Controle de ManutenÃ§Ã£o</h1>
+            <h1 className="font-display font-semibold text-lg sm:text-2xl" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
             <p className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>Selecione um cliente para continuar</p>
           </div>
         </div>
@@ -2298,11 +2294,11 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
         {clients.length === 0 ? (
           canManage ? (
             <EmptyState icon={Building2} title="Nenhum cliente cadastrado"
-              description="Cadastre o primeiro cliente para comeÃ§ar a controlar as manutenÃ§Ãµes do sistema de PCI."
+              description="Cadastre o primeiro cliente para começar a controlar as manutenções do sistema de PCI."
               actionLabel="Cadastrar cliente" onAction={() => setModal({ mode: 'create' })} />
           ) : (
-            <EmptyState icon={Building2} title="Nenhum cliente vinculado Ã  sua conta"
-              description="PeÃ§a ao administrador para vincular seu usuÃ¡rio a um cliente." />
+            <EmptyState icon={Building2} title="Nenhum cliente vinculado à sua conta"
+              description="Peça ao administrador para vincular seu usuário a um cliente." />
           )
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -2316,8 +2312,8 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
 
         <div className="mt-auto pt-8 text-center">
           <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            Desenvolvido por M.A.J Eletro EletrÃ´nica LTDA â€” CNPJ: 45.893.915/0001-01<br />
-            Sistema de uso exclusivo e restrito a usuÃ¡rios autorizados.
+            Desenvolvido por M.A.J Eletro Eletrônica LTDA — CNPJ: 45.893.915/0001-01<br />
+            Sistema de uso exclusivo e restrito a usuários autorizados.
           </p>
         </div>
       </div>
@@ -2342,7 +2338,7 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
 
       {confirm && canManage && (
         <ConfirmModal title="Excluir cliente"
-          message={`Excluir "${confirm.name}"? Todos os painÃ©is, dispositivos e o histÃ³rico deste cliente serÃ£o removidos permanentemente.`}
+          message={`Excluir "${confirm.name}"? Todos os painéis, dispositivos e o histórico deste cliente serão removidos permanentemente.`}
           onConfirm={() => { onDelete(confirm.id); setConfirm(null); }} onCancel={() => setConfirm(null)} />
       )}
     </div>
@@ -2449,7 +2445,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       panelIds: createdPanelIds,
       loopIds: createdLoopIds,
       deviceIds: createdDeviceIds,
-      summary: `${createdPanelIds.length} painel(Ã©is) novo(s), ${createdLoopIds.length} laÃ§o(s) novo(s) e ${createdDeviceIds.length} dispositivo(s)`,
+      summary: `${createdPanelIds.length} painel(éis) novo(s), ${createdLoopIds.length} laço(s) novo(s) e ${createdDeviceIds.length} dispositivo(s)`,
     });
   }
 
@@ -2624,7 +2620,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       updateData((prev) => ({ ...prev, indicador: [...(prev.indicador || []), ...records] }));
       return { ok: true, count: records.length };
     } catch (err) {
-      return { ok: false, error: err.message || 'NÃ£o foi possÃ­vel importar essa planilha.' };
+      return { ok: false, error: err.message || 'Não foi possível importar essa planilha.' };
     }
   }
 
@@ -2744,7 +2740,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                 : <BrandLogo boxSize={32} size={17} />}
               <div className="min-w-0">
                 <h1 className="font-display font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)', fontSize: '15px' }}>{client.name}</h1>
-                <p className="text-xs leading-tight" style={{ color: 'var(--text-secondary)' }}>Centro de Controle de ManutenÃ§Ã£o</p>
+                <p className="text-xs leading-tight" style={{ color: 'var(--text-secondary)' }}>Centro de Controle de Manutenção</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -2783,7 +2779,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch} canEdit={canEdit}
             onOpenPanel={(id) => { setPanelId(id); setPanelTab('loops'); setView('panelDetail'); }}
             onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })}
-            onBulkDeletePanels={(ids) => setConfirmState({ title: 'Excluir painÃ©is selecionados', message: `Excluir ${ids.length} painel(Ã©is) selecionado(s)? Todos os laÃ§os, circuitos e dispositivos vinculados tambÃ©m serÃ£o removidos. Essa aÃ§Ã£o nÃ£o pode ser desfeita.`, onConfirm: () => deletePanelsBulk(ids) })} />
+            onBulkDeletePanels={(ids) => setConfirmState({ title: 'Excluir painéis selecionados', message: `Excluir ${ids.length} painel(éis) selecionado(s)? Todos os laços, circuitos e dispositivos vinculados também serão removidos. Essa ação não pode ser desfeita.`, onConfirm: () => deletePanelsBulk(ids) })} />
         )}
 
         {view === 'panelDetail' && panelId && (
@@ -2792,13 +2788,13 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             expandedLoops={expandedLoops} setExpandedLoops={setExpandedLoops}
             onBack={() => setView('panels')}
             onEditPanel={(p) => setModal({ type: 'panel', mode: 'edit', initial: p })}
-            onDeletePanel={(p) => setConfirmState({ title: 'Excluir painel', message: `Excluir "${p.name}"? Todos os laÃ§os, circuitos e dispositivos vinculados tambÃ©m serÃ£o removidos.`, onConfirm: () => deletePanelCascade(p.id) })}
+            onDeletePanel={(p) => setConfirmState({ title: 'Excluir painel', message: `Excluir "${p.name}"? Todos os laços, circuitos e dispositivos vinculados também serão removidos.`, onConfirm: () => deletePanelCascade(p.id) })}
             onCreateLoop={(pid) => {
               const n = data.loops.filter((l) => l.panelId === pid).length + 1;
-              setModal({ type: 'loop', mode: 'create', initial: { name: `LaÃ§o ${n}` }, context: { panelId: pid } });
+              setModal({ type: 'loop', mode: 'create', initial: { name: `Laço ${n}` }, context: { panelId: pid } });
             }}
             onEditLoop={(l) => setModal({ type: 'loop', mode: 'edit', initial: l })}
-            onDeleteLoop={(l) => setConfirmState({ title: 'Excluir laÃ§o', message: `Excluir "${l.name}"? Todos os dispositivos deste laÃ§o tambÃ©m serÃ£o removidos.`, onConfirm: () => deleteLoopCascade(l.id) })}
+            onDeleteLoop={(l) => setConfirmState({ title: 'Excluir laço', message: `Excluir "${l.name}"? Todos os dispositivos deste laço também serão removidos.`, onConfirm: () => deleteLoopCascade(l.id) })}
             onCreateNac={(pid) => {
               const n = data.nacs.filter((x) => x.panelId === pid).length + 1;
               setModal({ type: 'nac', mode: 'create', initial: { name: `NAC ${n}`, description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' }, context: { panelId: pid } });
@@ -2815,19 +2811,19 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               });
             }}
             onEditDevice={(d) => setModal({ type: 'device', mode: 'edit', initial: d })}
-            onDeleteDevice={(d) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir dispositivo endereÃ§o ${d.address}?`, onConfirm: () => deleteDevice(d.id) })}
+            onDeleteDevice={(d) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir dispositivo endereço ${d.address}?`, onConfirm: () => deleteDevice(d.id) })}
             onMaintainDevice={(d) => openMaintainModal('devices', d, `Dispositivo ${d.address}`)}
             onInspectDevice={(d) => openInspectModal('devices', d, `Dispositivo ${d.address}`)}
             onMaintainNac={(n) => openMaintainModal('nacs', n, n.name)}
             onInspectNac={(n) => openInspectModal('nacs', n, n.name)}
             onBulkMaintainDevices={(ids) => openBulkMaintainModal('devices', ids)}
-            onBulkDeleteDevices={(ids) => setConfirmState({ title: 'Excluir dispositivos selecionados', message: `Excluir ${ids.length} dispositivo(s) selecionado(s)? Essa aÃ§Ã£o nÃ£o pode ser desfeita.`, onConfirm: () => deleteDevicesBulk(ids) })}
+            onBulkDeleteDevices={(ids) => setConfirmState({ title: 'Excluir dispositivos selecionados', message: `Excluir ${ids.length} dispositivo(s) selecionado(s)? Essa ação não pode ser desfeita.`, onConfirm: () => deleteDevicesBulk(ids) })}
           />
         )}
 
         {view === 'pumphouse' && (
           <SimpleListView
-            title="Casa de Bombas" description="Bombas, vÃ¡lvulas, painÃ©is de controle e demais equipamentos do sistema de bombeamento."
+            title="Casa de Bombas" description="Bombas, válvulas, painéis de controle e demais equipamentos do sistema de bombeamento."
             icon={Droplet} data={data} category="pumpDevices" canEdit={canEdit}
             onCreate={() => setModal({ type: 'pump', mode: 'create', initial: null })}
             onEdit={(p) => setModal({ type: 'pump', mode: 'edit', initial: p })}
@@ -2839,14 +2835,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
         {view === 'gas' && (
           <SimpleListView
-            title="Detectores de Gases" description="Detectores fixos de gases inflamÃ¡veis ou tÃ³xicos instalados na edificaÃ§Ã£o."
+            title="Detectores de Gases" description="Detectores fixos de gases inflamáveis ou tóxicos instalados na edificação."
             icon={Wind} data={data} category="gasDetectors" canEdit={canEdit}
             onCreate={() => setModal({ type: 'gas', mode: 'create', initial: null })}
             onEdit={(g) => setModal({ type: 'gas', mode: 'edit', initial: g })}
             onDelete={(g) => setConfirmState({ title: 'Excluir detector', message: `Excluir "${g.name}"?`, onConfirm: () => deleteGasDetector(g.id) })}
             onMaintain={(g) => openMaintainModal('gasDetectors', g, g.name)}
             onInspect={(g) => openInspectModal('gasDetectors', g, g.name)}
-            renderMeta={(g) => [g.gasType, g.location].filter(Boolean).join(' Â· ') || 'Detector de gÃ¡s fixo'} />
+            renderMeta={(g) => [g.gasType, g.location].filter(Boolean).join(' · ') || 'Detector de gás fixo'} />
         )}
 
         {view === 'report' && (
@@ -2860,7 +2856,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         {view === 'rvt' && (
           <RvtView data={data} client={client} canEdit={canEdit}
             onSaveReport={saveRvtReport}
-            onDeleteReport={(r) => setConfirmState({ title: 'Excluir relatÃ³rio de visita', message: `Excluir o RVT de ${formatDateBR(r.data)}? Os registros jÃ¡ criados no Indicador a partir dele nÃ£o serÃ£o apagados.`, onConfirm: () => deleteRvtReport(r.id) })} />
+            onDeleteReport={(r) => setConfirmState({ title: 'Excluir relatório de visita', message: `Excluir o RVT de ${formatDateBR(r.data)}? Os registros já criados no Indicador a partir dele não serão apagados.`, onConfirm: () => deleteRvtReport(r.id) })} />
         )}
 
         {view === 'indicador' && (
@@ -2869,9 +2865,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
             onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
             onImportFile={handleImportIndicador} onLinkDevices={linkIndicadorToDevices}
-            onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa aÃ§Ã£o nÃ£o pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
-            onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa aÃ§Ã£o nÃ£o pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
-            onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa aÃ§Ã£o nÃ£o pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
+            onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
+            onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
+            onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
         )}
 
         {view === 'graficos' && (
@@ -2891,12 +2887,12 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </Modal>
       )}
       {modal?.type === 'loop' && (
-        <Modal title={modal.mode === 'create' ? 'Novo laÃ§o' : 'Editar laÃ§o'} onClose={closeModal}>
+        <Modal title={modal.mode === 'create' ? 'Novo laço' : 'Editar laço'} onClose={closeModal}>
           <LoopForm initial={modal.initial} onSubmit={submitLoop} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'nac' && (
-        <Modal title={modal.mode === 'create' ? 'Novo circuito de saÃ­da (NAC)' : 'Editar circuito (NAC)'} onClose={closeModal} wide>
+        <Modal title={modal.mode === 'create' ? 'Novo circuito de saída (NAC)' : 'Editar circuito (NAC)'} onClose={closeModal} wide>
           <NacForm initial={modal.initial} onSubmit={submitNac} onCancel={closeModal} />
         </Modal>
       )}
@@ -2906,12 +2902,12 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </Modal>
       )}
       {modal?.type === 'pump' && (
-        <Modal title={modal.mode === 'create' ? 'Novo dispositivo â€” Casa de Bombas' : 'Editar dispositivo'} onClose={closeModal} wide>
+        <Modal title={modal.mode === 'create' ? 'Novo dispositivo — Casa de Bombas' : 'Editar dispositivo'} onClose={closeModal} wide>
           <PumpDeviceForm initial={modal.initial} onSubmit={submitPumpDevice} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'gas' && (
-        <Modal title={modal.mode === 'create' ? 'Novo detector de gÃ¡s' : 'Editar detector'} onClose={closeModal} wide>
+        <Modal title={modal.mode === 'create' ? 'Novo detector de gás' : 'Editar detector'} onClose={closeModal} wide>
           <GasDetectorForm initial={modal.initial} onSubmit={submitGasDetector} onCancel={closeModal} />
         </Modal>
       )}
@@ -2922,17 +2918,17 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </Modal>
       )}
       {modal?.type === 'maintenance' && (
-        <Modal title={`Registrar manutenÃ§Ã£o â€” ${modal.context.label}`} onClose={closeModal} wide>
+        <Modal title={`Registrar manutenção — ${modal.context.label}`} onClose={closeModal} wide>
           <MaintenanceForm item={modal.item} onSubmit={submitMaintenance} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'bulkMaintenance' && (
-        <Modal title={`Registrar manutenÃ§Ã£o em lote (${modal.context.ids.length} dispositivos)`} onClose={closeModal} wide>
+        <Modal title={`Registrar manutenção em lote (${modal.context.ids.length} dispositivos)`} onClose={closeModal} wide>
           <BulkMaintenanceForm count={modal.context.ids.length} onSubmit={submitBulkMaintenance} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'inspection' && (
-        <Modal title={`Registrar inspeÃ§Ã£o â€” ${modal.context.label}`} onClose={closeModal} wide>
+        <Modal title={`Registrar inspeção — ${modal.context.label}`} onClose={closeModal} wide>
           <InspectionForm item={modal.item} onSubmit={submitInspection} onCancel={closeModal} />
         </Modal>
       )}
@@ -2964,7 +2960,7 @@ function StatCard({ label, value, color, icon: Icon }) {
 
 const CHART_PALETTE = ['#8B2F2F', '#C97D3A', '#4F8A6D', '#3C6E9C', '#9C5FA8', '#B08D57', '#5B7CA6', '#A24D6E'];
 
-/** GrÃ¡fico de barras horizontais simples, em SVG/HTML puro (sem dependÃªncias externas). */
+/** Gráfico de barras horizontais simples, em SVG/HTML puro (sem dependências externas). */
 function SimpleBarChart({ data, emptyLabel = 'Sem dados para exibir.' }) {
   if (!data || data.length === 0) {
     return <p className="text-xs py-6 text-center" style={{ color: 'var(--text-secondary)' }}>{emptyLabel}</p>;
@@ -2987,7 +2983,7 @@ function SimpleBarChart({ data, emptyLabel = 'Sem dados para exibir.' }) {
   );
 }
 
-/** GrÃ¡fico de pizza/rosca simples, em SVG puro, com legenda ao lado. */
+/** Gráfico de pizza/rosca simples, em SVG puro, com legenda ao lado. */
 function SimplePieChart({ data, size = 168, emptyLabel = 'Sem dados para exibir.' }) {
   const total = (data || []).reduce((s, d) => s + d.value, 0);
   if (!data || data.length === 0 || total === 0) {
@@ -3038,7 +3034,7 @@ function ChartCard({ title, subtitle, children }) {
   );
 }
 
-/** Baixa uma lista de pares [rÃ³tulo, valor] como CSV (separador ; para abrir bem no Excel BR). */
+/** Baixa uma lista de pares [rótulo, valor] como CSV (separador ; para abrir bem no Excel BR). */
 function exportChartCsv(filename, header, rows) {
   const escapeCell = (v) => {
     const s = String(v ?? '');
@@ -3069,7 +3065,7 @@ function sortDesc(arr) { return [...arr].sort((a, b) => b.value - a.value); }
 
 const MONTH_LABELS_PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-/** Conta itens com campo `date` (YYYY-MM-DD) nos Ãºltimos N meses, agrupados por mÃªs. */
+/** Conta itens com campo `date` (YYYY-MM-DD) nos últimos N meses, agrupados por mês. */
 function countByMonth(list, months = 12) {
   const now = new Date();
   const buckets = [];
@@ -3095,7 +3091,7 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
   if (data.panels.length === 0 && data.pumpDevices.length === 0 && data.gasDetectors.length === 0) {
     return (
       <EmptyState icon={Cpu} title="Nenhum equipamento cadastrado ainda"
-        description="Comece cadastrando o primeiro painel de detecÃ§Ã£o e alarme de incÃªndio. Depois vocÃª poderÃ¡ adicionar laÃ§os, circuitos e dispositivos endereÃ§Ã¡veis."
+        description="Comece cadastrando o primeiro painel de detecção e alarme de incêndio. Depois você poderá adicionar laços, circuitos e dispositivos endereçáveis."
         actionLabel={canEdit ? 'Cadastrar primeiro painel' : undefined} onAction={canEdit ? onGoPanels : undefined} />
     );
   }
@@ -3115,11 +3111,11 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
       </div>
 
       <div>
-        <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenÃ§Ã£o</h3>
+        <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenção</h3>
         {attentionItems.length === 0 ? (
           <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <CheckCircle2 size={20} style={{ color: 'var(--status-ok)' }} />
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum item vencido ou prÃ³ximo do vencimento. Tudo em dia.</p>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum item vencido ou próximo do vencimento. Tudo em dia.</p>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
@@ -3147,14 +3143,14 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>PainÃ©is</h2>
+        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Painéis</h2>
         {canEdit && (
           <div className="flex gap-2">
             {data.panels.length > 0 && (
               selectMode ? (
-                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleÃ§Ã£o</Button>
+                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
               ) : (
-                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar mÃºltiplos</Button>
+                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
               )
             )}
             <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo painel</Button>
@@ -3165,7 +3161,7 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
       {selectMode && (
         <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
-            {selectedIds.length === 0 ? 'Marque os painÃ©is que quer excluir de uma vez.' : `${selectedIds.length} painel(Ã©is) selecionado(s)`}
+            {selectedIds.length === 0 ? 'Marque os painéis que quer excluir de uma vez.' : `${selectedIds.length} painel(éis) selecionado(s)`}
           </p>
           {selectedIds.length > 0 && (
             <Button variant="danger" onClick={() => { onBulkDeletePanels(selectedIds); exitSelectMode(); }}>
@@ -3178,13 +3174,13 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
       {data.panels.length > 0 && (
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-          <input className={`${inputCls} pl-9`} placeholder="Buscar painel por nome ou localizaÃ§Ã£o..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={`${inputCls} pl-9`} placeholder="Buscar painel por nome ou localização..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       )}
 
       {data.panels.length === 0 ? (
         <EmptyState icon={Cpu} title="Nenhum painel cadastrado"
-          description="Cadastre o painel de detecÃ§Ã£o e alarme de incÃªndio. Em seguida vocÃª poderÃ¡ adicionar laÃ§os (loops), circuitos de saÃ­da (NACs) e os dispositivos endereÃ§Ã¡veis."
+          description="Cadastre o painel de detecção e alarme de incêndio. Em seguida você poderá adicionar laços (loops), circuitos de saída (NACs) e os dispositivos endereçáveis."
           actionLabel={canEdit ? 'Cadastrar painel' : undefined} onAction={canEdit ? onCreate : undefined} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
@@ -3215,7 +3211,7 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
                 </div>
                 {panel.location && <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{panel.location}</p>}
                 <div className="flex gap-3 text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>
-                  <span>{loops.length} laÃ§o{loops.length === 1 ? '' : 's'}</span>
+                  <span>{loops.length} laço{loops.length === 1 ? '' : 's'}</span>
                   <span>{nacs.length} NAC{nacs.length === 1 ? '' : 's'}</span>
                   <span>{deviceCount} dispositivo{deviceCount === 1 ? '' : 's'}</span>
                 </div>
@@ -3254,13 +3250,13 @@ function PanelDetail({
   return (
     <div className="flex flex-col gap-5">
       <button onClick={onBack} className="flex items-center gap-1.5 text-sm w-fit" style={{ color: 'var(--text-secondary)' }}>
-        <ArrowLeft size={15} /> PainÃ©is
+        <ArrowLeft size={15} /> Painéis
       </button>
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{panel.name}</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{[panel.location, panel.model].filter(Boolean).join(' Â· ') || 'Sem informaÃ§Ãµes adicionais'}</p>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{[panel.location, panel.model].filter(Boolean).join(' · ') || 'Sem informações adicionais'}</p>
         </div>
         {canEdit && (
           <div className="flex gap-1">
@@ -3271,8 +3267,8 @@ function PanelDetail({
       </div>
 
       <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
-        <button className="nav-tab" data-active={tab === 'loops'} onClick={() => setTab('loops')}>LaÃ§os ({loops.length})</button>
-        <button className="nav-tab" data-active={tab === 'nacs'} onClick={() => setTab('nacs')}>Circuitos de saÃ­da â€” NAC ({nacs.length})</button>
+        <button className="nav-tab" data-active={tab === 'loops'} onClick={() => setTab('loops')}>Laços ({loops.length})</button>
+        <button className="nav-tab" data-active={tab === 'nacs'} onClick={() => setTab('nacs')}>Circuitos de saída — NAC ({nacs.length})</button>
       </div>
 
       {tab === 'loops' && (
@@ -3280,11 +3276,11 @@ function PanelDetail({
           {canEdit && (
             <div className="flex justify-end gap-2">
               {selectMode ? (
-                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleÃ§Ã£o</Button>
+                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
               ) : (
-                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar mÃºltiplos</Button>
+                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
               )}
-              <Button variant="primary" onClick={() => onCreateLoop(panelId)}><Plus size={15} /> Novo laÃ§o</Button>
+              <Button variant="primary" onClick={() => onCreateLoop(panelId)}><Plus size={15} /> Novo laço</Button>
             </div>
           )}
           {selectMode && (
@@ -3295,20 +3291,20 @@ function PanelDetail({
               {selectedIds.length > 0 && (
                 <div className="flex gap-2">
                   <Button variant="danger" onClick={() => { onBulkDeleteDevices(selectedIds); exitSelectMode(); }}><Trash2 size={15} /> Excluir</Button>
-                  <Button variant="primary" onClick={() => { onBulkMaintainDevices(selectedIds); exitSelectMode(); }}><Wrench size={15} /> Registrar manutenÃ§Ã£o</Button>
+                  <Button variant="primary" onClick={() => { onBulkMaintainDevices(selectedIds); exitSelectMode(); }}><Wrench size={15} /> Registrar manutenção</Button>
                 </div>
               )}
             </div>
           )}
           {loops.length === 0 ? (
-            <EmptyState icon={Cpu} title="Nenhum laÃ§o cadastrado" description="Adicione um laÃ§o para comeÃ§ar a cadastrar detectores, acionadores e mÃ³dulos endereÃ§Ã¡veis."
-              actionLabel={canEdit ? 'Adicionar laÃ§o' : undefined} onAction={canEdit ? () => onCreateLoop(panelId) : undefined} />
+            <EmptyState icon={Cpu} title="Nenhum laço cadastrado" description="Adicione um laço para começar a cadastrar detectores, acionadores e módulos endereçáveis."
+              actionLabel={canEdit ? 'Adicionar laço' : undefined} onAction={canEdit ? () => onCreateLoop(panelId) : undefined} />
           ) : (
             <>
               {loops.some((l) => data.devices.some((d) => d.loopId === l.id)) && (
                 <div className="relative">
                   <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                  <input className={`${inputCls} pl-9`} placeholder="Buscar dispositivo por endereÃ§o, modelo ou local..."
+                  <input className={`${inputCls} pl-9`} placeholder="Buscar dispositivo por endereço, modelo ou local..."
                     value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} />
                 </div>
               )}
@@ -3335,8 +3331,8 @@ function PanelDetail({
                       {canEdit && (
                         <>
                           <IconButton title="Novo dispositivo" onClick={() => onCreateDevice(loop.id)}><Plus size={15} /></IconButton>
-                          <IconButton title="Editar laÃ§o" onClick={() => onEditLoop(loop)}><Pencil size={15} /></IconButton>
-                          <IconButton title="Excluir laÃ§o" danger onClick={() => onDeleteLoop(loop)}><Trash2 size={15} /></IconButton>
+                          <IconButton title="Editar laço" onClick={() => onEditLoop(loop)}><Pencil size={15} /></IconButton>
+                          <IconButton title="Excluir laço" danger onClick={() => onDeleteLoop(loop)}><Trash2 size={15} /></IconButton>
                         </>
                       )}
                     </div>
@@ -3344,11 +3340,11 @@ function PanelDetail({
                       <div className="px-3.5 pb-3.5 flex flex-col gap-2">
                         {devices.length === 0 ? (
                           <p className="text-xs py-3 text-center" style={{ color: 'var(--text-secondary)' }}>
-                            {q ? 'Nenhum dispositivo corresponde Ã  busca.' : 'Nenhum dispositivo neste laÃ§o ainda.'}
+                            {q ? 'Nenhum dispositivo corresponde à busca.' : 'Nenhum dispositivo neste laço ainda.'}
                           </p>
                         ) : devices.map((d) => (
                           <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
-                            title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` Â· ${d.modelo}` : '')} meta={d.description}
+                            title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                             status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
                             indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
@@ -3373,7 +3369,7 @@ function PanelDetail({
             </div>
           )}
           {nacs.length === 0 ? (
-            <EmptyState icon={Bell} title="Nenhum circuito de saÃ­da cadastrado" description="Cadastre os circuitos (NACs) que alimentam sirenes, strobos e demais dispositivos de notificaÃ§Ã£o."
+            <EmptyState icon={Bell} title="Nenhum circuito de saída cadastrado" description="Cadastre os circuitos (NACs) que alimentam sirenes, strobos e demais dispositivos de notificação."
               actionLabel={canEdit ? 'Adicionar circuito' : undefined} onAction={canEdit ? () => onCreateNac(panelId) : undefined} />
           ) : (
             <div className="grid sm:grid-cols-2 gap-3">
@@ -3403,7 +3399,7 @@ function SimpleListView({ title, description, icon, data, category, canEdit, onC
         {canEdit && <Button variant="primary" onClick={onCreate}><Plus size={16} /> Adicionar</Button>}
       </div>
       {list.length === 0 ? (
-        <EmptyState icon={icon} title="Nenhum item cadastrado" description="Adicione o primeiro equipamento para comeÃ§ar a acompanhar as manutenÃ§Ãµes."
+        <EmptyState icon={icon} title="Nenhum item cadastrado" description="Adicione o primeiro equipamento para começar a acompanhar as manutenções."
           actionLabel={canEdit ? 'Adicionar' : undefined} onAction={canEdit ? onCreate : undefined} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
@@ -3425,15 +3421,15 @@ function HistoryView({ data, filter, setFilter }) {
     { value: 'devices', label: 'Dispositivos' },
     { value: 'nacs', label: 'Circuitos (NAC)' },
     { value: 'pumpDevices', label: 'Casa de Bombas' },
-    { value: 'gasDetectors', label: 'Detectores de gÃ¡s' },
+    { value: 'gasDetectors', label: 'Detectores de gás' },
   ];
   const entries = data.maintenanceLog.filter((e) => filter === 'all' || e.category === filter);
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>HistÃ³rico de manutenÃ§Ãµes</h2>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registro de todas as manutenÃ§Ãµes realizadas, da mais recente para a mais antiga.</p>
+        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Histórico de manutenções</h2>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registro de todas as manutenções realizadas, da mais recente para a mais antiga.</p>
       </div>
 
       <div className="flex gap-1 overflow-x-auto">
@@ -3443,7 +3439,7 @@ function HistoryView({ data, filter, setFilter }) {
       </div>
 
       {entries.length === 0 ? (
-        <EmptyState icon={Inbox} title="Nenhum registro encontrado" description="As manutenÃ§Ãµes registradas em dispositivos, circuitos e demais equipamentos aparecerÃ£o aqui." />
+        <EmptyState icon={Inbox} title="Nenhum registro encontrado" description="As manutenções registradas em dispositivos, circuitos e demais equipamentos aparecerão aqui." />
       ) : (
         <div className="flex flex-col gap-2">
           {entries.map((entry) => {
@@ -3457,11 +3453,11 @@ function HistoryView({ data, filter, setFilter }) {
                 <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{context}</div>
                 {(entry.technician || entry.description) && (
                   <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    {entry.technician && <span>TÃ©cnico: {entry.technician}. </span>}
+                    {entry.technician && <span>Técnico: {entry.technician}. </span>}
                     {entry.description}
                   </div>
                 )}
-                {entry.nextDate && <div className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>PrÃ³xima manutenÃ§Ã£o: {formatDateBR(entry.nextDate)}</div>}
+                {entry.nextDate && <div className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>Próxima manutenção: {formatDateBR(entry.nextDate)}</div>}
               </div>
             );
           })}
@@ -3495,15 +3491,15 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
       const loop = data.loops.find((l) => l.id === device.loopId);
       const panel = loop && data.panels.find((p) => p.id === loop.panelId);
       return {
-        title: (DEVICE_TYPE_MAP[device.type]?.label || 'Dispositivo') + (device.modelo ? ` Â· ${device.modelo}` : ''),
-        address: device.address, sub: [loop?.name, panel?.name].filter(Boolean).join(' Â· '),
+        title: (DEVICE_TYPE_MAP[device.type]?.label || 'Dispositivo') + (device.modelo ? ` · ${device.modelo}` : ''),
+        address: device.address, sub: [loop?.name, panel?.name].filter(Boolean).join(' · '),
       };
     }
     if (cat === 'nacs') {
       const nac = data.nacs.find((n) => n.id === r.deviceId);
       if (!nac) return null;
       const panel = data.panels.find((p) => p.id === nac.panelId);
-      return { title: nac.name, address: null, sub: ['Circuito NAC', panel?.name].filter(Boolean).join(' Â· ') };
+      return { title: nac.name, address: null, sub: ['Circuito NAC', panel?.name].filter(Boolean).join(' · ') };
     }
     if (cat === 'pumpDevices') {
       const it = data.pumpDevices.find((p) => p.id === r.deviceId);
@@ -3513,7 +3509,7 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
     if (cat === 'gasDetectors') {
       const it = data.gasDetectors.find((g) => g.id === r.deviceId);
       if (!it) return null;
-      return { title: it.name, address: null, sub: 'Detector de GÃ¡s' };
+      return { title: it.name, address: null, sub: 'Detector de Gás' };
     }
     return null;
   }
@@ -3552,7 +3548,7 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
 
   function handleLink() {
     const res = onLinkDevices();
-    setLinkMsg(`${res.matched} de ${res.total} registro(s) vinculado(s) a um dispositivo importado. ${res.unmatched} sem correspondÃªncia (painel/laÃ§o/endereÃ§o nÃ£o encontrados entre os dispositivos jÃ¡ importados).`);
+    setLinkMsg(`${res.matched} de ${res.total} registro(s) vinculado(s) a um dispositivo importado. ${res.unmatched} sem correspondência (painel/laço/endereço não encontrados entre os dispositivos já importados).`);
   }
 
   return (
@@ -3560,21 +3556,21 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>HistÃ³rico de diagnÃ³stico e falhas identificadas no sistema.</p>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Histórico de diagnóstico e falhas identificadas no sistema.</p>
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
             <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
-              <Upload size={15} /> {importing ? 'Importandoâ€¦' : 'Importar planilha (.xlsx)'}
+              <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
               <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" disabled={importing} />
             </label>
             {list.length > 0 && (
               <>
                 <Button variant="secondary" onClick={handleLink}><Cpu size={15} /> Vincular aos dispositivos</Button>
                 {selectMode ? (
-                  <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleÃ§Ã£o</Button>
+                  <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
                 ) : (
-                  <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar mÃºltiplos</Button>
+                  <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
                 )}
               </>
             )}
@@ -3616,25 +3612,25 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
       {list.length > 0 && (
         <>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            {linkedCount} de {list.length} registro(s) jÃ¡ vinculado(s) a um dispositivo do painel.
+            {linkedCount} de {list.length} registro(s) já vinculado(s) a um dispositivo do painel.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-              <input className={`${inputCls} pl-9`} placeholder="Buscar por etiqueta, endereÃ§o, falha..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input className={`${inputCls} pl-9`} placeholder="Buscar por etiqueta, endereço, falha..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
             <select className={inputCls} style={{ maxWidth: '220px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">Todos os status</option>
               {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <select className={inputCls} style={{ maxWidth: '220px' }} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-              <option value="all">Todas as Ã¡reas</option>
+              <option value="all">Todas as áreas</option>
               {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
             <select className={inputCls} style={{ maxWidth: '220px' }} value={linkFilter} onChange={(e) => setLinkFilter(e.target.value)}>
-              <option value="all">Vinculados e nÃ£o vinculados</option>
-              <option value="linked">SÃ³ vinculados a dispositivo</option>
-              <option value="unlinked">SÃ³ sem vÃ­nculo</option>
+              <option value="all">Vinculados e não vinculados</option>
+              <option value="linked">Só vinculados a dispositivo</option>
+              <option value="unlinked">Só sem vínculo</option>
             </select>
           </div>
         </>
@@ -3642,7 +3638,7 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
 
       {list.length === 0 ? (
         <EmptyState icon={Activity} title="Nenhum registro no indicador"
-          description="Importe a planilha de histÃ³rico de diagnÃ³stico ou cadastre o primeiro registro manualmente."
+          description="Importe a planilha de histórico de diagnóstico ou cadastre o primeiro registro manualmente."
           actionLabel={canEdit ? 'Novo registro' : undefined} onAction={canEdit ? onCreate : undefined} />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-center py-8" style={{ color: 'var(--text-secondary)' }}>Nenhum registro corresponde aos filtros.</p>
@@ -3657,7 +3653,7 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div className="flex items-start gap-2 min-w-0">
                     {selectMode && (
-                      <label className="pt-1 cursor-pointer flex-shrink-0" title={isSelected ? 'Remover da seleÃ§Ã£o' : 'Selecionar'}>
+                      <label className="pt-1 cursor-pointer flex-shrink-0" title={isSelected ? 'Remover da seleção' : 'Selecionar'}>
                         <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
                           className="w-4 h-4 cursor-pointer" style={{ accentColor: 'var(--accent)' }} />
                       </label>
@@ -3669,17 +3665,17 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
                           <>
                             {ctx.address && <span className="mono-chip">END {ctx.address}</span>}
                             <span className="font-medium">{ctx.title}</span>
-                            {ctx.sub && <span>Â· {ctx.sub}</span>}
+                            {ctx.sub && <span>· {ctx.sub}</span>}
                           </>
                         ) : (
                           <>
                             {r.endereco && <span className="mono-chip">END {r.endereco}</span>}
-                            {r.laco && <span className="mono-chip">LaÃ§o {r.laco}</span>}
+                            {r.laco && <span className="mono-chip">Laço {r.laco}</span>}
                             {r.painel && <span className="mono-chip">Painel {r.painel}</span>}
                             {r.area && <span>{r.area}</span>}
                           </>
                         )}
-                        {r.equipamento && <span>Â· {r.equipamento}</span>}
+                        {r.equipamento && <span>· {r.equipamento}</span>}
                       </div>
                     </div>
                   </div>
@@ -3692,8 +3688,8 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
                 </div>
                 {r.falha && <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{r.falha}</p>}
                 {r.descritivo && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.descritivo}</p>}
-                {r.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>ExplanaÃ§Ã£o:</strong> {r.explanacao}</p>}
-                {r.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>SoluÃ§Ã£o:</strong> {r.solucao}</p>}
+                {r.explanacao && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}><strong>Explanação:</strong> {r.explanacao}</p>}
+                {r.solucao && <p className="text-xs" style={{ color: 'var(--status-ok)' }}><strong>Solução:</strong> {r.solucao}</p>}
                 {r.fotos && r.fotos.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {r.fotos.map((f, i) => (
@@ -3703,8 +3699,8 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
                 )}
                 {(r.dataDiagnostico || r.dataSolucao) && (
                   <div className="flex flex-wrap gap-3 text-xs mono" style={{ color: 'var(--text-secondary)' }}>
-                    {r.dataDiagnostico && <span>DiagnÃ³stico: {formatDateBR(r.dataDiagnostico)}</span>}
-                    {r.dataSolucao && <span>SoluÃ§Ã£o: {formatDateBR(r.dataSolucao)}</span>}
+                    {r.dataDiagnostico && <span>Diagnóstico: {formatDateBR(r.dataDiagnostico)}</span>}
+                    {r.dataSolucao && <span>Solução: {formatDateBR(r.dataSolucao)}</span>}
                   </div>
                 )}
                 {canEdit && !selectMode && (
@@ -3728,14 +3724,14 @@ function ChartsView({ data }) {
   const inspectionLog = data.inspectionLog || [];
 
   const statusData = sortDesc(countBy(indicador, (r) => r.status, 'Sem status')).map((d) => ({ ...d, color: indicatorStatusColor(d.label) }));
-  const areaData = sortDesc(countBy(indicador, (r) => r.area, 'Sem Ã¡rea')).slice(0, 10);
+  const areaData = sortDesc(countBy(indicador, (r) => r.area, 'Sem área')).slice(0, 10);
   const falhaData = sortDesc(countBy(indicador, (r) => r.falha, 'Sem falha')).slice(0, 10);
 
-  const CATEGORY_LABELS = { devices: 'Dispositivos', nacs: 'Circuitos (NAC)', pumpDevices: 'Casa de Bombas', gasDetectors: 'Detectores de gÃ¡s' };
+  const CATEGORY_LABELS = { devices: 'Dispositivos', nacs: 'Circuitos (NAC)', pumpDevices: 'Casa de Bombas', gasDetectors: 'Detectores de gás' };
   const tipoData = [
     { label: 'Preventiva', value: maintenanceLog.filter((e) => e.tipo !== 'corretiva').length, color: 'var(--status-ok)' },
     { label: 'Corretiva', value: maintenanceLog.filter((e) => e.tipo === 'corretiva').length, color: 'var(--status-danger)' },
-    { label: 'InspeÃ§Ã£o', value: inspectionLog.length, color: 'var(--accent)' },
+    { label: 'Inspeção', value: inspectionLog.length, color: 'var(--accent)' },
   ].filter((d) => d.value > 0);
   const categoryData = sortDesc(countBy([...maintenanceLog, ...inspectionLog], (e) => CATEGORY_LABELS[e.category] || e.category, 'Outro'));
   const monthData = countByMonth([...maintenanceLog, ...inspectionLog], 12);
@@ -3744,17 +3740,17 @@ function ChartsView({ data }) {
   const hasManutencao = maintenanceLog.length + inspectionLog.length > 0;
 
   function exportIndicadorCsv() {
-    exportChartCsv('indicador-resumo.csv', ['Categoria', 'RÃ³tulo', 'Quantidade'], [
+    exportChartCsv('indicador-resumo.csv', ['Categoria', 'Rótulo', 'Quantidade'], [
       ...statusData.map((d) => ['Status', d.label, d.value]),
-      ...areaData.map((d) => ['Ãrea', d.label, d.value]),
+      ...areaData.map((d) => ['Área', d.label, d.value]),
       ...falhaData.map((d) => ['Falha', d.label, d.value]),
     ]);
   }
   function exportManutencaoCsv() {
-    exportChartCsv('manutencoes-resumo.csv', ['Categoria', 'RÃ³tulo', 'Quantidade'], [
+    exportChartCsv('manutencoes-resumo.csv', ['Categoria', 'Rótulo', 'Quantidade'], [
       ...tipoData.map((d) => ['Tipo', d.label, d.value]),
       ...categoryData.map((d) => ['Categoria do item', d.label, d.value]),
-      ...monthData.map((d) => ['MÃªs', d.label, d.value]),
+      ...monthData.map((d) => ['Mês', d.label, d.value]),
     ]);
   }
 
@@ -3762,8 +3758,8 @@ function ChartsView({ data }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
         <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>GrÃ¡ficos</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>VisÃ£o geral do Indicador e das manutenÃ§Ãµes realizadas nos painÃ©is.</p>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Gráficos</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Visão geral do Indicador e das manutenções realizadas nos painéis.</p>
         </div>
         <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
       </div>
@@ -3772,7 +3768,7 @@ function ChartsView({ data }) {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador â€” diagnÃ³stico e falhas</h3>
+              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador — diagnóstico e falhas</h3>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{indicador.length} registro(s) no total</p>
             </div>
             {hasIndicador && <Button variant="secondary" className="no-print" onClick={exportIndicadorCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
@@ -3782,7 +3778,7 @@ function ChartsView({ data }) {
           ) : (
             <div className="grid sm:grid-cols-2 gap-4">
               <ChartCard title="Status dos registros"><SimplePieChart data={statusData} /></ChartCard>
-              <ChartCard title="Registros por Ã¡rea" subtitle="Onde as falhas mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
+              <ChartCard title="Registros por área" subtitle="Onde as falhas mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
               <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
             </div>
           )}
@@ -3791,18 +3787,18 @@ function ChartsView({ data }) {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>ManutenÃ§Ãµes realizadas</h3>
+              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Manutenções realizadas</h3>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{maintenanceLog.length + inspectionLog.length} registro(s) no total</p>
             </div>
             {hasManutencao && <Button variant="secondary" className="no-print" onClick={exportManutencaoCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
           </div>
           {!hasManutencao ? (
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhuma manutenÃ§Ã£o ou inspeÃ§Ã£o registrada ainda.</p>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhuma manutenção ou inspeção registrada ainda.</p>
           ) : (
             <div className="grid sm:grid-cols-2 gap-4">
-              <ChartCard title="Por tipo" subtitle="Preventiva, corretiva e inspeÃ§Ã£o"><SimplePieChart data={tipoData} /></ChartCard>
+              <ChartCard title="Por tipo" subtitle="Preventiva, corretiva e inspeção"><SimplePieChart data={tipoData} /></ChartCard>
               <ChartCard title="Por categoria de equipamento"><SimpleBarChart data={categoryData} /></ChartCard>
-              <ChartCard title="Ãšltimos 12 meses" subtitle="Volume por mÃªs"><SimpleBarChart data={monthData} emptyLabel="Sem manutenÃ§Ãµes nos Ãºltimos 12 meses." /></ChartCard>
+              <ChartCard title="Últimos 12 meses" subtitle="Volume por mês"><SimpleBarChart data={monthData} emptyLabel="Sem manutenções nos últimos 12 meses." /></ChartCard>
             </div>
           )}
         </div>
@@ -3833,15 +3829,15 @@ function ReportView({ data, client, filters, setFilters }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
         <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RelatÃ³rio de ManutenÃ§Ãµes Preventivas</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Status de verificaÃ§Ã£o de todos os dispositivos, circuitos e equipamentos.</p>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Relatório de Manutenções Preventivas</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Status de verificação de todos os dispositivos, circuitos e equipamentos.</p>
         </div>
         <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
         <StatCard label="Total monitorado" value={summary.total} color="var(--text-secondary)" icon={ClipboardList} />
-        <StatCard label="NÃ£o operantes" value={summary.naoOperante} color="var(--status-danger)" icon={AlertTriangle} />
+        <StatCard label="Não operantes" value={summary.naoOperante} color="var(--status-danger)" icon={AlertTriangle} />
         <StatCard label="Necessitam troca" value={summary.necessitaTroca} color="var(--status-warn)" icon={AlertTriangle} />
         <StatCard label="Itens exibidos" value={filtered.length} color="var(--text-secondary)" icon={Search} />
       </div>
@@ -3849,14 +3845,14 @@ function ReportView({ data, client, filters, setFilters }) {
       <div className="flex flex-wrap gap-2 no-print">
         <select className={inputCls} style={{ width: 'auto' }} value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}>
           <option value="all">Todas as categorias</option>
-          <option value="devices">Dispositivos endereÃ§Ã¡veis</option>
+          <option value="devices">Dispositivos endereçáveis</option>
           <option value="nacs">Circuitos (NAC)</option>
           <option value="pumpDevices">Casa de Bombas</option>
-          <option value="gasDetectors">Detectores de gÃ¡s</option>
+          <option value="gasDetectors">Detectores de gás</option>
         </select>
         {data.panels.length > 0 && (
           <select className={inputCls} style={{ width: 'auto' }} value={filters.panelId} onChange={(e) => setFilters({ ...filters, panelId: e.target.value })}>
-            <option value="all">Todos os painÃ©is</option>
+            <option value="all">Todos os painéis</option>
             {panelOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         )}
@@ -3879,7 +3875,7 @@ function ReportView({ data, client, filters, setFilters }) {
             </div>
           </div>
           <div className="text-right">
-            <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>RelatÃ³rio de ManutenÃ§Ãµes Preventivas</p>
+            <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Relatório de Manutenções Preventivas</p>
             <p className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>Gerado em {formatDateBR(todayISO())}</p>
           </div>
         </div>
@@ -3891,7 +3887,7 @@ function ReportView({ data, client, filters, setFilters }) {
             <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['IdentificaÃ§Ã£o', 'LocalizaÃ§Ã£o', 'Status', 'AparÃªncia', 'Com. local', 'Com. rede', 'Ãšltima insp.', 'PrÃ³xima insp.'].map((h) => (
+                  {['Identificação', 'Localização', 'Status', 'Aparência', 'Com. local', 'Com. rede', 'Última insp.', 'Próxima insp.'].map((h) => (
                     <th key={h} className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                   ))}
                 </tr>
@@ -3903,7 +3899,7 @@ function ReportView({ data, client, filters, setFilters }) {
                       <div className="flex items-center gap-2">
                         {it.photo && <img src={it.photo} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />}
                         {it.address && <span className="mono-chip">{it.address}</span>}
-                        <span style={{ color: 'var(--text-primary)' }}>{it.title}{it.modelo ? ` Â· ${it.modelo}` : ''}</span>
+                        <span style={{ color: 'var(--text-primary)' }}>{it.title}{it.modelo ? ` · ${it.modelo}` : ''}</span>
                       </div>
                     </td>
                     <td className="py-2 pr-3" style={{ color: 'var(--text-secondary)' }}>{it.meta}</td>
@@ -3928,14 +3924,14 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
   const TABS = [
     { key: 'cliente', label: 'Cliente', icon: Building2 },
     { key: 'marca', label: 'Marca', icon: Palette },
-    { key: 'usuario', label: 'UsuÃ¡rio', icon: UserCog },
+    { key: 'usuario', label: 'Usuário', icon: UserCog },
     { key: 'modelos', label: 'Modelos', icon: ImagePlus },
     { key: 'operadores', label: 'Operadores', icon: Users },
     { key: 'importar', label: 'Importar', icon: Upload },
   ];
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>ConfiguraÃ§Ãµes</h2>
+      <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Configurações</h2>
       <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
         {TABS.map((t) => (
           <button key={t.key} className="nav-tab" data-active={tab === t.key} onClick={() => setTab(t.key)}><t.icon size={15} /> {t.label}</button>
@@ -3952,13 +3948,13 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
 }
 
 /* ------------------------------------------------------------------ */
-/* ImportaÃ§Ã£o de base de dados (CSV de painel)                        */
+/* Importação de base de dados (CSV de painel)                        */
 /* ------------------------------------------------------------------ */
 
-/* Exporta a base atual de dispositivos (todos os painÃ©is/laÃ§os do cliente) em CSV,
-   pronta para abrir no Excel (separador ; e BOM para acentuaÃ§Ã£o). */
+/* Exporta a base atual de dispositivos (todos os painéis/laços do cliente) em CSV,
+   pronta para abrir no Excel (separador ; e BOM para acentuação). */
 /* ------------------------------------------------------------------ */
-/* Indicador: histÃ³rico de diagnÃ³stico e falhas (planilha "Indicador SDAI") */
+/* Indicador: histórico de diagnóstico e falhas (planilha "Indicador SDAI") */
 /* ------------------------------------------------------------------ */
 
 function normalizeHeader(h) {
@@ -3990,9 +3986,9 @@ function excelValueToISODate(val) {
   return '';
 }
 
-/** LÃª a planilha "Indicador" (histÃ³rico de diagnÃ³stico/falhas) e devolve os registros
-    jÃ¡ no formato usado pelo app, tolerando pequenas variaÃ§Ãµes de cabeÃ§alho (acentos,
-    espaÃ§os extras) jÃ¡ que casa por conteÃºdo normalizado, nÃ£o pelo texto exato. */
+/** Lê a planilha "Indicador" (histórico de diagnóstico/falhas) e devolve os registros
+    já no formato usado pelo app, tolerando pequenas variações de cabeçalho (acentos,
+    espaços extras) já que casa por conteúdo normalizado, não pelo texto exato. */
 async function parseIndicadorXlsx(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -4025,17 +4021,17 @@ async function parseIndicadorXlsx(file) {
   })).filter((r) => r.etiqueta || r.falha || r.descritivo);
 
   if (records.length === 0) {
-    throw new Error('Nenhum registro foi encontrado nessa planilha. Verifique se Ã© o arquivo do Indicador.');
+    throw new Error('Nenhum registro foi encontrado nessa planilha. Verifique se é o arquivo do Indicador.');
   }
   return records;
 }
 
 /* Vincula registros do Indicador aos dispositivos reais do painel, cruzando pela coluna
    "PAINEL - ND" (que corresponde ao Network Address de cada painel no report do Loop
-   Explorer), pelo laÃ§o e pelo endereÃ§o. Mapeamento tirado diretamente do report LP1 da
-   Nissan (Panel X / Network Address N) â€” especÃ­fico deste sistema; painÃ©is fora dessa
-   lista (ex.: 7 = AUTOLEARN/PWT, ou "Notifier") nÃ£o tÃªm correspondÃªncia aqui e ficam sem
-   vÃ­nculo, jÃ¡ que pertencem a outro relatÃ³rio/sistema. */
+   Explorer), pelo laço e pelo endereço. Mapeamento tirado diretamente do report LP1 da
+   Nissan (Panel X / Network Address N) — específico deste sistema; painéis fora dessa
+   lista (ex.: 7 = AUTOLEARN/PWT, ou "Notifier") não têm correspondência aqui e ficam sem
+   vínculo, já que pertencem a outro relatório/sistema. */
 const INDICADOR_PANEL_NETWORK_MAP = {
   '1': 'SECURITY OFFICE', '2': 'PAINT', '3': 'TRIM', '4': 'PLASTIC',
   '5': 'BODY', '6': 'POWER TRAIN', '8': 'CENTRAL COP',
@@ -4072,7 +4068,7 @@ function matchIndicadorRecordToDevice(record, data) {
 }
 
 function exportDevicesCsv(data) {
-  const header = ['Painel', 'Modelo do Painel', 'LaÃ§o', 'EndereÃ§o', 'Categoria', 'Modelo do Dispositivo', 'DescriÃ§Ã£o', 'Ãšltima ManutenÃ§Ã£o', 'PrÃ³xima ManutenÃ§Ã£o'];
+  const header = ['Painel', 'Modelo do Painel', 'Laço', 'Endereço', 'Categoria', 'Modelo do Dispositivo', 'Descrição', 'Última Manutenção', 'Próxima Manutenção'];
   const rows = data.devices.map((d) => {
     const loop = data.loops.find((l) => l.id === d.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
@@ -4129,7 +4125,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       setEntities(buildImportEntities(nextRows, nextTypeMap, brand, targetOpts()));
       setError('');
     } catch (err) {
-      setError(err.message || 'NÃ£o foi possÃ­vel processar esses dados.');
+      setError(err.message || 'Não foi possível processar esses dados.');
       setEntities(null);
     }
   }
@@ -4145,7 +4141,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       setEntities(buildImportEntities(nextRows, seeded, brand, targetOpts()));
       setError('');
     } catch (err) {
-      setError(err.message || 'NÃ£o foi possÃ­vel processar esses dados.');
+      setError(err.message || 'Não foi possível processar esses dados.');
       setEntities(null);
     }
   }
@@ -4183,7 +4179,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
         const parsedRows = parseDeviceLabelsCsv(String(reader.result));
         seedTypeMapAndBuild(parsedRows);
       } catch (err) {
-        setError(err.message || 'NÃ£o foi possÃ­vel ler esse arquivo.');
+        setError(err.message || 'Não foi possível ler esse arquivo.');
         setRows(null); setEntities(null);
       }
     };
@@ -4200,7 +4196,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       const parsedRows = parseLp1Report(words);
       seedTypeMapAndBuild(parsedRows);
     } catch (err) {
-      setError(err.message || 'NÃ£o foi possÃ­vel ler esse arquivo PDF.');
+      setError(err.message || 'Não foi possível ler esse arquivo PDF.');
       setRows(null); setEntities(null);
     }
   }
@@ -4222,7 +4218,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       ];
       seedTypeMapAndBuild(combined);
     } catch (err) {
-      setError(err.message || 'NÃ£o foi possÃ­vel ler esse arquivo.');
+      setError(err.message || 'Não foi possível ler esse arquivo.');
     }
   }
 
@@ -4251,14 +4247,14 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
   function handleTargetPanelChange(id) {
     setTargetPanelId(id);
     if (rows) {
-      // recompute usando o novo painel selecionado diretamente (o state ainda nÃ£o atualizou no closure)
+      // recompute usando o novo painel selecionado diretamente (o state ainda não atualizou no closure)
       try {
         const chosenPanel = (data.panels || []).find((p) => p.id === id);
         const chosenLoops = chosenPanel ? (data.loops || []).filter((l) => l.panelId === chosenPanel.id) : [];
         setEntities(buildImportEntities(rows, typeMap, brand, { existingPanel: chosenPanel, existingLoops: chosenLoops, panelModel: currentModel.shortLabel || '' }));
         setError('');
       } catch (err) {
-        setError(err.message || 'NÃ£o foi possÃ­vel processar esses dados.');
+        setError(err.message || 'Não foi possível processar esses dados.');
       }
     }
   }
@@ -4290,7 +4286,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       {lastImport && (
         <div className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Ãšltima importaÃ§Ã£o</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Última importação</p>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{lastImport.summary}</p>
           </div>
           {confirmUndo ? (
@@ -4299,7 +4295,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
               <Button variant="danger" onClick={() => { onUndoImport(); setConfirmUndo(false); }}>Confirmar, desfazer</Button>
             </div>
           ) : (
-            <Button variant="secondary" onClick={() => setConfirmUndo(true)}><Trash2 size={15} /> Desfazer Ãºltima importaÃ§Ã£o</Button>
+            <Button variant="secondary" onClick={() => setConfirmUndo(true)}><Trash2 size={15} /> Desfazer última importação</Button>
           )}
         </div>
       )}
@@ -4307,7 +4303,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Importar base de dispositivos</p>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          Envie o relatÃ³rio exportado do painel. O sistema identifica automaticamente painÃ©is, laÃ§os e dispositivos, de acordo com a marca e o modelo selecionados.
+          Envie o relatório exportado do painel. O sistema identifica automaticamente painéis, laços e dispositivos, de acordo com a marca e o modelo selecionados.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4330,14 +4326,14 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
             <select value={targetMode} onChange={(e) => handleTargetModeChange(e.target.value)}
               className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
               <option value="new">Criar novo painel</option>
-              <option value="existing">Usar painel jÃ¡ cadastrado</option>
+              <option value="existing">Usar painel já cadastrado</option>
             </select>
           </Field>
           {targetMode === 'existing' && (
             <Field label="Selecione o painel">
               <select value={targetPanelId} onChange={(e) => handleTargetPanelChange(e.target.value)}
                 className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                <option value="">Selecioneâ€¦</option>
+                <option value="">Selecione…</option>
                 {(data.panels || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Field>
@@ -4345,11 +4341,11 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
         </div>
 
         {currentModel.loops > 1 && (
-          <Field label="LaÃ§o correspondente a este arquivo" hint="A Notifier nÃ£o indica o laÃ§o no relatÃ³rio â€” informe a qual laÃ§o esses dispositivos pertencem.">
+          <Field label="Laço correspondente a este arquivo" hint="A Notifier não indica o laço no relatório — informe a qual laço esses dispositivos pertencem.">
             <select value={loopChoice} onChange={(e) => handleLoopChoiceChange(Number(e.target.value))}
               className="w-full px-2.5 py-2 rounded-md text-sm sm:w-48" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
               {Array.from({ length: currentModel.loops }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>LaÃ§o {n}</option>
+                <option key={n} value={n}>Laço {n}</option>
               ))}
             </select>
           </Field>
@@ -4357,7 +4353,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
 
         {brand === 'hochiki' ? (
           <div className="flex flex-col gap-2">
-            <Field label="Formato do relatÃ³rio" hint="O Loop Explorer 2 exporta .csv; o Loop Explorer 1 (mais antigo) exporta .pdf.">
+            <Field label="Formato do relatório" hint="O Loop Explorer 2 exporta .csv; o Loop Explorer 1 (mais antigo) exporta .pdf.">
               <select value={hochikiFormat} onChange={(e) => handleHochikiFormatChange(e.target.value)}
                 className="w-full px-2.5 py-2 rounded-md text-sm sm:w-72" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                 <option value="lp2">Loop Explorer 2 (.csv)</option>
@@ -4381,17 +4377,17 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
         ) : (
           <div className="flex flex-col gap-2">
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              A Notifier separa detectores e mÃ³dulos em relatÃ³rios distintos no VeriFire Tools. Envie um ou os dois, conforme disponÃ­vel (.xls, .xlsx ou .csv).
+              A Notifier separa detectores e módulos em relatórios distintos no VeriFire Tools. Envie um ou os dois, conforme disponível (.xls, .xlsx ou .csv).
             </p>
             <div className="flex flex-wrap gap-2">
               <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
                 style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                <FileSpreadsheet size={15} /> RelatÃ³rio de mÃ³dulos
+                <FileSpreadsheet size={15} /> Relatório de módulos
                 <input type="file" accept=".xls,.xlsx,.csv" onChange={(e) => handleNotifierFile('modules', e)} className="hidden" />
               </label>
               <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-fit cursor-pointer"
                 style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                <FileSpreadsheet size={15} /> RelatÃ³rio de detectores
+                <FileSpreadsheet size={15} /> Relatório de detectores
                 <input type="file" accept=".xls,.xlsx,.csv" onChange={(e) => handleNotifierFile('detectors', e)} className="hidden" />
               </label>
             </div>
@@ -4402,12 +4398,12 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
           <div className="flex flex-col gap-0.5">
             {fileNames.hochiki && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Arquivo: {fileNames.hochiki}</p>}
             {fileNames.hochikiLp1 && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Arquivo: {fileNames.hochikiLp1}</p>}
-            {fileNames.modules && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>MÃ³dulos: {fileNames.modules}</p>}
+            {fileNames.modules && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Módulos: {fileNames.modules}</p>}
             {fileNames.detectors && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Detectores: {fileNames.detectors}</p>}
           </div>
         )}
         {error && <p className="text-xs" style={{ color: 'var(--status-danger)' }}>{error}</p>}
-        {done && <p className="text-xs" style={{ color: 'var(--status-ok)' }}>ImportaÃ§Ã£o concluÃ­da! Confira em "PainÃ©is".</p>}
+        {done && <p className="text-xs" style={{ color: 'var(--status-ok)' }}>Importação concluída! Confira em "Painéis".</p>}
       </div>
 
       {entities && (
@@ -4415,13 +4411,13 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
           <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Confirme a categoria de cada tipo de dispositivo</p>
             <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
-              Identifiquei estes cÃ³digos no arquivo. Ajuste se alguma categoria nÃ£o estiver certa.
+              Identifiquei estes códigos no arquivo. Ajuste se alguma categoria não estiver certa.
             </p>
             {Object.keys(entities.typeCounts).map((code) => (
               <div key={code} className="flex items-center justify-between gap-2 rounded-md p-2" style={{ background: 'var(--surface-raised)' }}>
                 <div className="min-w-0">
                   <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{code}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{entities.typeCounts[code]} ocorrÃªncia(s)</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{entities.typeCounts[code]} ocorrência(s)</p>
                 </div>
                 <select value={typeMap[code] || 'entrada'} onChange={(e) => updateTypeMap(code, e.target.value)}
                   className="px-2 py-1 rounded-md text-xs flex-shrink-0" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
@@ -4434,18 +4430,18 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
           <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Resumo antes de importar</p>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {entities.panels.length} painel(Ã©is) novo(s) Â· {entities.loops.length} laÃ§o(s) Â· {entities.devices.length} dispositivo(s)
+              {entities.panels.length} painel(éis) novo(s) · {entities.loops.length} laço(s) · {entities.devices.length} dispositivo(s)
             </p>
             {targetMode === 'existing' && existingPanel && (
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Os dispositivos serÃ£o adicionados ao painel <strong>{existingPanel.name}</strong>. LaÃ§os com nome igual a um jÃ¡ existente serÃ£o reaproveitados; os demais serÃ£o criados.
+                Os dispositivos serão adicionados ao painel <strong>{existingPanel.name}</strong>. Laços com nome igual a um já existente serão reaproveitados; os demais serão criados.
               </p>
             )}
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Isso vai <strong>adicionar</strong> novos registros Ã  lista atual (nÃ£o substitui o que jÃ¡ existe). Importar o mesmo arquivo duas vezes cria duplicados.
+              Isso vai <strong>adicionar</strong> novos registros à lista atual (não substitui o que já existe). Importar o mesmo arquivo duas vezes cria duplicados.
             </p>
             <Button variant="primary" onClick={handleConfirm} disabled={targetMode === 'existing' && !existingPanel}>
-              <Upload size={15} /> Confirmar importaÃ§Ã£o
+              <Upload size={15} /> Confirmar importação
             </Button>
           </div>
         </>
@@ -4469,12 +4465,12 @@ function MembersManager({ clientId }) {
   async function loadMembers() {
     const { data: rows, error: err } = await supabase
       .from('memberships').select('id, user_id, role').eq('client_id', clientId);
-    if (err) { setError('NÃ£o foi possÃ­vel carregar os usuÃ¡rios deste cliente.'); return; }
+    if (err) { setError('Não foi possível carregar os usuários deste cliente.'); return; }
     if (!rows || rows.length === 0) { setMembers([]); return; }
     const ids = rows.map((r) => r.user_id);
     const { data: profs } = await supabase.from('profiles').select('id, email').in('id', ids);
     const emailById = Object.fromEntries((profs || []).map((p) => [p.id, p.email]));
-    setMembers(rows.map((r) => ({ ...r, email: emailById[r.user_id] || '(email nÃ£o encontrado)' })));
+    setMembers(rows.map((r) => ({ ...r, email: emailById[r.user_id] || '(email não encontrado)' })));
   }
 
   useEffect(() => { loadMembers(); }, [clientId]);
@@ -4486,18 +4482,18 @@ function MembersManager({ clientId }) {
       const { data: prof, error: findErr } = await supabase.from('profiles').select('id').eq('email', email.trim()).maybeSingle();
       if (findErr) throw findErr;
       if (!prof) {
-        setError('Nenhum usuÃ¡rio encontrado com esse email. PeÃ§a para essa pessoa criar uma conta na tela de login do app primeiro, depois tente novamente.');
+        setError('Nenhum usuário encontrado com esse email. Peça para essa pessoa criar uma conta na tela de login do app primeiro, depois tente novamente.');
         return;
       }
       const { error: insErr } = await supabase.from('memberships').upsert(
         { user_id: prof.id, client_id: clientId, role }, { onConflict: 'user_id,client_id' }
       );
       if (insErr) throw insErr;
-      setInfo('UsuÃ¡rio vinculado com sucesso.');
+      setInfo('Usuário vinculado com sucesso.');
       setEmail('');
       await loadMembers();
     } catch (err) {
-      setError(err.message || 'NÃ£o foi possÃ­vel vincular esse usuÃ¡rio.');
+      setError(err.message || 'Não foi possível vincular esse usuário.');
     } finally {
       setSaving(false);
     }
@@ -4516,9 +4512,9 @@ function MembersManager({ clientId }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Vincular usuÃ¡rio a este cliente</p>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Vincular usuário a este cliente</p>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          A pessoa precisa primeiro ter criado uma conta na tela de login do app (com o email abaixo). Depois, vincule aqui e escolha o nÃ­vel de acesso.
+          A pessoa precisa primeiro ter criado uma conta na tela de login do app (com o email abaixo). Depois, vincule aqui e escolha o nível de acesso.
         </p>
         <form onSubmit={addMember} className="flex flex-col sm:flex-row gap-2">
           <input type="email" required placeholder="email@dapessoa.com" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -4526,7 +4522,7 @@ function MembersManager({ clientId }) {
           <select value={role} onChange={(e) => setRole(e.target.value)}
             className="px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
             <option value="operador">Operador (pode editar)</option>
-            <option value="visualizador">Visualizador (sÃ³ leitura)</option>
+            <option value="visualizador">Visualizador (só leitura)</option>
             <option value="admin">Admin deste cliente</option>
           </select>
           <Button variant="primary" type="submit" disabled={saving}><UserPlus size={15} /> Vincular</Button>
@@ -4536,11 +4532,11 @@ function MembersManager({ clientId }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>UsuÃ¡rios vinculados</p>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Usuários vinculados</p>
         {members === null ? (
           <Loader2 size={18} className="animate-spin" style={{ color: 'var(--accent)' }} />
         ) : members.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum usuÃ¡rio vinculado ainda.</p>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum usuário vinculado ainda.</p>
         ) : (
           members.map((m) => (
             <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg p-2.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -4552,7 +4548,7 @@ function MembersManager({ clientId }) {
                   <option value="visualizador">Visualizador</option>
                   <option value="admin">Admin</option>
                 </select>
-                <IconButton title="Remover vÃ­nculo" danger onClick={() => removeMember(m.id)}><Trash2 size={14} /></IconButton>
+                <IconButton title="Remover vínculo" danger onClick={() => removeMember(m.id)}><Trash2 size={14} /></IconButton>
               </div>
             </div>
           ))
@@ -4636,7 +4632,7 @@ function PageStyles() {
       input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
       input[type="color"] { padding: 2px; background: var(--surface-raised); }
 
-      /* ---- Identidade de marca no RVT (cabeÃ§alho, cards, rodapÃ©) ---- */
+      /* ---- Identidade de marca no RVT (cabeçalho, cards, rodapé) ---- */
       .rvt-brand-band {
         position: relative; background: var(--accent); color: var(--accent-contrast);
         padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;
@@ -4669,7 +4665,7 @@ function PageStyles() {
         display: flex; align-items: center; justify-content: center; flex-shrink: 0;
       }
 
-      /* ---- Fundo da tela de login: emblema real como marca d'Ã¡gua no canto (mescla v1 + v6) ---- */
+      /* ---- Fundo da tela de login: emblema real como marca d'água no canto (mescla v1 + v6) ---- */
       .login-bg { position: relative; min-height: 100vh; background: var(--bg); overflow: hidden; }
       .login-bg::before {
         content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -4715,12 +4711,10 @@ function PageStyles() {
 /* ------------------------------------------------------------------ */
 
 function Root() {
-  const { isOwner, memberships, role } = useAuth();
+  const { isOwner, memberships } = useAuth();
   const [clients, setClients] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [activeClientId, setActiveClientId] = useState(null);
-  const [showToolChecklist, setShowToolChecklist] = useState(false);
-  const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [authedClientId, setAuthedClientId] = useState(null);
 
   useEffect(() => {
@@ -4733,7 +4727,7 @@ function Root() {
     })();
   }, []);
 
-  // Um usuÃ¡rio que nÃ£o Ã© dono da plataforma sÃ³ enxerga os clientes aos quais foi vinculado (memberships)
+  // Um usuário que não é dono da plataforma só enxerga os clientes aos quais foi vinculado (memberships)
   const visibleClients = React.useMemo(() => {
     if (!clients) return clients;
     if (isOwner) return clients;
@@ -4771,8 +4765,8 @@ function Root() {
   function selectClient(id) {
     setActiveClientId(id);
     const c = clients.find((x) => x.id === id);
-    // O antigo PIN por cliente sÃ³ se aplica quando o Supabase nÃ£o estÃ¡ configurado (modo local legado);
-    // com Supabase, o login jÃ¡ foi validado antes de chegar aqui.
+    // O antigo PIN por cliente só se aplica quando o Supabase não está configurado (modo local legado);
+    // com Supabase, o login já foi validado antes de chegar aqui.
     if (supabase || !c || !c.user) { setAuthedClientId(id); saveLastClientId(id); }
   }
   function handleLoginSuccess() { setAuthedClientId(activeClientId); saveLastClientId(activeClientId); }
@@ -4787,7 +4781,7 @@ function Root() {
     );
   }
 
-  // UsuÃ¡rio vinculado a um Ãºnico cliente entra direto nele, sem precisar escolher
+  // Usuário vinculado a um único cliente entra direto nele, sem precisar escolher
   if (!isOwner && !activeClientId && visibleClients.length === 1) {
     setTimeout(() => selectClient(visibleClients[0].id), 0);
     return (
@@ -4797,26 +4791,8 @@ function Root() {
     );
   }
 
-  const isMajStaff = isOwner || (memberships || []).some((m) => m.role === 'admin' || m.role === 'operador');
-
   if (!activeClientId) {
-    if (showToolChecklist) {
-      return <ToolChecklistScreen clients={visibleClients} role={role} onBack={() => setShowToolChecklist(false)} />;
-    }
-    
-
-    return (
-      <div>
-        {isMajStaff && (
-          <div className="p-4 flex justify-end">
-            <button onClick={() => setShowToolChecklist(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#8B2F2F' }}>
-              Checklist de Ferramentas
-            </button>
-          </div>
-        )}
-        <ClientSelector clients={visibleClients} canManage={isOwner} onSelect={selectClient} onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient} />
-      </div>
-    );
+    return <ClientSelector clients={visibleClients} canManage={isOwner} onSelect={selectClient} onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient} />;
   }
 
   const activeClient = clients.find((c) => c.id === activeClientId);
@@ -4849,7 +4825,7 @@ class ErrorBoundary extends React.Component {
     return { error };
   }
   componentDidCatch(error, info) {
-    console.error('Erro na aplicaÃ§Ã£o:', error, info);
+    console.error('Erro na aplicação:', error, info);
   }
   render() {
     if (this.state.error) {
