@@ -1612,7 +1612,7 @@ function RvtDetail({ report, client, onBack }) {
             </div>
           </div>
           <div className="text-right" style={{ position: 'relative', zIndex: 1 }}>
-            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÉCNICA</p>
+            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÃ‰CNICA</p>
             <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>RVT · {formatDateBR(report.data)}</p>
           </div>
         </div>
