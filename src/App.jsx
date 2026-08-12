@@ -1206,6 +1206,9 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
           <div className="text-xs mt-1.5 mono" style={{ color: 'var(--text-secondary)' }}>
             Última manutenção: {formatDateBR(status && status.lastMaintenance)}
           </div>
+          <div className="text-xs mt-0.5 mono" style={{ color: 'var(--text-secondary)' }}>
+            Última inspeção: {formatDateBR(status && status.lastInspection)}
+          </div>
           {!!indicadorCount && (
             <div className="text-xs mt-1 flex items-center gap-1" style={{ color: 'var(--accent)' }}>
               <Activity size={11} /> {indicadorCount} registro{indicadorCount === 1 ? '' : 's'} no Indicador
