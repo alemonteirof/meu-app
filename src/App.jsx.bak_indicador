@@ -2908,7 +2908,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       )}
       {modal?.type === 'indicador' && (
         <Modal title={modal.mode === 'create' ? 'Novo registro do Indicador' : 'Editar registro'} onClose={closeModal} wide>
-          <IndicadorForm initial={modal.initial} data={data} areaSuggestions={[...new Set((data.indicador || []).map((r) => r.area).filter(Boolean))].sort()}
+          <IndicadorForm initial={modal.initial} areaSuggestions={[...new Set((data.indicador || []).map((r) => r.area).filter(Boolean))].sort()}
             onSubmit={submitIndicador} onCancel={closeModal} />
         </Modal>
       )}
