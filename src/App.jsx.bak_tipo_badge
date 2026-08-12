@@ -2833,21 +2833,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       total = list.length;
       const linked = list.map((r) => {
         const deviceId = matchIndicadorRecordToDevice(r, prev);
-        if (deviceId) {
-          matched += 1;
-          return { ...r, deviceId, categoria: 'devices' };
-        }
-        if (r.deviceId) {
-          // já estava vinculado manualmente (RVT, manutenção/inspeção direta ou seletor do Indicador) — preserva
-          matched += 1;
-          return r;
-        }
-        return { ...r, deviceId: '' };
+        if (deviceId) matched += 1;
+        return deviceId ? { ...r, deviceId, categoria: 'devices' } : { ...r, deviceId: '' };
       });
       return { ...prev, indicador: linked };
     });
     return { matched, total, unmatched: total - matched };
   }
+
   function submitMaintenance(values) {
     const { category, id } = modal.context;
     const fields = resolveIndicadorFields(data, category, modal.item);
@@ -2911,18 +2904,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     setConfirmState(null);
   }
 
-  function submitBulkInspection(values) {
-    const { category, ids } = modal.context;
-    updateData((prev) => {
-      const logEntries = ids.map((id) => ({ id: uid(), category, itemId: id, date: values.lastInspection || todayISO(), operationalStatus: values.operationalStatus || '' }));
-      return {
-        ...prev,
-        [category]: prev[category].map((it) => (ids.includes(it.id) ? { ...it, ...values } : it)),
-        inspectionLog: [...logEntries, ...(prev.inspectionLog || [])],
-      };
-    });
-    closeModal();
-  }
   function submitInspection(values) {
     const { category, id } = modal.context;
     const fields = resolveIndicadorFields(data, category, modal.item);
@@ -3955,12 +3936,6 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {ctx && <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}>Vinculado</span>}
-                    <span className="text-xs px-2 py-1 rounded-md" style={{
-                      color: r.tipo === 'inspecao' ? '#3B82F6' : r.tipo === 'manutencao' ? '#F59E0B' : 'var(--status-danger)',
-                      border: `1px solid ${r.tipo === 'inspecao' ? '#3B82F6' : r.tipo === 'manutencao' ? '#F59E0B' : 'var(--status-danger)'}`,
-                    }}>
-                      {r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha'}
-                    </span>
                     <span className="text-xs px-2 py-1 rounded-md" style={{ color: indicatorStatusColor(r.status), border: `1px solid ${indicatorStatusColor(r.status)}` }}>
                       {r.status || 'Sem status'}
                     </span>

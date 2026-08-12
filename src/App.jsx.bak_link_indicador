@@ -2078,35 +2078,10 @@ function BulkInspectionForm({ count, onSubmit, onCancel }) {
   );
 }
 
-function resolveIndicadorFields(data, category, item) {
-  if (category === 'devices') {
-    const loop = data.loops.find((l) => l.id === item.loopId);
-    const panel = data.panels.find((p) => p.id === loop?.panelId);
-    const tipoLabel = DEVICE_TYPE_MAP[item.type]?.label || 'Dispositivo';
-    return {
-      etiqueta: item.description || `${tipoLabel} ${item.address}`,
-      endereco: item.address, laco: loop?.name || '', painel: panel?.name || '',
-      equipamento: tipoLabel + (item.modelo ? ` (${item.modelo})` : ''), area: '',
-    };
-  }
-  if (category === 'nacs') {
-    const panel = data.panels.find((p) => p.id === item.panelId);
-    return { etiqueta: item.name, endereco: '', laco: '', painel: panel?.name || '', equipamento: 'Circuito NAC', area: '' };
-  }
-  if (category === 'pumpDevices') {
-    return { etiqueta: item.name, endereco: '', laco: '', painel: '', equipamento: item.type || 'Casa de Bombas', area: '' };
-  }
-  if (category === 'gasDetectors') {
-    return { etiqueta: item.name, endereco: '', laco: '', painel: '', equipamento: 'Detector de Gás', area: '' };
-  }
-  return { etiqueta: item.name || '', endereco: '', laco: '', painel: '', equipamento: '', area: '' };
-}
-
 function MaintenanceForm({ item, onSubmit, onCancel }) {
   const [v, setV] = useState({
     date: todayISO(), technician: '', description: '', tipo: 'preventiva',
     intervalMonths: item.intervalMonths || '', nextDate: item.nextMaintenance || '',
-    falha: '', status: 'Resolvido', explanacao: '', solucao: '',
   });
   function handleIntervalChange(months) {
     setV((prev) => ({ ...prev, intervalMonths: months, nextDate: addMonthsToDate(prev.date, months) || prev.nextDate }));
@@ -2130,27 +2105,16 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
       </div>
       <Field label="Observações / serviço realizado"><textarea rows={3} className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Teste funcional, limpeza, troca de bateria..." /></Field>
-      <Field label="Falha encontrada (opcional)"><input className={inputCls} value={v.falha}
-        onChange={(e) => setV({ ...v, falha: e.target.value })} placeholder="Deixe em branco se não houve problema" /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Status">
-          <select className={inputCls} value={v.status} onChange={(e) => setV({ ...v, status: e.target.value })}>
-            {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Field>
         <Field label="Periodicidade">
           <select className={inputCls} value={v.intervalMonths} onChange={(e) => handleIntervalChange(e.target.value)}>
             <option value="">Definir manualmente</option>
             {INTERVAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
+        <Field label="Próxima manutenção"><input type="date" className={inputCls} value={v.nextDate}
+          onChange={(e) => setV({ ...v, nextDate: e.target.value })} /></Field>
       </div>
-      <Field label="Próxima manutenção"><input type="date" className={inputCls} value={v.nextDate}
-        onChange={(e) => setV({ ...v, nextDate: e.target.value })} /></Field>
-      <Field label="Explanação (opcional)"><textarea rows={2} className={inputCls} value={v.explanacao}
-        onChange={(e) => setV({ ...v, explanacao: e.target.value })} /></Field>
-      <Field label="Solução (opcional)"><textarea rows={2} className={inputCls} value={v.solucao}
-        onChange={(e) => setV({ ...v, solucao: e.target.value })} /></Field>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Registrar</Button>
@@ -2165,14 +2129,11 @@ function InspectionForm({ item, onSubmit, onCancel }) {
     appearance: item.appearance || '',
     localComm: item.localComm || '',
     networkComm: item.networkComm || '',
-    lastInspection: item.lastInspection || todayISO(),
+    lastInspection: item.lastInspection || '',
     nextInspection: item.nextInspection || '',
-    technician: '', falha: '',
   });
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
-      <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
-        onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do técnico" /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Status">
           <select className={inputCls} value={v.operationalStatus} onChange={(e) => setV({ ...v, operationalStatus: e.target.value })}>
@@ -2203,8 +2164,6 @@ function InspectionForm({ item, onSubmit, onCancel }) {
         <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.nextInspection}
           onChange={(e) => setV({ ...v, nextInspection: e.target.value })} /></Field>
       </div>
-      <Field label="Observação / falha encontrada (opcional)"><input className={inputCls} value={v.falha}
-        onChange={(e) => setV({ ...v, falha: e.target.value })} placeholder="Deixe em branco se não houve problema" /></Field>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Salvar inspeção</Button>
@@ -2833,47 +2792,16 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       total = list.length;
       const linked = list.map((r) => {
         const deviceId = matchIndicadorRecordToDevice(r, prev);
-        if (deviceId) {
-          matched += 1;
-          return { ...r, deviceId, categoria: 'devices' };
-        }
-        if (r.deviceId) {
-          // já estava vinculado manualmente (RVT, manutenção/inspeção direta ou seletor do Indicador) — preserva
-          matched += 1;
-          return r;
-        }
-        return { ...r, deviceId: '' };
+        if (deviceId) matched += 1;
+        return deviceId ? { ...r, deviceId, categoria: 'devices' } : { ...r, deviceId: '' };
       });
       return { ...prev, indicador: linked };
     });
     return { matched, total, unmatched: total - matched };
   }
+
   function submitMaintenance(values) {
     const { category, id } = modal.context;
-    const fields = resolveIndicadorFields(data, category, modal.item);
-    const falhaTexto = (values.falha || '').trim() || 'Realizado sem apontamentos';
-    const statusFinal = values.status || 'Resolvido';
-    const novoIndicador = {
-      id: uid(), tipo: 'manutencao', deviceId: id, categoria: category,
-      etiqueta: fields.etiqueta, endereco: fields.endereco, laco: fields.laco, painel: fields.painel,
-      equipamento: fields.equipamento, area: fields.area,
-      falha: falhaTexto, descritivo: values.description || '', status: statusFinal,
-      explanacao: values.explanacao || '', dataDiagnostico: values.date,
-      dataIntervencao1: values.date, dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
-      dataSolucao: statusFinal === 'Resolvido' ? values.date : '',
-      solucao: values.solucao || '', fotos: [],
-    };
-    const novoRvt = {
-      id: uid(), data: values.date, tecnico: values.technician,
-      itens: [{
-        id: uid(), deviceId: id, categoria: category,
-        etiqueta: fields.etiqueta, endereco: fields.endereco, laco: fields.laco, painel: fields.painel,
-        equipamento: fields.equipamento, area: fields.area,
-        falha: falhaTexto, descritivo: values.description || '', status: statusFinal,
-        explanacao: values.explanacao || '', dataIntervencao: values.date,
-        solucao: values.solucao || '', fotos: [],
-      }],
-    };
     updateData((prev) => {
       const list = prev[category];
       const logEntry = { id: uid(), category, itemId: id, date: values.date, technician: values.technician, description: values.description, nextDate: values.nextDate || '', tipo: values.tipo || 'preventiva' };
@@ -2883,8 +2811,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           ? { ...it, lastMaintenance: values.date, nextMaintenance: values.nextDate || '', intervalMonths: values.intervalMonths || it.intervalMonths }
           : it)),
         maintenanceLog: [logEntry, ...prev.maintenanceLog],
-        indicador: [novoIndicador, ...(prev.indicador || [])],
-        rvt: [novoRvt, ...(prev.rvt || [])],
       };
     });
     closeModal();
@@ -2911,51 +2837,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     setConfirmState(null);
   }
 
-  function submitBulkInspection(values) {
-    const { category, ids } = modal.context;
-    updateData((prev) => {
-      const logEntries = ids.map((id) => ({ id: uid(), category, itemId: id, date: values.lastInspection || todayISO(), operationalStatus: values.operationalStatus || '' }));
-      return {
-        ...prev,
-        [category]: prev[category].map((it) => (ids.includes(it.id) ? { ...it, ...values } : it)),
-        inspectionLog: [...logEntries, ...(prev.inspectionLog || [])],
-      };
-    });
-    closeModal();
-  }
   function submitInspection(values) {
     const { category, id } = modal.context;
-    const fields = resolveIndicadorFields(data, category, modal.item);
-    const falhaTexto = (values.falha || '').trim() || 'Realizado sem apontamentos';
-    const dataInspecao = values.lastInspection || todayISO();
-    const resumo = [values.operationalStatus, values.appearance, values.localComm, values.networkComm].filter(Boolean).join(' · ');
-    const novoIndicador = {
-      id: uid(), tipo: 'inspecao', deviceId: id, categoria: category,
-      etiqueta: fields.etiqueta, endereco: fields.endereco, laco: fields.laco, painel: fields.painel,
-      equipamento: fields.equipamento, area: fields.area,
-      falha: falhaTexto, descritivo: resumo, status: 'Resolvido',
-      explanacao: '', dataDiagnostico: dataInspecao,
-      dataIntervencao1: dataInspecao, dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
-      dataSolucao: dataInspecao, solucao: '', fotos: [],
-    };
-    const novoRvt = {
-      id: uid(), data: dataInspecao, tecnico: values.technician || '',
-      itens: [{
-        id: uid(), deviceId: id, categoria: category,
-        etiqueta: fields.etiqueta, endereco: fields.endereco, laco: fields.laco, painel: fields.painel,
-        equipamento: fields.equipamento, area: fields.area,
-        falha: falhaTexto, descritivo: resumo, status: 'Resolvido',
-        explanacao: '', dataIntervencao: dataInspecao, solucao: '', fotos: [],
-      }],
-    };
     updateData((prev) => {
-      const logEntry = { id: uid(), category, itemId: id, date: dataInspecao, operationalStatus: values.operationalStatus || '' };
+      const logEntry = { id: uid(), category, itemId: id, date: values.lastInspection || todayISO(), operationalStatus: values.operationalStatus || '' };
       return {
         ...prev,
         [category]: prev[category].map((it) => (it.id === id ? { ...it, ...values } : it)),
         inspectionLog: [logEntry, ...(prev.inspectionLog || [])],
-        indicador: [novoIndicador, ...(prev.indicador || [])],
-        rvt: [novoRvt, ...(prev.rvt || [])],
       };
     });
     closeModal();
@@ -3955,12 +3844,6 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {ctx && <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--accent)', border: '1px solid var(--accent)' }}>Vinculado</span>}
-                    <span className="text-xs px-2 py-1 rounded-md" style={{
-                      color: r.tipo === 'inspecao' ? '#3B82F6' : r.tipo === 'manutencao' ? '#F59E0B' : 'var(--status-danger)',
-                      border: `1px solid ${r.tipo === 'inspecao' ? '#3B82F6' : r.tipo === 'manutencao' ? '#F59E0B' : 'var(--status-danger)'}`,
-                    }}>
-                      {r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha'}
-                    </span>
                     <span className="text-xs px-2 py-1 rounded-md" style={{ color: indicatorStatusColor(r.status), border: `1px solid ${indicatorStatusColor(r.status)}` }}>
                       {r.status || 'Sem status'}
                     </span>

@@ -2833,21 +2833,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       total = list.length;
       const linked = list.map((r) => {
         const deviceId = matchIndicadorRecordToDevice(r, prev);
-        if (deviceId) {
-          matched += 1;
-          return { ...r, deviceId, categoria: 'devices' };
-        }
-        if (r.deviceId) {
-          // já estava vinculado manualmente (RVT, manutenção/inspeção direta ou seletor do Indicador) — preserva
-          matched += 1;
-          return r;
-        }
-        return { ...r, deviceId: '' };
+        if (deviceId) matched += 1;
+        return deviceId ? { ...r, deviceId, categoria: 'devices' } : { ...r, deviceId: '' };
       });
       return { ...prev, indicador: linked };
     });
     return { matched, total, unmatched: total - matched };
   }
+
   function submitMaintenance(values) {
     const { category, id } = modal.context;
     const fields = resolveIndicadorFields(data, category, modal.item);
