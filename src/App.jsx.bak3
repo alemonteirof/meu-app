@@ -748,7 +748,7 @@ const OPERATIONAL_STATUS_OPTIONS = [
   { value: 'em_manutencao', label: 'Em manutenção' },
 ];
 const APPEARANCE_OPTIONS = [
-  { value: 'otimo', label: 'Ótimo' },
+  { value: 'otimo', label: 'Ã“timo' },
   { value: 'bom', label: 'Bom' },
   { value: 'aceitavel', label: 'Aceitável' },
   { value: 'necessita_troca', label: 'Necessita troca' },
@@ -1204,7 +1204,7 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
           </div>
           {meta && <div className="text-xs mt-1 truncate" style={{ color: 'var(--text-secondary)' }}>{meta}</div>}
           <div className="text-xs mt-1.5 mono" style={{ color: 'var(--text-secondary)' }}>
-            Última manutenção: {formatDateBR(status && status.lastMaintenance)}
+            Ãšltima manutenção: {formatDateBR(status && status.lastMaintenance)}
           </div>
           {!!indicadorCount && (
             <div className="text-xs mt-1 flex items-center gap-1" style={{ color: 'var(--accent)' }}>
@@ -1239,7 +1239,7 @@ function MaintenanceScheduleFields({ values, setValues }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Última manutenção">
+        <Field label="Ãšltima manutenção">
           <input type="date" className={inputCls} value={values.lastMaintenance || ''}
             onChange={(e) => setValues((v) => ({ ...v, lastMaintenance: e.target.value }))} />
         </Field>
@@ -1612,7 +1612,7 @@ function RvtDetail({ report, client, onBack }) {
             </div>
           </div>
           <div className="text-right" style={{ position: 'relative', zIndex: 1 }}>
-            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÃ‰CNICA</p>
+            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÃ“RIO DE VISITA TÃ‰CNICA</p>
             <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>RVT · {formatDateBR(report.data)}</p>
           </div>
         </div>
@@ -1820,7 +1820,7 @@ function IndicadorForm({ initial, areaSuggestions, onSubmit, onCancel }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.etiqueta.trim() || v.falha.trim()) onSubmit(v); }}>
       <Field label="Etiqueta / Localização *"><input autoFocus className={inputCls} value={v.etiqueta}
-        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: SECURITY OFFICE CORREDOR SL REUNIÃO" required /></Field>
+        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: SECURITY OFFICE CORREDOR SL REUNIÃƒO" required /></Field>
       <div className="grid grid-cols-3 gap-3">
         <Field label="Endereço"><input className={`${inputCls} mono`} value={v.endereco}
           onChange={(e) => setV({ ...v, endereco: e.target.value })} placeholder="017" /></Field>
@@ -2004,7 +2004,7 @@ function InspectionForm({ item, onSubmit, onCancel }) {
             {COMM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="Última inspeção"><input type="date" className={inputCls} value={v.lastInspection}
+        <Field label="Ãšltima inspeção"><input type="date" className={inputCls} value={v.lastInspection}
           onChange={(e) => setV({ ...v, lastInspection: e.target.value })} /></Field>
         <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.nextInspection}
           onChange={(e) => setV({ ...v, nextInspection: e.target.value })} /></Field>
@@ -3802,7 +3802,7 @@ function ChartsView({ data }) {
             <div className="grid sm:grid-cols-2 gap-4">
               <ChartCard title="Por tipo" subtitle="Preventiva, corretiva e inspeção"><SimplePieChart data={tipoData} /></ChartCard>
               <ChartCard title="Por categoria de equipamento"><SimpleBarChart data={categoryData} /></ChartCard>
-              <ChartCard title="Últimos 12 meses" subtitle="Volume por mês"><SimpleBarChart data={monthData} emptyLabel="Sem manutenções nos últimos 12 meses." /></ChartCard>
+              <ChartCard title="Ãšltimos 12 meses" subtitle="Volume por mês"><SimpleBarChart data={monthData} emptyLabel="Sem manutenções nos últimos 12 meses." /></ChartCard>
             </div>
           )}
         </div>
@@ -3891,7 +3891,7 @@ function ReportView({ data, client, filters, setFilters }) {
             <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Identificação', 'Localização', 'Status', 'Aparência', 'Com. local', 'Com. rede', 'Última insp.', 'Próxima insp.'].map((h) => (
+                  {['Identificação', 'Localização', 'Status', 'Aparência', 'Com. local', 'Com. rede', 'Ãšltima insp.', 'Próxima insp.'].map((h) => (
                     <th key={h} className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--text-secondary)' }}>{h}</th>
                   ))}
                 </tr>
@@ -4072,7 +4072,7 @@ function matchIndicadorRecordToDevice(record, data) {
 }
 
 function exportDevicesCsv(data) {
-  const header = ['Painel', 'Modelo do Painel', 'Laço', 'Endereço', 'Categoria', 'Modelo do Dispositivo', 'Descrição', 'Última Manutenção', 'Próxima Manutenção'];
+  const header = ['Painel', 'Modelo do Painel', 'Laço', 'Endereço', 'Categoria', 'Modelo do Dispositivo', 'Descrição', 'Ãšltima Manutenção', 'Próxima Manutenção'];
   const rows = data.devices.map((d) => {
     const loop = data.loops.find((l) => l.id === d.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
@@ -4290,7 +4290,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       {lastImport && (
         <div className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <div>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Última importação</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Ãšltima importação</p>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{lastImport.summary}</p>
           </div>
           {confirmUndo ? (
