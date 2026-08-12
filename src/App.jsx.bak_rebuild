@@ -1723,7 +1723,6 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
   const reports = data.rvt || [];
   const [mode, setMode] = useState('list');
   const [viewingId, setViewingId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
   const [visitDate, setVisitDate] = useState(todayISO());
   const [tecnico, setTecnico] = useState('');
   const [queue, setQueue] = useState([]);
@@ -1731,27 +1730,10 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
   function handleAddItem(item) { setQueue((prev) => [...prev, item]); }
   function handleRemoveItem(id) { setQueue((prev) => prev.filter((it) => it.id !== id)); }
 
-  function handleStartEdit(report) {
-    setEditingId(report.id);
-    setVisitDate(report.data);
-    setTecnico(report.tecnico || '');
-    setQueue(report.itens || []);
-    setMode('new');
-  }
-
-  function handleCancelForm() {
-    setMode('list');
-    setEditingId(null);
-    setVisitDate(todayISO());
-    setTecnico('');
-    setQueue([]);
-  }
-
   function handleSave() {
     if (!visitDate || queue.length === 0) return;
-    onSaveReport({ id: editingId || uid(), data: visitDate, tecnico, itens: queue });
+    onSaveReport({ id: uid(), data: visitDate, tecnico, itens: queue });
     setVisitDate(todayISO()); setTecnico(''); setQueue([]);
-    setEditingId(null);
     setMode('list');
   }
 
@@ -1762,8 +1744,8 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{editingId ? 'Editar Relatório de Visita Técnica (RVT)' : 'Novo Relatório de Visita Técnica (RVT)'}</h2>
-          <Button variant="secondary" onClick={handleCancelForm}><ArrowLeft size={15} /> Cancelar</Button>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Novo Relatório de Visita Técnica (RVT)</h2>
+          <Button variant="secondary" onClick={() => { setMode('list'); setQueue([]); }}><ArrowLeft size={15} /> Cancelar</Button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1789,7 +1771,7 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
         <RvtItemForm data={data} onAdd={handleAddItem} />
 
         <Button variant="primary" onClick={handleSave} disabled={queue.length === 0}>
-          <CheckCircle2 size={16} /> {editingId ? 'Salvar alterações' : 'Salvar relatório de visita'} ({queue.length} item{queue.length === 1 ? '' : 's'})
+          <CheckCircle2 size={16} /> Salvar relatório de visita ({queue.length} item{queue.length === 1 ? '' : 's'})
         </Button>
       </div>
     );
@@ -1819,7 +1801,6 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => setViewingId(r.id)}><FileText size={15} /> Ver / Imprimir</Button>
-                {canEdit && <Button variant="secondary" onClick={() => handleStartEdit(r)}><Pencil size={15} /> Editar</Button>}
                 {canEdit && <IconButton title="Excluir relatório" danger onClick={() => onDeleteReport(r)}><Trash2 size={15} /></IconButton>}
               </div>
             </div>
@@ -2022,54 +2003,6 @@ function IndicadorForm({ initial, data, areaSuggestions, onSubmit, onCancel }) {
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit">Salvar registro</Button>
-      </FormActions>
-    </form>
-  );
-}
-
-function BulkInspectionForm({ count, onSubmit, onCancel }) {
-  const [v, setV] = useState({
-    operationalStatus: '', appearance: '', localComm: '', networkComm: '',
-    lastInspection: todayISO(), nextInspection: '',
-  });
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
-      <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-        Este registro será aplicado aos <strong>{count} dispositivos selecionados</strong>.
-      </p>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Status">
-          <select className={inputCls} value={v.operationalStatus} onChange={(e) => setV({ ...v, operationalStatus: e.target.value })}>
-            <option value="">Não avaliado</option>
-            {OPERATIONAL_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Aparência / visual">
-          <select className={inputCls} value={v.appearance} onChange={(e) => setV({ ...v, appearance: e.target.value })}>
-            <option value="">Não avaliado</option>
-            {APPEARANCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Comunicação local">
-          <select className={inputCls} value={v.localComm} onChange={(e) => setV({ ...v, localComm: e.target.value })}>
-            <option value="">Não avaliado</option>
-            {COMM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Comunicação em rede">
-          <select className={inputCls} value={v.networkComm} onChange={(e) => setV({ ...v, networkComm: e.target.value })}>
-            <option value="">Não avaliado</option>
-            {COMM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Última inspeção"><input type="date" className={inputCls} value={v.lastInspection}
-          onChange={(e) => setV({ ...v, lastInspection: e.target.value })} /></Field>
-        <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.nextInspection}
-          onChange={(e) => setV({ ...v, nextInspection: e.target.value })} /></Field>
-      </div>
-      <FormActions>
-        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Registrar em {count} dispositivo(s)</Button>
       </FormActions>
     </form>
   );
@@ -2663,15 +2596,14 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         fotos: it.fotos || [],
         origemRvt: report.id,
       }));
-      const rvtSemAntigo = (prev.rvt || []).filter((r) => r.id !== report.id);
-      const indicadorSemAntigo = (prev.indicador || []).filter((it) => it.origemRvt !== report.id);
       return {
         ...prev,
-        rvt: [{ ...report }, ...rvtSemAntigo],
-        indicador: [...indicadorEntries, ...indicadorSemAntigo],
+        rvt: [{ ...report }, ...(prev.rvt || [])],
+        indicador: [...indicadorEntries, ...(prev.indicador || [])],
       };
     });
   }
+
   function deleteRvtReport(id) {
     updateData((prev) => ({ ...prev, rvt: (prev.rvt || []).filter((r) => r.id !== id) }));
     setConfirmState(null);
@@ -2770,7 +2702,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   function openMaintainModal(category, item, label) { setModal({ type: 'maintenance', context: { category, id: item.id, label }, item }); }
   function openInspectModal(category, item, label) { setModal({ type: 'inspection', context: { category, id: item.id, label }, item }); }
   function openBulkMaintainModal(category, ids) { setModal({ type: 'bulkMaintenance', context: { category, ids } }); }
-  function openBulkInspectModal(category, ids) { setModal({ type: 'bulkInspection', context: { category, ids } }); }
 
   if (!loaded || !data) {
     return (
@@ -2783,9 +2714,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   const items = allTrackableItems(data);
   const counts = { overdue: 0, soon: 0, ok: 0, none: 0 };
-    items.forEach((it) => { counts[computeStatus(it.nextInspection).key]++; });
+  items.forEach((it) => { counts[computeStatus(it.nextMaintenance).key]++; });
   const attentionItems = items
-        .filter((it) => ['overdue', 'soon'].includes(computeStatus(it.nextInspection).key))
+    .filter((it) => ['overdue', 'soon'].includes(computeStatus(it.nextMaintenance).key))
     .sort((a, b) => (a.nextMaintenance || '').localeCompare(b.nextMaintenance || ''));
 
   const rootStyle = { background: 'var(--bg)' };
@@ -2881,7 +2812,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onMaintainNac={(n) => openMaintainModal('nacs', n, n.name)}
             onInspectNac={(n) => openInspectModal('nacs', n, n.name)}
             onBulkMaintainDevices={(ids) => openBulkMaintainModal('devices', ids)}
-            onBulkInspectDevices={(ids) => openBulkInspectModal('devices', ids)}
             onBulkDeleteDevices={(ids) => setConfirmState({ title: 'Excluir dispositivos selecionados', message: `Excluir ${ids.length} dispositivo(s) selecionado(s)? Essa ação não pode ser desfeita.`, onConfirm: () => deleteDevicesBulk(ids) })}
           />
         )}
@@ -3186,7 +3116,7 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
           <div className="grid sm:grid-cols-2 gap-3">
             {attentionItems.slice(0, 12).map((it) => (
               <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
-                status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }}
+                status={{ ...computeStatus(it.nextMaintenance), lastMaintenance: it.lastMaintenance, operationalStatus: it.operationalStatus }}
                 onMaintain={canEdit ? () => onMaintain(it) : undefined} onInspect={canEdit ? () => onInspect(it) : undefined} />
             ))}
           </div>
@@ -3254,8 +3184,8 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
             const nacs = data.nacs.filter((n) => n.panelId === panel.id);
             const deviceCount = data.devices.filter((d) => loops.some((l) => l.id === d.loopId)).length;
             const statuses = [
-                            ...data.devices.filter((d) => loops.some((l) => l.id === d.loopId)).map((d) => computeStatus(d.nextInspection)),
-                            ...nacs.map((n) => computeStatus(n.nextInspection)),
+              ...data.devices.filter((d) => loops.some((l) => l.id === d.loopId)).map((d) => computeStatus(d.nextMaintenance)),
+              ...nacs.map((n) => computeStatus(n.nextMaintenance)),
             ];
             const status = worstStatus(statuses);
             const isSelected = selectedIds.includes(panel.id);
@@ -3298,7 +3228,7 @@ function PanelDetail({
   data, panelId, tab, setTab, canEdit, expandedLoops, setExpandedLoops, onBack, onEditPanel, onDeletePanel,
   onCreateLoop, onEditLoop, onDeleteLoop, onCreateNac, onEditNac, onDeleteNac,
   onCreateDevice, onEditDevice, onDeleteDevice, onMaintainDevice, onInspectDevice, onMaintainNac, onInspectNac,
-  onBulkMaintainDevices, onBulkInspectDevices, onBulkDeleteDevices,
+  onBulkMaintainDevices, onBulkDeleteDevices,
 }) {
   const panel = data.panels.find((p) => p.id === panelId);
   const [deviceSearch, setDeviceSearch] = useState('');
@@ -3357,7 +3287,6 @@ function PanelDetail({
                 <div className="flex gap-2">
                   <Button variant="danger" onClick={() => { onBulkDeleteDevices(selectedIds); exitSelectMode(); }}><Trash2 size={15} /> Excluir</Button>
                   <Button variant="primary" onClick={() => { onBulkMaintainDevices(selectedIds); exitSelectMode(); }}><Wrench size={15} /> Registrar manutenção</Button>
-                  <Button variant="secondary" onClick={() => { onBulkInspectDevices(selectedIds); exitSelectMode(); }}><Search size={15} /> Registrar inspeção</Button>
                 </div>
               )}
             </div>
@@ -3381,7 +3310,7 @@ function PanelDetail({
                   ? allDevices.filter((d) => `${d.address} ${d.modelo || ''} ${d.description || ''}`.toLowerCase().includes(q))
                   : allDevices;
                 if (q && devices.length === 0) return null;
-                                const status = worstStatus(allDevices.map((d) => computeStatus(d.nextInspection)));
+                const status = worstStatus(allDevices.map((d) => computeStatus(d.nextMaintenance)));
                 const expanded = (q || selectMode) ? true : !!expandedLoops[loop.id];
                 return (
                   <div key={loop.id} className="rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -3411,7 +3340,7 @@ function PanelDetail({
                         ) : devices.map((d) => (
                           <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} photo={photoForModelo(data, d.modelo)} address={d.address}
                             title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
-                            status={{ ...computeStatus(d.nextInspection), lastMaintenance: d.lastMaintenance, lastInspection: d.lastInspection, operationalStatus: d.operationalStatus }}
+                            status={{ ...computeStatus(d.nextMaintenance), lastMaintenance: d.lastMaintenance, operationalStatus: d.operationalStatus }}
                             indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
                             onInspect={canEdit ? () => onInspectDevice(d) : undefined} onMaintain={canEdit ? () => onMaintainDevice(d) : undefined}
@@ -3441,7 +3370,7 @@ function PanelDetail({
             <div className="grid sm:grid-cols-2 gap-3">
               {nacs.map((n) => (
                 <TrackableCard key={n.id} icon={Bell} address={null} title={n.name} meta={n.description}
-                  status={{ ...computeStatus(n.nextInspection), lastMaintenance: n.lastMaintenance, lastInspection: n.lastInspection, operationalStatus: n.operationalStatus }}
+                  status={{ ...computeStatus(n.nextMaintenance), lastMaintenance: n.lastMaintenance, operationalStatus: n.operationalStatus }}
                   onInspect={canEdit ? () => onInspectNac(n) : undefined} onMaintain={canEdit ? () => onMaintainNac(n) : undefined}
                   onEdit={canEdit ? () => onEditNac(n) : undefined} onDelete={canEdit ? () => onDeleteNac(n) : undefined} />
               ))}
@@ -3471,7 +3400,7 @@ function SimpleListView({ title, description, icon, data, category, canEdit, onC
         <div className="grid sm:grid-cols-2 gap-3">
           {list.map((item) => (
             <TrackableCard key={item.id} icon={icon} photo={photoForModelo(data, item.modelo)} address={null} title={item.name} meta={renderMeta(item)}
-              status={{ ...computeStatus(item.nextInspection), lastMaintenance: item.lastMaintenance, lastInspection: item.lastInspection, operationalStatus: item.operationalStatus }}
+              status={{ ...computeStatus(item.nextMaintenance), lastMaintenance: item.lastMaintenance, operationalStatus: item.operationalStatus }}
               onInspect={canEdit ? () => onInspect(item) : undefined} onMaintain={canEdit ? () => onMaintain(item) : undefined}
               onEdit={canEdit ? () => onEdit(item) : undefined} onDelete={canEdit ? () => onDelete(item) : undefined} />
           ))}
