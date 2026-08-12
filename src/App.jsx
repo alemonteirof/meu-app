@@ -4797,7 +4797,7 @@ function Root() {
     );
   }
 
-  const isMajStaff = isOwner || (memberships || []).some((m) => m.role === 'admin' || m.role === 'operador');
+const isMajStaff = isOwner || role === 'admin' || role === 'operador';
 
   if (!activeClientId) {
     if (showToolChecklist) {
