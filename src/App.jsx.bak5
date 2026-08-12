@@ -218,7 +218,7 @@ const LAST_CLIENT_KEY = 'pci-ultimo-cliente-v1';
 function clientDataKey(id) { return `pci-dados-cliente-${id}`; }
 
 /* ------------------------------------------------------------------ */
-/* Importação de base de dispositivos — múltiplas marcas de painel     */
+/* Importação de base de dispositivos â€” múltiplas marcas de painel     */
 /* ------------------------------------------------------------------ */
 
 const IMPORT_BRANDS = [
@@ -227,9 +227,9 @@ const IMPORT_BRANDS = [
     label: 'Hochiki / VES',
     models: [
       { value: 'generico', label: 'Não especificar / outro modelo', shortLabel: '', loops: null },
-      { value: 'firenet-plus', label: 'FireNET Plus (Hochiki) / Elite RS (VES) — 1 ou 2 laços', shortLabel: 'FireNET Plus / Elite RS', loops: null },
-      { value: 'latitude', label: 'FireNET L@titude (Hochiki) / L@titude (VES) — 2 a 16 laços', shortLabel: 'FireNET L@titude / L@titude', loops: null },
-      { value: 'firenet', label: 'FireNET (Hochiki, descontinuado — sem equivalente VES) — 2 ou 4 laços', shortLabel: 'FireNET (descontinuado)', loops: null },
+      { value: 'firenet-plus', label: 'FireNET Plus (Hochiki) / Elite RS (VES) â€” 1 ou 2 laços', shortLabel: 'FireNET Plus / Elite RS', loops: null },
+      { value: 'latitude', label: 'FireNET L@titude (Hochiki) / L@titude (VES) â€” 2 a 16 laços', shortLabel: 'FireNET L@titude / L@titude', loops: null },
+      { value: 'firenet', label: 'FireNET (Hochiki, descontinuado â€” sem equivalente VES) â€” 2 ou 4 laços', shortLabel: 'FireNET (descontinuado)', loops: null },
     ],
   },
   {
@@ -318,7 +318,7 @@ function guessDeviceType(brand, code) {
 }
 
 /* Modelo real do módulo Notifier, a partir da coluna "FlashScan Type" do report.
-   hasSub indica se o endereço tem sub-endereços (ex.: 056.01/056.02) — nesse caso, o
+   hasSub indica se o endereço tem sub-endereços (ex.: 056.01/056.02) â€” nesse caso, o
    MINI/DUAL MONITOR é fisicamente um módulo de dupla entrada (FDM-1); sem sub-endereço,
    é um módulo de entrada única (FMM-101). */
 function resolveNotifierModel(flashScanType, hasSub) {
@@ -332,7 +332,7 @@ function resolveNotifierModel(flashScanType, hasSub) {
   if (f.includes('MONITOR') && (f.includes('MINI') || f.includes('DUAL'))) {
     return hasSub ? 'FDM-1' : 'FMM-101';
   }
-  // PS MON (Power Monitor) refere-se a fontes auxiliares — ainda sem um código de
+  // PS MON (Power Monitor) refere-se a fontes auxiliares â€” ainda sem um código de
   // modelo específico definido; por ora mostra o próprio FlashScan Type do report.
   return flashScanType;
 }
@@ -467,7 +467,7 @@ function parseLp1Report(words) {
   }
 
   // Palavras "técnicas" das colunas que ficam entre Nome e Texto (Zona, Flags, Ação,
-  // Setting D/N e os Delays) — usadas só para saber onde o Texto realmente começa, já
+  // Setting D/N e os Delays) â€” usadas só para saber onde o Texto realmente começa, já
   // que não usamos o conteúdo dessas colunas no app.
   const LP1_TYPE_KEYWORD_RE = /\b(Sensor|Common|Input|Output)\b/;
   const LP1_ACTION_WORDS = new Set(['Fire', 'Trouble', 'Supervisory', 'Al', 'Temporal', 'Continuous']);
@@ -483,17 +483,17 @@ function parseLp1Report(words) {
     let idx = 0;
     // Zona (número curto)
     while (idx < tokens.length && /^\d{1,3}$/.test(tokens[idx])) idx++;
-    // Flags — só reconhece os combos realmente usados neste relatório (ver lista acima).
+    // Flags â€” só reconhece os combos realmente usados neste relatório (ver lista acima).
     if (idx < tokens.length && LP1_KNOWN_FLAGS.has(tokens[idx])) idx++;
     // Ação (pode ser "Fire", ou duas palavras como "Supervisory Al")
     while (idx < tokens.length && LP1_ACTION_WORDS.has(tokens[idx])) idx++;
-    // Setting dia/noite — formatos "D2,50"/"N2,50" (com vírgula) ou "D150"/"N150" (sem
+    // Setting dia/noite â€” formatos "D2,50"/"N2,50" (com vírgula) ou "D150"/"N150" (sem
     // vírgula, usado por alguns modelos como ATG-EA). Só checa nas duas posições logo
     // após a Ação (nunca mais adiante), pra não arriscar cortar um código de local que
     // comece com D/N seguido de números (ex.: "N04" de uma coluna).
     if (idx < tokens.length && /^D\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
     if (idx < tokens.length && /^N\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
-    // Delays — números soltos ("00") ou decimais ("0,00", usado por saídas/NAC). Limitado
+    // Delays â€” números soltos ("00") ou decimais ("0,00", usado por saídas/NAC). Limitado
     // a no máximo os dois campos de delay (1º e 2º), pra nunca arriscar comer texto real.
     if (idx < tokens.length && /^\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
     if (idx < tokens.length && /^\d+([.,]\d+)?$/.test(tokens[idx])) idx++;
@@ -503,7 +503,7 @@ function parseLp1Report(words) {
   const rows = [];
   bands.forEach((band, i) => {
     // Monta o texto da linha (exceto o endereço) ordenando os itens da esquerda pra
-    // direita (por x) — não pela posição estimada de cada palavra dentro de um item, já
+    // direita (por x) â€” não pela posição estimada de cada palavra dentro de um item, já
     // que o pdfjs pode juntar várias colunas num único bloco de texto. Itens de uma mesma
     // coluna que quebraram em duas linhas visuais (ex.: "Setting" D acima / N abaixo, ou
     // o Texto que estoura pra uma segunda linha) compartilham x parecido e ficam juntos.
@@ -641,7 +641,7 @@ function notifierSheetToGenericRows(parsedSheet, loopLabel) {
       title: parsedSheet.nodeLabel || 'Painel Notifier',
       installed: installed !== 'false',
     };
-    // endereços com INSTL=False são posições vazias no laço (sem dispositivo físico) —
+    // endereços com INSTL=False são posições vazias no laço (sem dispositivo físico) â€”
     // descartadas abaixo junto com linhas sem código de tipo.
   }).filter((r) => r.address && r.installed && r.type);
 }
@@ -708,7 +708,7 @@ function buildImportEntities(rows, typeMap, brand, opts) {
     } else {
       for (const s of subs) {
         const label = s.label && s.label !== base.label
-          ? (base.label ? `${base.label} — ${s.label}` : s.label)
+          ? (base.label ? `${base.label} â€” ${s.label}` : s.label)
           : (base.label || s.label);
         const modelo = brand === 'notifier' ? resolveNotifierModel(s.flashScanType, true) : s.type;
         devices.push({ loopKey: s.loopKey, address: `${s.baseStr}.${s.sub}`, type: typeMap[s.type] || 'entrada', modelo, label });
@@ -821,7 +821,7 @@ function addMonthsToDate(dateStr, months) {
 }
 
 function formatDateBR(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return 'â€”';
   const [y, m, d] = dateStr.split('-');
   return `${d}/${m}/${y}`;
 }
@@ -853,7 +853,7 @@ function worstStatus(statuses) {
 
 function labelFor(options, value) {
   const found = options.find((o) => o.value === value);
-  return found ? found.label : '—';
+  return found ? found.label : 'â€”';
 }
 
 function operStatusColor(v) {
@@ -998,7 +998,7 @@ function allTrackableItems(data) {
       id: d.id, category: 'devices', panelId: panel ? panel.id : null,
       title: DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo',
       address: d.address, modelo: d.modelo || '',
-      meta: `${panel ? panel.name : '—'} · ${loop ? loop.name : '—'}${d.description ? ' · ' + d.description : ''}`,
+      meta: `${panel ? panel.name : 'â€”'} · ${loop ? loop.name : 'â€”'}${d.description ? ' · ' + d.description : ''}`,
       nextMaintenance: d.nextMaintenance, lastMaintenance: d.lastMaintenance,
       operationalStatus: d.operationalStatus || '', appearance: d.appearance || '',
       localComm: d.localComm || '', networkComm: d.networkComm || '',
@@ -1011,7 +1011,7 @@ function allTrackableItems(data) {
     const panel = data.panels.find((p) => p.id === n.panelId);
     items.push({
       id: n.id, category: 'nacs', panelId: panel ? panel.id : null, title: n.name, address: null, modelo: '',
-      meta: `${panel ? panel.name : '—'} · Circuito de saída${n.description ? ' · ' + n.description : ''}`,
+      meta: `${panel ? panel.name : 'â€”'} · Circuito de saída${n.description ? ' · ' + n.description : ''}`,
       nextMaintenance: n.nextMaintenance, lastMaintenance: n.lastMaintenance,
       operationalStatus: n.operationalStatus || '', appearance: n.appearance || '',
       localComm: n.localComm || '', networkComm: n.networkComm || '',
@@ -1051,13 +1051,13 @@ function getItemLabelAndContext(data, category, itemId) {
     const loop = data.loops.find((l) => l.id === dItem.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
     const typeLabel = DEVICE_TYPE_MAP[dItem.type]?.label || 'Dispositivo';
-    return { label: `${typeLabel} · End. ${dItem.address}`, context: `${panel ? panel.name : '—'} · ${loop ? loop.name : '—'}` };
+    return { label: `${typeLabel} · End. ${dItem.address}`, context: `${panel ? panel.name : 'â€”'} · ${loop ? loop.name : 'â€”'}` };
   }
   if (category === 'nacs') {
     const n = data.nacs.find((x) => x.id === itemId);
     if (!n) return { label: 'Circuito removido', context: '' };
     const panel = data.panels.find((p) => p.id === n.panelId);
-    return { label: n.name, context: panel ? panel.name : '—' };
+    return { label: n.name, context: panel ? panel.name : 'â€”' };
   }
   if (category === 'pumpDevices') {
     const p = data.pumpDevices.find((x) => x.id === itemId);
@@ -1069,7 +1069,7 @@ function getItemLabelAndContext(data, category, itemId) {
     if (!g) return { label: 'Detector removido', context: '' };
     return { label: g.name, context: g.location || 'Detector de gás fixo' };
   }
-  return { label: '—', context: '' };
+  return { label: 'â€”', context: '' };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1161,7 +1161,7 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-/* Sticky action row used by every form — keeps Save/Cancel reachable without
+/* Sticky action row used by every form â€” keeps Save/Cancel reachable without
    scrolling all the way down, even on short mobile viewports. */
 function FormActions({ children }) {
   return (
@@ -1264,7 +1264,7 @@ function PanelForm({ initial, onSubmit, onCancel }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
       <Field label="Identificação do painel *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Painel Central — Térreo" required /></Field>
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Painel Central â€” Térreo" required /></Field>
       <Field label="Localização"><input className={inputCls} value={v.location}
         onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Sala de segurança, Bloco A" /></Field>
       <Field label="Marca / Modelo"><input className={inputCls} value={v.model}
@@ -1300,7 +1300,7 @@ function NacForm({ initial, onSubmit, onCancel }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
       <Field label="Nome / número do circuito (NAC) *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: NAC 1 — Sirenes 1º pavimento" required /></Field>
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: NAC 1 â€” Sirenes 1º pavimento" required /></Field>
       <Field label="Descrição"><input className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Dispositivos conectados: sirenes, strobos..." /></Field>
       <MaintenanceScheduleFields values={v} setValues={setV} />
@@ -1375,7 +1375,7 @@ function GasDetectorForm({ initial, onSubmit, onCancel }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
       <Field label="Identificação *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Detector de gás — Cozinha" required /></Field>
+        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Detector de gás â€” Cozinha" required /></Field>
       <Field label="Gás monitorado">
         <input className={inputCls} list="gas-type-list" value={v.gasType}
           onChange={(e) => setV({ ...v, gasType: e.target.value })} placeholder="Ex.: GLP" />
@@ -1403,7 +1403,7 @@ const RVT_CATEGORY_OPTIONS = [
   { value: 'outro', label: 'Outro / não listado' },
 ];
 
-/** Formulário de "adicionar item" do RVT — os campos de local (painel/laço/dispositivo)
+/** Formulário de "adicionar item" do RVT â€” os campos de local (painel/laço/dispositivo)
     ficam travados nos cadastros já existentes, pra não deixar o técnico digitar errado. */
 function RvtItemForm({ data, onAdd }) {
   const [categoria, setCategoria] = useState('devices');
@@ -1491,17 +1491,17 @@ function RvtItemForm({ data, onAdd }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label="Painel">
             <select className={inputCls} value={panelId} onChange={(e) => { setPanelId(e.target.value); setLoopId(''); setDeviceId(''); setDeviceQuery(''); }}>
-              <option value="">Selecione…</option>
+              <option value="">Selecioneâ€¦</option>
               {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
           <Field label="Laço">
             <select className={inputCls} value={loopId} onChange={(e) => { setLoopId(e.target.value); setDeviceId(''); setDeviceQuery(''); }} disabled={!panelId}>
-              <option value="">Selecione…</option>
+              <option value="">Selecioneâ€¦</option>
               {panelLoops.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </Field>
-          <Field label={`Dispositivo (endereço)${loopId && loopDevices.length > 8 ? ` — ${filteredLoopDevices.length} de ${loopDevices.length}` : ''}`}>
+          <Field label={`Dispositivo (endereço)${loopId && loopDevices.length > 8 ? ` â€” ${filteredLoopDevices.length} de ${loopDevices.length}` : ''}`}>
             {loopId && loopDevices.length > 8 && (
               <div className="relative mb-1.5">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
@@ -1510,9 +1510,9 @@ function RvtItemForm({ data, onAdd }) {
               </div>
             )}
             <select className={inputCls} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} disabled={!loopId}>
-              <option value="">Selecione…</option>
+              <option value="">Selecioneâ€¦</option>
               {filteredLoopDevices.map((d) => (
-                <option key={d.id} value={d.id}>{d.address} — {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
+                <option key={d.id} value={d.id}>{d.address} â€” {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
               ))}
             </select>
           </Field>
@@ -1521,10 +1521,10 @@ function RvtItemForm({ data, onAdd }) {
       {categoria === 'nacs' && (
         <Field label="Circuito (NAC)">
           <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecione…</option>
+            <option value="">Selecioneâ€¦</option>
             {data.nacs.map((n) => {
               const panel = data.panels.find((p) => p.id === n.panelId);
-              return <option key={n.id} value={n.id}>{n.name}{panel ? ` — ${panel.name}` : ''}</option>;
+              return <option key={n.id} value={n.id}>{n.name}{panel ? ` â€” ${panel.name}` : ''}</option>;
             })}
           </select>
         </Field>
@@ -1532,7 +1532,7 @@ function RvtItemForm({ data, onAdd }) {
       {categoria === 'pumpDevices' && (
         <Field label="Equipamento da Casa de Bombas">
           <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecione…</option>
+            <option value="">Selecioneâ€¦</option>
             {data.pumpDevices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
@@ -1540,7 +1540,7 @@ function RvtItemForm({ data, onAdd }) {
       {categoria === 'gasDetectors' && (
         <Field label="Detector de Gás">
           <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecione…</option>
+            <option value="">Selecioneâ€¦</option>
             {data.gasDetectors.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </Field>
@@ -1625,7 +1625,7 @@ function RvtDetail({ report, client, onBack }) {
           </div>
           <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
             <RvtFieldLabel>Técnico responsável</RvtFieldLabel>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{report.tecnico || '—'}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{report.tecnico || 'â€”'}</p>
           </div>
           <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
             <RvtFieldLabel>Itens registrados</RvtFieldLabel>
@@ -1664,7 +1664,7 @@ function RvtDetail({ report, client, onBack }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
                 <div>
                   <RvtFieldLabel>Falha</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{it.falha || '—'}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{it.falha || 'â€”'}</p>
                 </div>
                 {it.dataIntervencao && (
                   <div>
@@ -1710,7 +1710,7 @@ function RvtDetail({ report, client, onBack }) {
         <div className="rvt-footer-band">
           <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
           <p className="text-[10px]" style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
+            Documento gerado pelo Centro de Controle de Manutenção â€” M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
           </p>
         </div>
         </div>
@@ -1760,7 +1760,7 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
               <div key={it.id} className="rounded-lg p-3 flex items-start justify-between gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.falha} — {it.status}{it.fotos?.length ? ` · ${it.fotos.length} foto(s)` : ''}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.falha} â€” {it.status}{it.fotos?.length ? ` · ${it.fotos.length} foto(s)` : ''}</p>
                 </div>
                 <IconButton title="Remover" danger onClick={() => handleRemoveItem(it.id)}><Trash2 size={15} /></IconButton>
               </div>
@@ -1781,7 +1781,7 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT — Relatórios de Visita Técnica</h2>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT â€” Relatórios de Visita Técnica</h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registros de campo, com fotos, que alimentam o Indicador automaticamente.</p>
         </div>
         {canEdit && <Button variant="primary" onClick={() => setMode('new')}><Plus size={16} /> Novo RVT</Button>}
@@ -1796,7 +1796,7 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
           {[...reports].sort((a, b) => b.data.localeCompare(a.data)).map((r) => (
             <div key={r.id} className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.data)}{r.tecnico ? ` — ${r.tecnico}` : ''}</p>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.data)}{r.tecnico ? ` â€” ${r.tecnico}` : ''}</p>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.itens.length} item(ns) registrado(s)</p>
               </div>
               <div className="flex gap-2">
@@ -2053,7 +2053,7 @@ function UserForm({ client, onSave, onRemove }) {
           onChange={(e) => setV({ ...v, password: e.target.value })} required /></Field>
       </div>
       <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-        Este acesso fica salvo apenas neste navegador e serve para identificar quem usa o sistema deste cliente —
+        Este acesso fica salvo apenas neste navegador e serve para identificar quem usa o sistema deste cliente â€”
         não é uma autenticação segura de servidor.
       </p>
       <div className="flex items-center justify-between gap-2">
@@ -2164,7 +2164,7 @@ function ModelLibraryManager({ data, onSave, onRemove }) {
   return (
     <div className="flex flex-col gap-4 max-w-2xl">
       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Associe uma foto a cada modelo de equipamento. A foto vale para todos os dispositivos que usam esse modelo —
+        Associe uma foto a cada modelo de equipamento. A foto vale para todos os dispositivos que usam esse modelo â€”
         por exemplo, uma única foto para todos os detectores "ALO-V".
       </p>
       <form onSubmit={handleAddModel} className="flex gap-2">
@@ -2316,7 +2316,7 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
 
         <div className="mt-auto pt-8 text-center">
           <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            Desenvolvido por M.A.J Eletro Eletrônica LTDA — CNPJ: 45.893.915/0001-01<br />
+            Desenvolvido por M.A.J Eletro Eletrônica LTDA â€” CNPJ: 45.893.915/0001-01<br />
             Sistema de uso exclusivo e restrito a usuários autorizados.
           </p>
         </div>
@@ -2906,7 +2906,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </Modal>
       )}
       {modal?.type === 'pump' && (
-        <Modal title={modal.mode === 'create' ? 'Novo dispositivo — Casa de Bombas' : 'Editar dispositivo'} onClose={closeModal} wide>
+        <Modal title={modal.mode === 'create' ? 'Novo dispositivo â€” Casa de Bombas' : 'Editar dispositivo'} onClose={closeModal} wide>
           <PumpDeviceForm initial={modal.initial} onSubmit={submitPumpDevice} onCancel={closeModal} />
         </Modal>
       )}
@@ -2922,7 +2922,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </Modal>
       )}
       {modal?.type === 'maintenance' && (
-        <Modal title={`Registrar manutenção — ${modal.context.label}`} onClose={closeModal} wide>
+        <Modal title={`Registrar manutenção â€” ${modal.context.label}`} onClose={closeModal} wide>
           <MaintenanceForm item={modal.item} onSubmit={submitMaintenance} onCancel={closeModal} />
         </Modal>
       )}
@@ -2932,7 +2932,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </Modal>
       )}
       {modal?.type === 'inspection' && (
-        <Modal title={`Registrar inspeção — ${modal.context.label}`} onClose={closeModal} wide>
+        <Modal title={`Registrar inspeção â€” ${modal.context.label}`} onClose={closeModal} wide>
           <InspectionForm item={modal.item} onSubmit={submitInspection} onCancel={closeModal} />
         </Modal>
       )}
@@ -3272,7 +3272,7 @@ function PanelDetail({
 
       <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
         <button className="nav-tab" data-active={tab === 'loops'} onClick={() => setTab('loops')}>Laços ({loops.length})</button>
-        <button className="nav-tab" data-active={tab === 'nacs'} onClick={() => setTab('nacs')}>Circuitos de saída — NAC ({nacs.length})</button>
+        <button className="nav-tab" data-active={tab === 'nacs'} onClick={() => setTab('nacs')}>Circuitos de saída â€” NAC ({nacs.length})</button>
       </div>
 
       {tab === 'loops' && (
@@ -3565,7 +3565,7 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
         {canEdit && (
           <div className="flex flex-wrap gap-2">
             <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
-              <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
+              <Upload size={15} /> {importing ? 'Importandoâ€¦' : 'Importar planilha (.xlsx)'}
               <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" disabled={importing} />
             </label>
             {list.length > 0 && (
@@ -3772,7 +3772,7 @@ function ChartsView({ data }) {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador — diagnóstico e falhas</h3>
+              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador â€” diagnóstico e falhas</h3>
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{indicador.length} registro(s) no total</p>
             </div>
             {hasIndicador && <Button variant="secondary" className="no-print" onClick={exportIndicadorCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
@@ -4033,7 +4033,7 @@ async function parseIndicadorXlsx(file) {
 /* Vincula registros do Indicador aos dispositivos reais do painel, cruzando pela coluna
    "PAINEL - ND" (que corresponde ao Network Address de cada painel no report do Loop
    Explorer), pelo laço e pelo endereço. Mapeamento tirado diretamente do report LP1 da
-   Nissan (Panel X / Network Address N) — específico deste sistema; painéis fora dessa
+   Nissan (Panel X / Network Address N) â€” específico deste sistema; painéis fora dessa
    lista (ex.: 7 = AUTOLEARN/PWT, ou "Notifier") não têm correspondência aqui e ficam sem
    vínculo, já que pertencem a outro relatório/sistema. */
 const INDICADOR_PANEL_NETWORK_MAP = {
@@ -4337,7 +4337,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
             <Field label="Selecione o painel">
               <select value={targetPanelId} onChange={(e) => handleTargetPanelChange(e.target.value)}
                 className="w-full px-2.5 py-2 rounded-md text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                <option value="">Selecione…</option>
+                <option value="">Selecioneâ€¦</option>
                 {(data.panels || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Field>
@@ -4345,7 +4345,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
         </div>
 
         {currentModel.loops > 1 && (
-          <Field label="Laço correspondente a este arquivo" hint="A Notifier não indica o laço no relatório — informe a qual laço esses dispositivos pertencem.">
+          <Field label="Laço correspondente a este arquivo" hint="A Notifier não indica o laço no relatório â€” informe a qual laço esses dispositivos pertencem.">
             <select value={loopChoice} onChange={(e) => handleLoopChoiceChange(Number(e.target.value))}
               className="w-full px-2.5 py-2 rounded-md text-sm sm:w-48" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
               {Array.from({ length: currentModel.loops }, (_, i) => i + 1).map((n) => (
