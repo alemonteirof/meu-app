@@ -4018,33 +4018,6 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
   }).sort((a, b) => (b.dataDiagnostico || '').localeCompare(a.dataDiagnostico || ''));
 
   const linkedCount = list.filter((r) => r.deviceId).length;
-  function exportIndicadorXlsx() {
-    const rows = filtered.map((r) => ({
-      'Data Diagnóstico': formatDateBR(r.dataDiagnostico),
-      'Tipo': r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha',
-      'Etiqueta': r.etiqueta || '',
-      'Endereço': r.endereco || '',
-      'Laço': r.laco || '',
-      'Painel': r.painel || '',
-      'Equipamento': r.equipamento || '',
-      'Área': r.area || '',
-      'Falha': r.falha || '',
-      'Descritivo': r.descritivo || '',
-      'Status': r.status || '',
-      'Explanação': r.explanacao || '',
-      'Solução': r.solucao || '',
-      'Data Solução': formatDateBR(r.dataSolucao),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
-      { wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 30 }, { wch: 14 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Indicador');
-    XLSX.writeFile(wb, `indicador_${todayISO()}.xlsx`);
-  }
-
   const statusToDeleteCount = list.filter((r) => r.status === statusToDelete).length;
 
   function toggleSelect(id) {
@@ -4077,12 +4050,6 @@ function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            {list.length > 0 && (
-              <>
-                <Button variant="secondary" onClick={exportIndicadorXlsx}><FileText size={15} /> Exportar Excel</Button>
-                <Button variant="secondary" onClick={() => window.print()} className="print:hidden"><Printer size={15} /> Imprimir / Salvar PDF</Button>
-              </>
-            )}
             <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
               <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
               <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" disabled={importing} />
