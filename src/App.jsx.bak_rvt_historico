@@ -1044,23 +1044,6 @@ function allTrackableItems(data) {
   return items;
 }
 
-function getItemPanelName(data, category, itemId) {
-  if (category === 'devices') {
-    const dItem = data.devices.find((x) => x.id === itemId);
-    if (!dItem) return null;
-    const loop = data.loops.find((l) => l.id === dItem.loopId);
-    const panel = loop && data.panels.find((p) => p.id === loop.panelId);
-    return panel ? panel.name : null;
-  }
-  if (category === 'nacs') {
-    const n = data.nacs.find((x) => x.id === itemId);
-    if (!n) return null;
-    const panel = data.panels.find((p) => p.id === n.panelId);
-    return panel ? panel.name : null;
-  }
-  return null;
-}
-
 function getItemLabelAndContext(data, category, itemId) {
   if (category === 'devices') {
     const dItem = data.devices.find((x) => x.id === itemId);
@@ -2851,42 +2834,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     setConfirmState(null);
   }
 
-  function deleteMaintenanceLogEntry(entry) {
-    updateData((prev) => {
-      const origemRvt = entry.origemRvt;
-      return {
-        ...prev,
-        maintenanceLog: (prev.maintenanceLog || []).filter((l) => l.id !== entry.id),
-        rvt: origemRvt ? (prev.rvt || []).filter((r) => r.id !== origemRvt) : prev.rvt,
-        indicador: origemRvt ? (prev.indicador || []).filter((r) => r.origemRvt !== origemRvt) : prev.indicador,
-        inspectionLog: origemRvt ? (prev.inspectionLog || []).filter((l) => l.origemRvt !== origemRvt) : (prev.inspectionLog || []),
-      };
-    });
-    setConfirmState(null);
-  }
-  function deleteInspectionLogEntry(entry) {
-    updateData((prev) => {
-      const origemRvt = entry.origemRvt;
-      return {
-        ...prev,
-        inspectionLog: (prev.inspectionLog || []).filter((l) => l.id !== entry.id),
-        rvt: origemRvt ? (prev.rvt || []).filter((r) => r.id !== origemRvt) : prev.rvt,
-        indicador: origemRvt ? (prev.indicador || []).filter((r) => r.origemRvt !== origemRvt) : prev.indicador,
-        maintenanceLog: origemRvt ? (prev.maintenanceLog || []).filter((l) => l.origemRvt !== origemRvt) : prev.maintenanceLog,
-      };
-    });
-    setConfirmState(null);
-  }
-  function handleDeleteHistoryEntry(logType, entry) {
-    setConfirmState({
-      title: 'Excluir registro do histórico',
-      message: entry.origemRvt
-        ? 'Isso também vai excluir o RVT e os outros registros (Indicador/histórico) ligados a ele. Continuar?'
-        : 'Excluir esse registro do histórico?',
-      onConfirm: () => (logType === 'manutencao' ? deleteMaintenanceLogEntry(entry) : deleteInspectionLogEntry(entry)),
-    });
-  }
-
   function saveRvtReport(report) {
     updateData((prev) => {
       const indicadorEntries = report.itens.map((it) => ({
@@ -2911,27 +2858,12 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         fotos: it.fotos || [],
         origemRvt: report.id,
       }));
-      const historicoEntries = report.itens
-        .filter((it) => it.deviceId && it.categoria)
-        .map((it) => ({
-          id: uid(),
-          category: it.categoria,
-          itemId: it.deviceId,
-          date: it.dataIntervencao || report.data,
-          technician: report.tecnico || '',
-          description: it.descritivo || it.falha || '',
-          nextDate: '',
-          tipo: 'preventiva',
-          origemRvt: report.id,
-        }));
       const rvtSemAntigo = (prev.rvt || []).filter((r) => r.id !== report.id);
       const indicadorSemAntigo = (prev.indicador || []).filter((it) => it.origemRvt !== report.id);
-      const maintenanceLogSemAntigo = (prev.maintenanceLog || []).filter((l) => l.origemRvt !== report.id);
       return {
         ...prev,
         rvt: [{ ...report }, ...rvtSemAntigo],
         indicador: [...indicadorEntries, ...indicadorSemAntigo],
-        maintenanceLog: [...historicoEntries, ...maintenanceLogSemAntigo],
       };
     });
   }
@@ -3256,7 +3188,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         )}
 
         {view === 'history' && (
-          <HistoryView data={data} filter={historyFilter} setFilter={setHistoryFilter} onDeleteEntry={handleDeleteHistoryEntry} />
+          <HistoryView data={data} filter={historyFilter} setFilter={setHistoryFilter} />
         )}
 
         {view === 'rvt' && (
@@ -3848,13 +3780,7 @@ function SimpleListView({ title, description, icon, data, category, canEdit, onC
   );
 }
 
-function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
-  const [logType, setLogType] = useState('manutencao');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [tipoFilter, setTipoFilter] = useState('all');
-  const [panelFilter, setPanelFilter] = useState('all');
-
+function HistoryView({ data, filter, setFilter }) {
   const filters = [
     { value: 'all', label: 'Todos' },
     { value: 'devices', label: 'Dispositivos' },
@@ -3862,36 +3788,13 @@ function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
     { value: 'pumpDevices', label: 'Casa de Bombas' },
     { value: 'gasDetectors', label: 'Detectores de gás' },
   ];
-
-  const sourceLog = logType === 'manutencao' ? (data.maintenanceLog || []) : (data.inspectionLog || []);
-
-  const panelOptions = [...new Set(
-    sourceLog.map((e) => getItemPanelName(data, e.category, e.itemId)).filter(Boolean)
-  )].sort();
-
-  const entries = sourceLog.filter((e) => {
-    if (filter !== 'all' && e.category !== filter) return false;
-    if (dateFrom && e.date < dateFrom) return false;
-    if (dateTo && e.date > dateTo) return false;
-    if (logType === 'manutencao' && tipoFilter !== 'all' && (e.tipo || 'preventiva') !== tipoFilter) return false;
-    if (panelFilter !== 'all' && getItemPanelName(data, e.category, e.itemId) !== panelFilter) return false;
-    return true;
-  });
+  const entries = data.maintenanceLog.filter((e) => filter === 'all' || e.category === filter);
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Histórico de {logType === 'manutencao' ? 'manutenções' : 'inspeções'}
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Registro de todas as {logType === 'manutencao' ? 'manutenções' : 'inspeções'} realizadas, da mais recente para a mais antiga.
-        </p>
-      </div>
-
-      <div className="flex gap-1 overflow-x-auto">
-        <button className="nav-tab" data-active={logType === 'manutencao'} onClick={() => setLogType('manutencao')}>Manutenção</button>
-        <button className="nav-tab" data-active={logType === 'inspecao'} onClick={() => setLogType('inspecao')}>Inspeção</button>
+        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Histórico de manutenções</h2>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registro de todas as manutenções realizadas, da mais recente para a mais antiga.</p>
       </div>
 
       <div className="flex gap-1 overflow-x-auto">
@@ -3900,28 +3803,8 @@ function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Field label="De"><input type="date" className={inputCls} style={{ maxWidth: '160px' }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></Field>
-        <Field label="Até"><input type="date" className={inputCls} style={{ maxWidth: '160px' }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></Field>
-        {logType === 'manutencao' && (
-          <Field label="Tipo">
-            <select className={inputCls} style={{ maxWidth: '180px' }} value={tipoFilter} onChange={(e) => setTipoFilter(e.target.value)}>
-              <option value="all">Todos os tipos</option>
-              <option value="preventiva">Preventiva</option>
-              <option value="corretiva">Corretiva</option>
-            </select>
-          </Field>
-        )}
-        <Field label="Painel">
-          <select className={inputCls} style={{ maxWidth: '220px' }} value={panelFilter} onChange={(e) => setPanelFilter(e.target.value)}>
-            <option value="all">Todos os painéis</option>
-            {panelOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </Field>
-      </div>
-
       {entries.length === 0 ? (
-        <EmptyState icon={Inbox} title="Nenhum registro encontrado" description="As manutenções e inspeções registradas em dispositivos, circuitos e demais equipamentos aparecerão aqui." />
+        <EmptyState icon={Inbox} title="Nenhum registro encontrado" description="As manutenções registradas em dispositivos, circuitos e demais equipamentos aparecerão aqui." />
       ) : (
         <div className="flex flex-col gap-2">
           {entries.map((entry) => {
@@ -3930,10 +3813,7 @@ function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
               <div key={entry.id} className="rounded-lg p-3.5 flex flex-col gap-1" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{label}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="mono-chip">{formatDateBR(entry.date)}</span>
-                    {onDeleteEntry && <IconButton title="Excluir" danger onClick={() => onDeleteEntry(logType, entry)}><Trash2 size={15} /></IconButton>}
-                  </div>
+                  <span className="mono-chip">{formatDateBR(entry.date)}</span>
                 </div>
                 <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{context}</div>
                 {(entry.technician || entry.description) && (
@@ -3942,12 +3822,7 @@ function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
                     {entry.description}
                   </div>
                 )}
-                {logType === 'manutencao' && entry.nextDate && (
-                  <div className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>Próxima manutenção: {formatDateBR(entry.nextDate)}</div>
-                )}
-                {logType === 'inspecao' && entry.operationalStatus && (
-                  <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Status: {entry.operationalStatus}</div>
-                )}
+                {entry.nextDate && <div className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>Próxima manutenção: {formatDateBR(entry.nextDate)}</div>}
               </div>
             );
           })}
