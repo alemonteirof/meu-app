@@ -3560,9 +3560,6 @@ function PanelDetail({
 }) {
   const panel = data.panels.find((p) => p.id === panelId);
   const [deviceSearch, setDeviceSearch] = useState('');
-  function selectByType(ids) {
-    setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
-  }
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   function toggleSelect(id) {
@@ -3665,20 +3662,6 @@ function PanelDetail({
                     </div>
                     {expanded && (
                       <div className="px-3.5 pb-3.5 flex flex-col gap-2">
-                        {selectMode && devices.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Marcar todos:</span>
-                            {[...new Set(devices.map((d) => d.type))].map((tipo) => {
-                              const idsDoTipo = devices.filter((d) => d.type === tipo).map((d) => d.id);
-                              return (
-                                <button key={tipo} type="button" onClick={() => selectByType(idsDoTipo)}
-                                  className="text-xs px-2 py-1 rounded-md" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                                  {DEVICE_TYPE_MAP[tipo]?.label || tipo} ({idsDoTipo.length})
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
                         {devices.length === 0 ? (
                           <p className="text-xs py-3 text-center" style={{ color: 'var(--text-secondary)' }}>
                             {q ? 'Nenhum dispositivo corresponde à busca.' : 'Nenhum dispositivo neste laço ainda.'}
