@@ -4208,26 +4208,11 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       w = w || 680; h = h || 440;
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
-      canvas.style.position = 'fixed';
-      canvas.style.left = '-9999px';
-      canvas.style.top = '-9999px';
-      document.body.appendChild(canvas);
-      config.options = config.options || {};
-      config.options.animation = false;
-      config.options.responsive = false;
-      let base64 = '';
-      try {
-        const chart = new Chart(canvas.getContext('2d'), config);
-        await new Promise((r) => setTimeout(r, 50));
-        const dataUrl = canvas.toDataURL('image/png');
-        base64 = dataUrl.split(',')[1] || '';
-        chart.destroy();
-      } catch (e) {
-        console.error('Erro ao gerar imagem do gráfico:', e);
-      } finally {
-        canvas.remove();
-      }
-      return base64;
+      const chart = new Chart(canvas.getContext('2d'), config);
+      await new Promise((r) => setTimeout(r, 60));
+      const dataUrl = canvas.toDataURL('image/png');
+      chart.destroy();
+      return dataUrl.split(',')[1];
     }
 
     const wb = new ExcelJS.Workbook();
@@ -4476,14 +4461,10 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
     });
 
     const chartRow = statusKpiRow + 3;
-    if (tipoPieImg) {
-      const tipoPieId = wb.addImage({ base64: tipoPieImg, extension: 'png' });
-      resumo.addImage(tipoPieId, { tl: { col: 0, row: chartRow - 1 }, ext: { width: 420, height: 270 } });
-    }
-    if (statusPieImg) {
-      const statusPieId = wb.addImage({ base64: statusPieImg, extension: 'png' });
-      resumo.addImage(statusPieId, { tl: { col: 7, row: chartRow - 1 }, ext: { width: 420, height: 270 } });
-    }
+    const tipoPieId = wb.addImage({ base64: tipoPieImg, extension: 'png' });
+    resumo.addImage(tipoPieId, { tl: { col: 0, row: chartRow - 1 }, ext: { width: 420, height: 270 } });
+    const statusPieId = wb.addImage({ base64: statusPieImg, extension: 'png' });
+    resumo.addImage(statusPieId, { tl: { col: 7, row: chartRow - 1 }, ext: { width: 420, height: 270 } });
 
     const notaRow = chartRow + 16;
     resumo.mergeCells(`A${notaRow}:L${notaRow}`);
@@ -4519,10 +4500,8 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
         scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
       },
     }, 1000, 560);
-    if (lineImg) {
-      const lineId = wb.addImage({ base64: lineImg, extension: 'png' });
-      tendencia.addImage(lineId, { tl: { col: 0, row: 5 }, ext: { width: 900, height: 500 } });
-    }
+    const lineId = wb.addImage({ base64: lineImg, extension: 'png' });
+    tendencia.addImage(lineId, { tl: { col: 0, row: 5 }, ext: { width: 900, height: 500 } });
 
     criaAbaDados('Dados', registros);
     criaAbaDados('Falhas', falhas, ' — Falhas');
