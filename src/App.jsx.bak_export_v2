@@ -8,7 +8,6 @@ import {
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
@@ -3267,7 +3266,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         )}
 
         {view === 'indicador' && (
-          <IndicadorView data={data} canEdit={canEdit} client={client}
+          <IndicadorView data={data} canEdit={canEdit}
             onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
             onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
             onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
@@ -3958,153 +3957,7 @@ function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
   );
 }
 
-function IndicadorPrintView({ entries, client, onBack }) {
-  const countFalha = entries.filter((r) => (r.tipo || 'falha') === 'falha').length;
-  const countManutencao = entries.filter((r) => r.tipo === 'manutencao').length;
-  const countInspecao = entries.filter((r) => r.tipo === 'inspecao').length;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
-        <Button variant="secondary" onClick={onBack}><ArrowLeft size={15} /> Voltar</Button>
-        <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
-      </div>
-
-      <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="rvt-brand-band">
-          <div className="flex items-center gap-3 flex-wrap" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="rvt-wordmark">
-              <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: '#fff' }} /></div>
-              <div className="rvt-wordmark-text">
-                <div className="maj">M.A.J</div>
-                <div className="sol">Soluções</div>
-              </div>
-            </div>
-            <div className="rvt-divider-v" />
-            <div className="flex items-center gap-3">
-              {client?.branding?.logoData
-                ? <img src={client.branding.logoData} alt="" className="w-10 h-10 rounded-lg object-cover" style={{ border: '1px solid rgba(255,255,255,0.4)' }} />
-                : null}
-              <div>
-                <p className="font-display font-semibold text-base" style={{ color: '#fff' }}>{client?.name || ''}</p>
-                {client?.address && <p className="text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>{client.address}</p>}
-              </div>
-            </div>
-          </div>
-          <div className="text-right" style={{ position: 'relative', zIndex: 1 }}>
-            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DO INDICADOR</p>
-            <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>Indicador · {formatDateBR(todayISO())}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5 p-4 sm:p-6">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Total de registros</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{entries.length}</p>
-          </div>
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Falhas</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--status-danger)' }}>{countFalha}</p>
-          </div>
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Manutenções</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{countManutencao}</p>
-          </div>
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Inspeções</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{countInspecao}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {entries.map((r, i) => (
-            <div key={r.id} className="rvt-item-card rounded-lg p-4" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>
-              <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold mono"
-                    style={{ background: 'var(--accent)', color: '#fff' }}>{i + 1}</span>
-                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{r.etiqueta || 'Item'}</p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs px-2 py-0.5 rounded-md font-medium"
-                    style={{ color: r.tipo === 'inspecao' ? '#3B82F6' : r.tipo === 'manutencao' ? '#F59E0B' : 'var(--status-danger)', border: `1px solid ${r.tipo === 'inspecao' ? '#3B82F6' : r.tipo === 'manutencao' ? '#F59E0B' : 'var(--status-danger)'}` }}>
-                    {r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha'}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 rounded-md font-medium"
-                    style={{ color: indicatorStatusColor(r.status), border: `1px solid ${indicatorStatusColor(r.status)}` }}>
-                    {r.status || 'Sem status'}
-                  </span>
-                </div>
-              </div>
-
-              {(r.endereco || r.laco || r.painel || r.equipamento) && (
-                <div className="flex flex-wrap items-center gap-2 mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {r.endereco && <span className="mono-chip">END {r.endereco}</span>}
-                  {r.laco && <span className="mono-chip">{r.laco}</span>}
-                  {r.painel && <span>{r.painel}</span>}
-                  {r.equipamento && <span>· {r.equipamento}</span>}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                <div>
-                  <RvtFieldLabel>Falha</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{r.falha || '—'}</p>
-                </div>
-                {r.dataDiagnostico && (
-                  <div>
-                    <RvtFieldLabel>Data diagnóstico</RvtFieldLabel>
-                    <p className="text-xs mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.dataDiagnostico)}</p>
-                  </div>
-                )}
-              </div>
-
-              {r.descritivo && (
-                <div className="mb-2">
-                  <RvtFieldLabel>Descritivo</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.descritivo}</p>
-                </div>
-              )}
-              {r.explanacao && (
-                <div className="mb-2">
-                  <RvtFieldLabel>Explanação</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.explanacao}</p>
-                </div>
-              )}
-              {r.solucao && (
-                <div className="mb-2 rounded-md p-2" style={{ background: 'rgba(79,138,109,0.08)' }}>
-                  <RvtFieldLabel>Solução aplicada</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--status-ok)' }}>{r.solucao}</p>
-                </div>
-              )}
-
-              {r.fotos && r.fotos.length > 0 && (
-                <div className="mt-3">
-                  <RvtFieldLabel>Registro fotográfico</RvtFieldLabel>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-1">
-                    {r.fotos.map((f, fi) => (
-                      <img key={fi} src={f} alt="" className="w-full aspect-square rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="rvt-footer-band">
-          <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
-          <p className="text-[10px]" style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
-          </p>
-        </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onImportFile, onLinkDevices, onBulkDelete, onDeleteByStatus, onDeleteAll }) {
+function IndicadorView({ data, canEdit, onCreate, onEdit, onDelete, onImportFile, onLinkDevices, onBulkDelete, onDeleteByStatus, onDeleteAll }) {
   const list = data.indicador || [];
   // indicador-print-area: classe usada pra liberar essa tela na impressão (ver CSS @media print)
   const [search, setSearch] = useState('');
@@ -4166,54 +4019,53 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   }).sort((a, b) => (b.dataDiagnostico || '').localeCompare(a.dataDiagnostico || ''));
 
   const linkedCount = list.filter((r) => r.deviceId).length;
-  const [printMode, setPrintMode] = useState(false);
-
-  async function exportIndicadorXlsx() {
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Indicador');
-    const headers = ['Data Diagnóstico', 'Tipo', 'Etiqueta', 'Endereço', 'Laço', 'Painel', 'Equipamento', 'Área', 'Falha', 'Descritivo', 'Status', 'Explanação', 'Solução', 'Data Solução'];
-    ws.columns = headers.map((h) => ({ header: h, key: h, width: 20 }));
-    ws.getRow(1).eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8B2F2F' } };
-      cell.alignment = { vertical: 'middle' };
+  function exportIndicadorXlsx() {
+    const rows = filtered.map((r) => ({
+      'Data Diagnóstico': formatDateBR(r.dataDiagnostico),
+      'Tipo': r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha',
+      'Etiqueta': r.etiqueta || '',
+      'Endereço': r.endereco || '',
+      'Laço': r.laco || '',
+      'Painel': r.painel || '',
+      'Equipamento': r.equipamento || '',
+      'Área': r.area || '',
+      'Falha': r.falha || '',
+      'Descritivo': r.descritivo || '',
+      'Status': r.status || '',
+      'Explanação': r.explanacao || '',
+      'Solução': r.solucao || '',
+      'Data Solução': formatDateBR(r.dataSolucao),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
+      { wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 30 }, { wch: 14 },
+    ];
+    const headerCols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
+    headerCols.forEach((col) => {
+      const cell = ws[`${col}1`];
+      if (cell) {
+        cell.s = {
+          fill: { fgColor: { rgb: '8B2F2F' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          alignment: { vertical: 'center', horizontal: 'left' },
+        };
+      }
     });
-    filtered.forEach((r) => {
-      ws.addRow({
-        'Data Diagnóstico': formatDateBR(r.dataDiagnostico),
-        'Tipo': r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha',
-        'Etiqueta': r.etiqueta || '',
-        'Endereço': r.endereco || '',
-        'Laço': r.laco || '',
-        'Painel': r.painel || '',
-        'Equipamento': r.equipamento || '',
-        'Área': r.area || '',
-        'Falha': r.falha || '',
-        'Descritivo': r.descritivo || '',
-        'Status': r.status || '',
-        'Explanação': r.explanacao || '',
-        'Solução': r.solucao || '',
-        'Data Solução': formatDateBR(r.dataSolucao),
-      });
-    });
-    ws.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      row.alignment = { vertical: 'top', wrapText: true };
-      row.height = 24;
-    });
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `indicador_${todayISO()}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r + 1; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        if (ws[addr]) {
+          ws[addr].s = { alignment: { vertical: 'top', wrapText: true } };
+        }
+      }
+    }
+    ws['!rows'] = [{ hpt: 22 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Indicador');
+    XLSX.writeFile(wb, `indicador_${todayISO()}.xlsx`, { cellStyles: true });
   }
-
-  if (printMode) return <IndicadorPrintView entries={filtered} client={client} onBack={() => setPrintMode(false)} />;
 
   const statusToDeleteCount = list.filter((r) => r.status === statusToDelete).length;
 
@@ -4250,7 +4102,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
             {list.length > 0 && (
               <>
                 <Button variant="secondary" onClick={exportIndicadorXlsx}><FileText size={15} /> Exportar Excel</Button>
-                <Button variant="secondary" onClick={() => setPrintMode(true)}><Printer size={15} /> Imprimir / Salvar PDF</Button>
+                <Button variant="secondary" onClick={() => window.print()} className="print:hidden"><Printer size={15} /> Imprimir / Salvar PDF</Button>
               </>
             )}
             <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>

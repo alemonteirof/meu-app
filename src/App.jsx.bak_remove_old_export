@@ -4214,6 +4214,53 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   }
 
   if (printMode) return <IndicadorPrintView entries={filtered} client={client} onBack={() => setPrintMode(false)} />;
+  function exportIndicadorXlsx() {
+    const rows = filtered.map((r) => ({
+      'Data Diagnóstico': formatDateBR(r.dataDiagnostico),
+      'Tipo': r.tipo === 'inspecao' ? 'Inspeção' : r.tipo === 'manutencao' ? 'Manutenção' : 'Falha',
+      'Etiqueta': r.etiqueta || '',
+      'Endereço': r.endereco || '',
+      'Laço': r.laco || '',
+      'Painel': r.painel || '',
+      'Equipamento': r.equipamento || '',
+      'Área': r.area || '',
+      'Falha': r.falha || '',
+      'Descritivo': r.descritivo || '',
+      'Status': r.status || '',
+      'Explanação': r.explanacao || '',
+      'Solução': r.solucao || '',
+      'Data Solução': formatDateBR(r.dataSolucao),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
+      { wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 30 }, { wch: 14 },
+    ];
+    const headerCols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'];
+    headerCols.forEach((col) => {
+      const cell = ws[`${col}1`];
+      if (cell) {
+        cell.s = {
+          fill: { fgColor: { rgb: '8B2F2F' } },
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          alignment: { vertical: 'center', horizontal: 'left' },
+        };
+      }
+    });
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r + 1; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        if (ws[addr]) {
+          ws[addr].s = { alignment: { vertical: 'top', wrapText: true } };
+        }
+      }
+    }
+    ws['!rows'] = [{ hpt: 22 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Indicador');
+    XLSX.writeFile(wb, `indicador_${todayISO()}.xlsx`, { cellStyles: true });
+  }
 
   const statusToDeleteCount = list.filter((r) => r.status === statusToDelete).length;
 
