@@ -10,7 +10,7 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu,
+  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -798,6 +798,24 @@ const NAV_ITEMS = [
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
+
+// Admin vê tudo. Operador (técnico) e Visualizador (cliente) têm menu restrito —
+// mesma lista no mobile e no desktop.
+const NAV_KEYS_BY_ROLE = {
+  admin: ['atendimentos', 'dashboard', 'panels', 'complementares', 'pumphouse', 'report', 'indicador', 'settings'],
+  operador: ['dashboard', 'atendimentos', 'panels', 'complementares', 'report', 'indicador'],
+  visualizador: ['dashboard', 'panels', 'complementares', 'report', 'indicador'],
+};
+function navItemsForRole(role) {
+  const keys = NAV_KEYS_BY_ROLE[role] || NAV_KEYS_BY_ROLE.visualizador;
+  return NAV_ITEMS.filter((i) => keys.includes(i.key));
+}
+// Os 4 destinos mais usados ficam fixos na barra inferior do mobile (padrão "app", tipo CifraClub);
+// o resto (dentro do que o role pode ver) fica na aba "Mais".
+function mobilePrimaryKeysForRole(role) {
+  if (role === 'visualizador') return ['dashboard', 'indicador', 'panels', 'report'];
+  return ['atendimentos', 'dashboard', 'panels', 'indicador'];
+}
 
 const emptyData = () => ({
   panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
@@ -2280,6 +2298,12 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
 
 function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const { role, signOut } = useAuth();
+  const [previewRole, setPreviewRole] = useState(null);
+  const navRole = role === 'admin' && previewRole ? previewRole : role;
+  const roleNavItems = navItemsForRole(navRole);
+  const mobilePrimaryKeys = mobilePrimaryKeysForRole(navRole);
+  const mobilePrimaryNavItems = roleNavItems.filter((i) => mobilePrimaryKeys.includes(i.key));
+  const mobileMoreNavItems = roleNavItems.filter((i) => !mobilePrimaryKeys.includes(i.key));
   const canEdit = role !== 'visualizador';
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -2287,7 +2311,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const [lastImport, setLastImport] = useState(null);
 
   const [view, setView] = useState('dashboard');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [panelId, setPanelId] = useState(null);
   const [panelTab, setPanelTab] = useState('loops');
   const [expandedLoops, setExpandedLoops] = useState({});
@@ -2899,6 +2923,13 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              {role === 'admin' && (
+                <button type="button" onClick={() => setPreviewRole((r) => (r === null ? 'operador' : r === 'operador' ? 'visualizador' : null))}
+                  className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--accent)', border: '1px solid var(--accent)', background: previewRole ? 'rgba(139,47,47,0.12)' : 'transparent' }}
+                  title="Simula o menu de outro role, sem mudar sua permissão real">
+                  Prévia: {previewRole ? ROLE_LABELS[previewRole] : 'Admin (eu)'}
+                </button>
+              )}
               <span className="text-xs px-2 py-1 rounded-md mono hidden sm:inline-block" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                 {ROLE_LABELS[role] || role}
               </span>
@@ -2909,42 +2940,75 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               )}
               <IconButton title="Trocar cliente" onClick={onSwitchClient}><LogOut size={16} /></IconButton>
               {signOut && <IconButton title="Sair da conta" onClick={signOut}><LogOut size={16} /></IconButton>}
-              <button className="sm:hidden" onClick={() => setMobileMenuOpen((v) => !v)} aria-label="Abrir menu"
-                style={{ padding: 9, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', display: 'flex' }}>
-                {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-              </button>
             </div>
           </div>
           <nav className="hidden sm:flex gap-1 mt-4 -mb-3 overflow-x-auto">
-            {NAV_ITEMS.filter((item) => item.key !== 'settings' || role === 'admin').map((item) => (
+            {roleNavItems.map((item) => (
               <button key={item.key} className="nav-tab" data-active={view === item.key || (item.key === 'panels' && view === 'panelDetail')}
                 onClick={() => { setView(item.key); setPanelId(null); }}>
                 <item.icon size={15} /> {item.label}
               </button>
             ))}
           </nav>
-          {mobileMenuOpen && (
-            <div className="sm:hidden mt-3 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              {NAV_ITEMS.filter((item) => item.key !== 'settings' || role === 'admin').map((item) => {
-                const active = view === item.key || (item.key === 'panels' && view === 'panelDetail');
-                return (
-                  <button key={item.key} onClick={() => { setView(item.key); setPanelId(null); setMobileMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 text-sm text-left"
-                    style={{
-                      background: active ? 'var(--surface-raised)' : 'var(--surface)',
-                      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      borderBottom: '1px solid var(--border)', fontWeight: active ? 600 : 400,
-                    }}>
-                    <item.icon size={17} /> {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-20">
+      {mobileMoreOpen && (
+        <>
+          <div className="sm:hidden no-print" onClick={() => setMobileMoreOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 39 }} />
+          <div className="sm:hidden no-print" style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40,
+            background: 'var(--surface)', borderTop: '1px solid var(--border)',
+            borderRadius: '16px 16px 0 0', boxShadow: '0 -8px 30px rgba(0,0,0,0.4)',
+            maxHeight: '75vh', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '10px auto' }} />
+            <p className="px-4 pb-2 text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>Mais opções</p>
+            {mobileMoreNavItems.map((item) => {
+              const active = view === item.key || (item.key === 'panels' && view === 'panelDetail');
+              return (
+                <button key={item.key} onClick={() => { setView(item.key); setPanelId(null); setMobileMoreOpen(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm text-left"
+                  style={{
+                    background: active ? 'var(--surface-raised)' : 'transparent',
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    borderTop: '1px solid var(--border)', fontWeight: active ? 600 : 400,
+                  }}>
+                  <item.icon size={18} /> {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <nav className="sm:hidden no-print" style={{
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30,
+        background: 'var(--surface)', borderTop: '1px solid var(--border)',
+        display: 'flex', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}>
+        {mobilePrimaryNavItems.map((item) => {
+          const active = !mobileMoreOpen && (view === item.key || (item.key === 'panels' && view === 'panelDetail'));
+          return (
+            <button key={item.key} onClick={() => { setView(item.key); setPanelId(null); setMobileMoreOpen(false); }}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2"
+              style={{ color: active ? 'var(--accent)' : 'var(--text-secondary)' }}>
+              <item.icon size={20} />
+              <span style={{ fontSize: 10, fontWeight: active ? 600 : 400, textAlign: 'center', lineHeight: 1.1 }}>
+                {item.key === 'atendimentos' ? 'Atendimentos' : item.label}
+              </span>
+            </button>
+          );
+        })}
+        <button onClick={() => setMobileMoreOpen((v) => !v)}
+          className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2"
+          style={{ color: mobileMoreOpen ? 'var(--accent)' : 'var(--text-secondary)' }}>
+          <MoreHorizontal size={20} />
+          <span style={{ fontSize: 10, fontWeight: mobileMoreOpen ? 600 : 400 }}>Mais</span>
+        </button>
+      </nav>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-20">
         {view === 'dashboard' && (
           <Dashboard data={data} counts={counts} attentionItems={attentionItems} canEdit={canEdit}
             onMaintain={(it) => openMaintainModal(it.category, it, it.title)}
