@@ -445,30 +445,28 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
 
   return (
     <div style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={onToggleExpand} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: 0, flex: 1, minWidth: 0, textAlign: 'left' }}>
-          <span style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
-              {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
-            </div>
+      <button type="button" onClick={onToggleExpand} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 8, padding: 0, width: '100%', textAlign: 'left' }}>
+        <span style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0, marginTop: 2 }}>{expanded ? '▾' : '▸'}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
+            {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
           </div>
-        </button>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button type="button" onClick={() => onVerImprimir(visita)} style={smallBtnStyle}>Ver / Imprimir</button>
-          {canEdit && (
-            <button type="button" onClick={onToggleExpand} style={smallBtnStyle}>Editar</button>
-          )}
-          {canEdit && (
-            <button type="button" onClick={() => onDelete(visita.id)}
-              style={{ ...smallBtnStyle, border: '1px solid var(--status-danger)', color: 'var(--status-danger)' }}>
-              Excluir
-            </button>
-          )}
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
+          </div>
         </div>
+      </button>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+        <button type="button" onClick={() => onVerImprimir(visita)} style={smallBtnStyle}>Ver / Imprimir</button>
+        {canEdit && (
+          <button type="button" onClick={onToggleExpand} style={smallBtnStyle}>Editar</button>
+        )}
+        {canEdit && (
+          <button type="button" onClick={() => onDelete(visita.id)}
+            style={{ ...smallBtnStyle, border: '1px solid var(--status-danger)', color: 'var(--status-danger)' }}>
+            Excluir
+          </button>
+        )}
       </div>
 
       {expanded && (

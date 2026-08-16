@@ -10,7 +10,7 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap,
+  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -1128,6 +1128,11 @@ function Field({ label, hint, children }) {
 }
 
 const inputCls = 'field-input w-full rounded-md px-3 py-2 text-sm';
+const dropdownItemStyle = {
+  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '11px 14px',
+  fontSize: 13, textAlign: 'left', color: 'var(--text-primary)', background: 'transparent',
+  border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer',
+};
 
 function Button({ variant = 'secondary', className = '', children, ...props }) {
   const cls = { primary: 'btn-primary', secondary: 'btn-secondary', danger: 'btn-danger' }[variant];
@@ -2282,6 +2287,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const [lastImport, setLastImport] = useState(null);
 
   const [view, setView] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [panelId, setPanelId] = useState(null);
   const [panelTab, setPanelTab] = useState('loops');
   const [expandedLoops, setExpandedLoops] = useState({});
@@ -2893,7 +2899,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-xs px-2 py-1 rounded-md mono" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              <span className="text-xs px-2 py-1 rounded-md mono hidden sm:inline-block" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                 {ROLE_LABELS[role] || role}
               </span>
               {saveError && (
@@ -2903,9 +2909,13 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               )}
               <IconButton title="Trocar cliente" onClick={onSwitchClient}><LogOut size={16} /></IconButton>
               {signOut && <IconButton title="Sair da conta" onClick={signOut}><LogOut size={16} /></IconButton>}
+              <button className="sm:hidden" onClick={() => setMobileMenuOpen((v) => !v)} aria-label="Abrir menu"
+                style={{ padding: 9, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', display: 'flex' }}>
+                {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+              </button>
             </div>
           </div>
-          <nav className="flex gap-1 mt-4 -mb-3 overflow-x-auto">
+          <nav className="hidden sm:flex gap-1 mt-4 -mb-3 overflow-x-auto">
             {NAV_ITEMS.filter((item) => item.key !== 'settings' || role === 'admin').map((item) => (
               <button key={item.key} className="nav-tab" data-active={view === item.key || (item.key === 'panels' && view === 'panelDetail')}
                 onClick={() => { setView(item.key); setPanelId(null); }}>
@@ -2913,6 +2923,24 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               </button>
             ))}
           </nav>
+          {mobileMenuOpen && (
+            <div className="sm:hidden mt-3 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              {NAV_ITEMS.filter((item) => item.key !== 'settings' || role === 'admin').map((item) => {
+                const active = view === item.key || (item.key === 'panels' && view === 'panelDetail');
+                return (
+                  <button key={item.key} onClick={() => { setView(item.key); setPanelId(null); setMobileMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3.5 text-sm text-left"
+                    style={{
+                      background: active ? 'var(--surface-raised)' : 'var(--surface)',
+                      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      borderBottom: '1px solid var(--border)', fontWeight: active ? 600 : 400,
+                    }}>
+                    <item.icon size={17} /> {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </header>
 
@@ -3805,8 +3833,6 @@ function PanelDetail({
               {selectedIds.length > 0 && (
                 <div className="flex gap-2">
                   <Button variant="danger" onClick={() => { onBulkDeleteDevices(selectedIds); exitSelectMode(); }}><Trash2 size={15} /> Excluir</Button>
-                  <Button variant="primary" onClick={() => { onBulkMaintainDevices(selectedIds); exitSelectMode(); }}><Wrench size={15} /> Registrar manutenção</Button>
-                  <Button variant="secondary" onClick={() => { onBulkInspectDevices(selectedIds); exitSelectMode(); }}><Search size={15} /> Registrar inspeção</Button>
                 </div>
               )}
             </div>
@@ -3882,7 +3908,6 @@ function PanelDetail({
                             indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
                             warning={(d.type === 'entrada' || d.type === 'entrada_duplo') && !d.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
-                            onInspect={canEdit ? () => onInspectDevice(d) : undefined} onMaintain={canEdit ? () => onMaintainDevice(d) : undefined}
                             onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
                         ))}
                       </div>
@@ -3910,7 +3935,6 @@ function PanelDetail({
               {nacs.map((n) => (
                 <TrackableCard key={n.id} icon={Bell} address={null} title={n.name} meta={n.description}
                   status={{ ...computeStatus(n.nextInspection), lastMaintenance: n.lastMaintenance, lastInspection: n.lastInspection, operationalStatus: n.operationalStatus }}
-                  onInspect={canEdit ? () => onInspectNac(n) : undefined} onMaintain={canEdit ? () => onMaintainNac(n) : undefined}
                   onEdit={canEdit ? () => onEditNac(n) : undefined} onDelete={canEdit ? () => onDeleteNac(n) : undefined} />
               ))}
             </div>
@@ -4114,6 +4138,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [statusToDelete, setStatusToDelete] = useState(INDICATOR_STATUS_OPTIONS[0]);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const areaOptions = [...new Set(list.map((r) => r.area).filter(Boolean))].sort();
   const panelOptions = [...new Set(list.map((r) => deviceContext(r)?.panelName).filter(Boolean))].sort();
@@ -4574,25 +4599,42 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
         {canEdit && (
           <div className="flex flex-wrap gap-2">
             {list.length > 0 && (
-              <>
-                <Button variant="secondary" onClick={exportIndicadorXlsx}><FileText size={15} /> Exportar Excel</Button>
-                <Button variant="secondary" onClick={() => setPrintMode(true)}><Printer size={15} /> Imprimir / Salvar PDF</Button>
-              </>
+              selectMode ? (
+                <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
+              ) : (
+                <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
+              )
             )}
-            <label className="btn btn-secondary cursor-pointer" style={importing ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
-              <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
-              <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" disabled={importing} />
-            </label>
-            {list.length > 0 && (
-              <>
-                <Button variant="secondary" onClick={handleLink}><Cpu size={15} /> Vincular aos dispositivos</Button>
-                {selectMode ? (
-                  <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
-                ) : (
-                  <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
-                )}
-              </>
-            )}
+            <div style={{ position: 'relative' }}>
+              <Button variant="secondary" onClick={() => setMoreMenuOpen((v) => !v)}>⋮ Mais ações</Button>
+              {moreMenuOpen && (
+                <>
+                  <div onClick={() => setMoreMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
+                  <div style={{
+                    position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, minWidth: 230, borderRadius: 10,
+                    border: '1px solid var(--border)', background: 'var(--surface)', boxShadow: '0 10px 30px rgba(0,0,0,0.35)', overflow: 'hidden',
+                  }}>
+                    {list.length > 0 && (
+                      <>
+                        <button type="button" onClick={() => { exportIndicadorXlsx(); setMoreMenuOpen(false); }} style={dropdownItemStyle}>
+                          <FileText size={15} /> Exportar Excel
+                        </button>
+                        <button type="button" onClick={() => { setPrintMode(true); setMoreMenuOpen(false); }} style={dropdownItemStyle}>
+                          <Printer size={15} /> Imprimir / Salvar PDF
+                        </button>
+                        <button type="button" onClick={() => { handleLink(); setMoreMenuOpen(false); }} style={dropdownItemStyle}>
+                          <Cpu size={15} /> Vincular aos dispositivos
+                        </button>
+                      </>
+                    )}
+                    <label style={{ ...dropdownItemStyle, borderBottom: 'none', ...(importing ? { opacity: 0.6, pointerEvents: 'none' } : {}) }}>
+                      <Upload size={15} /> {importing ? 'Importando…' : 'Importar planilha (.xlsx)'}
+                      <input type="file" accept=".xlsx,.xls" onChange={(e) => { handleFile(e); setMoreMenuOpen(false); }} className="hidden" disabled={importing} />
+                    </label>
+                  </div>
+                </>
+              )}
+            </div>
             <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo registro</Button>
           </div>
         )}
@@ -5557,11 +5599,14 @@ function PageStyles() {
       .btn-danger { background: transparent; color: var(--status-danger); border: 1px solid var(--status-danger); }
       .btn-danger:hover { background: rgba(240,71,61,0.1); }
       .btn-icon {
-        display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-        border-radius: 6px; color: var(--text-secondary); transition: all .15s ease; cursor: pointer; flex-shrink: 0;
+        display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+        border-radius: 8px; color: var(--text-secondary); transition: all .15s ease; cursor: pointer; flex-shrink: 0;
       }
       .btn-icon:hover { background: var(--surface-raised); color: var(--text-primary); }
       .btn-icon-danger:hover { background: rgba(240,71,61,0.12); color: var(--status-danger); }
+      @media (max-width: 640px) {
+        .btn-icon { width: 44px; height: 44px; }
+      }
       .nav-tab {
         font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px 8px 0 0;
         color: var(--text-secondary); white-space: nowrap; display: inline-flex; align-items: center;
