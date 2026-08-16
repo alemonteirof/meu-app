@@ -1199,7 +1199,7 @@ function Modal({ title, onClose, children, wide }) {
    scrolling all the way down, even on short mobile viewports. */
 function FormActions({ children }) {
   return (
-    <div className="flex justify-end gap-2 pt-3 mt-2 sticky bottom-0" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
+    <div className="flex justify-end gap-2 flex-wrap pt-3 mt-2 sticky bottom-0" style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
       {children}
     </div>
   );
@@ -1209,7 +1209,7 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
   return (
     <Modal title={title} onClose={onCancel}>
       <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>{message}</p>
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 flex-wrap">
         <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
         <Button variant="danger" onClick={onConfirm}><Trash2 size={15} /> Excluir</Button>
       </div>
@@ -2092,7 +2092,7 @@ function ModelLibraryManager({ data, onSave, onRemove }) {
         Associe uma foto a cada modelo de equipamento. A foto vale para todos os dispositivos que usam esse modelo —
         por exemplo, uma única foto para todos os detectores "ALO-V".
       </p>
-      <form onSubmit={handleAddModel} className="flex gap-2">
+      <form onSubmit={handleAddModel} className="flex gap-2 flex-wrap">
         <input className={inputCls} placeholder="Nome do modelo (ex.: ALO-V)" value={newModel} onChange={(e) => setNewModel(e.target.value)} />
         <Button variant="secondary" type="submit"><Plus size={15} /> Registrar</Button>
       </form>
@@ -3406,7 +3406,7 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Painéis</h2>
         {canEdit && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {data.panels.length > 0 && (
               selectMode ? (
                 <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
@@ -3562,7 +3562,7 @@ function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInsp
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[loop?.name, panel?.name].filter(Boolean).join(' · ')}</span>
             </div>
             {editingId === d.id ? (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <input className={inputCls} value={etiquetaDraft} onChange={(e) => setEtiquetaDraft(e.target.value)}
                   placeholder="Etiqueta / localização" autoFocus />
                 <Button variant="primary" onClick={() => { onSubmitEtiqueta(d.id, etiquetaDraft); setEditingId(null); }}>Salvar</Button>
@@ -3816,7 +3816,7 @@ function PanelDetail({
       {tab === 'loops' && (
         <div className="flex flex-col gap-3">
           {canEdit && (
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 flex-wrap">
               {selectMode ? (
                 <Button variant="secondary" onClick={exitSelectMode}><X size={15} /> Cancelar seleção</Button>
               ) : (
@@ -3831,7 +3831,7 @@ function PanelDetail({
                 {selectedIds.length === 0 ? 'Marque os dispositivos que quer atualizar de uma vez.' : `${selectedIds.length} dispositivo(s) selecionado(s)`}
               </p>
               {selectedIds.length > 0 && (
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button variant="danger" onClick={() => { onBulkDeleteDevices(selectedIds); exitSelectMode(); }}><Trash2 size={15} /> Excluir</Button>
                 </div>
               )}
@@ -4139,9 +4139,11 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   const [selectedIds, setSelectedIds] = useState([]);
   const [statusToDelete, setStatusToDelete] = useState(INDICATOR_STATUS_OPTIONS[0]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const areaOptions = [...new Set(list.map((r) => r.area).filter(Boolean))].sort();
   const panelOptions = [...new Set(list.map((r) => deviceContext(r)?.panelName).filter(Boolean))].sort();
+  const activeFilterCount = [statusFilter, areaFilter, panelFilter, linkFilter].filter((f) => f !== 'all').length;
 
   function deviceContext(r) {
     if (!r.deviceId) return null;
@@ -4675,28 +4677,35 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
             {linkedCount} de {list.length} registro(s) já vinculado(s) a um dispositivo do painel.
           </p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-2">
+            <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
               <input className={`${inputCls} pl-9`} placeholder="Buscar por etiqueta, endereço, falha..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <select className={inputCls} style={{ maxWidth: '220px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="all">Todos os status</option>
-              {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select className={inputCls} style={{ maxWidth: '220px' }} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-              <option value="all">Todas as áreas</option>
-              {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-            <select className={inputCls} style={{ maxWidth: '220px' }} value={panelFilter} onChange={(e) => setPanelFilter(e.target.value)}>
-              <option value="all">Todos os painéis</option>
-              {panelOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <select className={inputCls} style={{ maxWidth: '220px' }} value={linkFilter} onChange={(e) => setLinkFilter(e.target.value)}>
-              <option value="all">Vinculados e não vinculados</option>
-              <option value="linked">Só vinculados a dispositivo</option>
-              <option value="unlinked">Só sem vínculo</option>
-            </select>
+            <button type="button" className="sm:hidden self-start" onClick={() => setFiltersOpen((v) => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13 }}>
+              <ChevronDown size={14} style={{ transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+              Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            </button>
+            <div className={`flex-col sm:flex-row gap-2 flex-wrap ${filtersOpen ? 'flex' : 'hidden sm:flex'}`}>
+              <select className={inputCls} style={{ maxWidth: '220px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">Todos os status</option>
+                {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select className={inputCls} style={{ maxWidth: '220px' }} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+                <option value="all">Todas as áreas</option>
+                {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <select className={inputCls} style={{ maxWidth: '220px' }} value={panelFilter} onChange={(e) => setPanelFilter(e.target.value)}>
+                <option value="all">Todos os painéis</option>
+                {panelOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <select className={inputCls} style={{ maxWidth: '220px' }} value={linkFilter} onChange={(e) => setLinkFilter(e.target.value)}>
+                <option value="all">Vinculados e não vinculados</option>
+                <option value="linked">Só vinculados a dispositivo</option>
+                <option value="unlinked">Só sem vínculo</option>
+              </select>
+            </div>
           </div>
         </>
       )}
@@ -5273,7 +5282,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{lastImport.summary}</p>
           </div>
           {confirmUndo ? (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button variant="secondary" onClick={() => setConfirmUndo(false)}>Cancelar</Button>
               <Button variant="danger" onClick={() => { onUndoImport(); setConfirmUndo(false); }}>Confirmar, desfazer</Button>
             </div>
@@ -5550,6 +5559,8 @@ function PageStyles() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
+      html, body { overflow-x: hidden; max-width: 100vw; }
+      #root { overflow-x: hidden; }
       :root {
         --bg: #181414;
         --surface: #221D1D;

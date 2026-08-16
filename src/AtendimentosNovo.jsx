@@ -362,7 +362,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
         <Field label="Descrição">
           <textarea style={{ ...inputStyle, minHeight: 60 }} value={editForm.descricao} onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })} />
         </Field>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
           <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
         </div>
@@ -385,7 +385,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
         <Field label="Descritivo">
           <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.descritivo} onChange={(e) => setEditForm({ ...editForm, descritivo: e.target.value })} />
         </Field>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
           <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
         </div>
@@ -426,7 +426,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
       <Field label="Próxima inspeção">
         <input type="date" style={inputStyle} value={editForm.proximaInspecao} onChange={(e) => setEditForm({ ...editForm, proximaInspecao: e.target.value })} />
       </Field>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
         <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
       </div>
@@ -778,7 +778,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             <button onClick={() => setAba('manutencao')} style={tabBtnStyle(aba === 'manutencao')}>+ Manutenção</button>
             <button onClick={() => setAba('inspecao')} style={tabBtnStyle(aba === 'inspecao')}>+ Inspeção</button>
             <button onClick={() => setAba('outro')} style={tabBtnStyle(aba === 'outro')}>+ Outro</button>
