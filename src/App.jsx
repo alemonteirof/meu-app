@@ -1,4 +1,9 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import AtendimentosNovo from './AtendimentosNovo';
+import {
+  loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, deleteAtendimento, updateInspecao, deleteInspecao,
+  FUNCTIONAL_CATEGORIES, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
+} from './supabaseAdapter';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Droplet, Wind, Clock, Plus, X, Pencil, Trash2,
   ChevronDown, ChevronRight, ArrowLeft, Cloud, Thermometer, Hand, LogOut,
@@ -23,9 +28,8 @@ import ToolChecklistScreen from './components/ToolChecklistScreen';
 import ToolChecklistHistory from './components/ToolChecklistHistory';
 
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
+import { supabase } from './supabaseClient';
+export { supabase };
 
 /* ------------------------------------------------------------------ */
 /* Storage: window.storage -> Supabase (tabela kv_store)               */
@@ -713,7 +717,12 @@ function buildImportEntities(rows, typeMap, brand, opts) {
           ? (base.label ? `${base.label} — ${s.label}` : s.label)
           : (base.label || s.label);
         const modelo = brand === 'notifier' ? resolveNotifierModel(s.flashScanType, true) : s.type;
-        devices.push({ loopKey: s.loopKey, address: `${s.baseStr}.${s.sub}`, type: typeMap[s.type] || 'entrada', modelo, label });
+        // Se o código foi mapeado como "entrada" genérico e o relatório mostra 2 sub-endereços de
+        // verdade (ex.: DIMM, FDM-1), já marca como Entrada Duplo sozinho. Se o técnico escolheu outro
+        // tipo manualmente pra esse código (saída, relé etc.), respeita a escolha dele.
+        const chosenType = typeMap[s.type] || 'entrada';
+        const finalType = chosenType === 'entrada' ? 'entrada_duplo' : chosenType;
+        devices.push({ loopKey: s.loopKey, address: `${s.baseStr}.${s.sub}`, type: finalType, modelo, label, subEndereco: s.sub });
       }
     }
   }
@@ -732,6 +741,7 @@ const DEVICE_TYPES = [
   { value: 'acionador', label: 'Acionador manual', icon: Hand },
   { value: 'saida', label: 'Módulo de saída', icon: LogOut },
   { value: 'entrada', label: 'Módulo de entrada', icon: LogIn },
+  { value: 'entrada_duplo', label: 'Módulo de Entrada Duplo', icon: LogIn },
   { value: 'rele', label: 'Módulo de relé', icon: ToggleLeft },
 ];
 const DEVICE_TYPE_MAP = Object.fromEntries(DEVICE_TYPES.map((t) => [t.value, t]));
@@ -779,6 +789,7 @@ function indicatorStatusColor(status) {
 }
 
 const NAV_ITEMS = [
+  { key: 'atendimentos', label: 'Atendimentos (novo)', icon: ClipboardList },
   { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
   { key: 'panels', label: 'Painéis', icon: Cpu },
   { key: 'pumphouse', label: 'Casa de Bombas', icon: Droplet },
@@ -1007,6 +1018,7 @@ function allTrackableItems(data) {
       lastInspection: d.lastInspection || '', nextInspection: d.nextInspection || '',
       icon: DEVICE_TYPE_MAP[d.type]?.icon || Cpu,
       photo: photoForModelo(data, d.modelo),
+      type: d.type, categoriaFuncional: d.categoriaFuncional || '',
     });
   });
   data.nacs.forEach((n) => {
@@ -1203,7 +1215,7 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
 }
 
 /* Generic card for any trackable equipment (device, NAC, pump item, gas detector) */
-function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInspect, onMaintain, onEdit, onDelete, selectable, selected, onToggleSelect, indicadorCount }) {
+function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInspect, onMaintain, onEdit, onDelete, selectable, selected, onToggleSelect, indicadorCount, warning }) {
   return (
     <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: selected ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
       <div className="flex items-start gap-3">
@@ -1236,6 +1248,11 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
           {status && status.operationalStatus === 'nao_operante' && (
             <div className="text-xs mt-1 font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
               <AlertTriangle size={11} /> Não operante
+            </div>
+          )}
+          {warning && (
+            <div className="text-xs mt-1 font-medium flex items-center gap-1" style={{ color: 'var(--status-warning, #d97706)' }}>
+              <AlertTriangle size={11} /> {warning}
             </div>
           )}
         </div>
@@ -1334,21 +1351,98 @@ function NacForm({ initial, onSubmit, onCancel }) {
   );
 }
 
-function DeviceForm({ initial, onSubmit, onCancel }) {
+/** Campos de Categoria funcional + Papel do sinal, reaproveitados para entrada simples e para
+    cada sub-endereço da entrada duplo. */
+function CategoriaFuncionalFields({ categoriaFuncional, papelSinal, onChange }) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Categoria funcional">
+        <select className={inputCls} value={categoriaFuncional || ''}
+          onChange={(e) => onChange({ categoriaFuncional: e.target.value, papelSinal: '' })}>
+          <option value="">Selecione...</option>
+          {FUNCTIONAL_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+      </Field>
+      {CATEGORIAS_COM_PAPEL_SINAL.includes(categoriaFuncional) && (
+        <Field label="Papel do sinal">
+          <select className={inputCls} value={papelSinal || ''}
+            onChange={(e) => onChange({ categoriaFuncional, papelSinal: e.target.value })}>
+            <option value="">Selecione...</option>
+            {PAPEL_SINAL_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+        </Field>
+      )}
+    </div>
+  );
+}
+
+function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
   const [v, setV] = useState(initial || {
     address: '', type: 'fumaca', modelo: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '',
+    categoriaFuncional: '', papelSinal: '',
   });
+  // Só usado ao CRIAR um Módulo de Entrada Duplo: gera 2 dispositivos (endereço.01 e endereço.02) de uma vez.
+  const [dupla, setDupla] = useState({
+    sub1: { categoriaFuncional: '', papelSinal: '' },
+    sub2: { categoriaFuncional: '', papelSinal: '' },
+  });
+
+  const isEntradaSimples = v.type === 'entrada';
+  const isEntradaDuploCreate = v.type === 'entrada_duplo' && isCreate;
+  const isEntradaDuploEdit = v.type === 'entrada_duplo' && !isCreate;
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!v.address.trim()) return;
+    if (isEntradaDuploCreate) {
+      const base = v.address.trim();
+      const devices = [dupla.sub1, dupla.sub2].map((s, idx) => ({
+        ...v, address: `${base}.0${idx + 1}`, subEndereco: `0${idx + 1}`,
+        categoriaFuncional: s.categoriaFuncional, papelSinal: s.papelSinal,
+      }));
+      onSubmit(devices);
+    } else {
+      onSubmit(v);
+    }
+  }
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (v.address.trim()) onSubmit(v); }}>
+    <form onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Endereço *"><input autoFocus className={`${inputCls} mono`} value={v.address}
-          onChange={(e) => setV({ ...v, address: e.target.value })} placeholder="001" required /></Field>
+        <Field label={isEntradaDuploCreate ? 'Endereço base *' : 'Endereço *'}
+          hint={isEntradaDuploCreate ? 'Os 2 sub-endereços serão gerados automaticamente (ex.: 60 → 60.01 e 60.02).' : undefined}>
+          <input autoFocus className={`${inputCls} mono`} value={v.address}
+            onChange={(e) => setV({ ...v, address: e.target.value })}
+            placeholder={isEntradaDuploCreate ? '060' : '001'} required />
+        </Field>
         <Field label="Tipo de dispositivo *">
-          <select className={inputCls} value={v.type} onChange={(e) => setV({ ...v, type: e.target.value })}>
+          <select className={inputCls} value={v.type}
+            onChange={(e) => setV({ ...v, type: e.target.value, categoriaFuncional: '', papelSinal: '' })}>
             {DEVICE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </Field>
       </div>
+
+      {isEntradaSimples && (
+        <CategoriaFuncionalFields categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
+          onChange={({ categoriaFuncional, papelSinal }) => setV({ ...v, categoriaFuncional, papelSinal })} />
+      )}
+
+      {isEntradaDuploEdit && (
+        <CategoriaFuncionalFields categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
+          onChange={({ categoriaFuncional, papelSinal }) => setV({ ...v, categoriaFuncional, papelSinal })} />
+      )}
+
+      {isEntradaDuploCreate && ['sub1', 'sub2'].map((key, idx) => (
+        <div key={key} className="p-3 rounded-lg mb-3" style={{ border: '1px solid var(--border)' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>
+            Sub-endereço {v.address ? `${v.address}.0${idx + 1}` : `.0${idx + 1}`}
+          </p>
+          <CategoriaFuncionalFields categoriaFuncional={dupla[key].categoriaFuncional} papelSinal={dupla[key].papelSinal}
+            onChange={(next) => setDupla({ ...dupla, [key]: next })} />
+        </div>
+      ))}
+
       <Field label="Modelo do equipamento" hint="Usado para agrupar uma mesma foto entre todos os dispositivos deste modelo.">
         <input className={inputCls} value={v.modelo || ''} onChange={(e) => setV({ ...v, modelo: e.target.value })} placeholder="Ex.: ALO-V" />
       </Field>
@@ -1357,7 +1451,7 @@ function DeviceForm({ initial, onSubmit, onCancel }) {
       <MaintenanceScheduleFields values={v} setValues={setV} />
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit">Salvar dispositivo</Button>
+        <Button variant="primary" type="submit">Salvar dispositivo{isEntradaDuploCreate ? 's' : ''}</Button>
       </FormActions>
     </form>
   );
@@ -1824,13 +1918,13 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
           <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT — Relatórios de Visita Técnica</h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registros de campo, com fotos, que alimentam o Indicador automaticamente.</p>
         </div>
-        {canEdit && <Button variant="primary" onClick={() => setMode('new')}><Plus size={16} /> Novo RVT</Button>}
+        
       </div>
 
       {reports.length === 0 ? (
         <EmptyState icon={Camera} title="Nenhum RVT registrado ainda"
           description="Crie o primeiro relatório de visita técnica, selecionando os dispositivos direto dos painéis já cadastrados."
-          actionLabel={canEdit ? 'Novo RVT' : undefined} onAction={canEdit ? () => setMode('new') : undefined} />
+          />
       ) : (
         <div className="flex flex-col gap-2">
           {[...reports].sort((a, b) => b.data.localeCompare(a.data)).map((r) => (
@@ -1841,8 +1935,8 @@ function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => setViewingId(r.id)}><FileText size={15} /> Ver / Imprimir</Button>
-                {canEdit && <Button variant="secondary" onClick={() => handleStartEdit(r)}><Pencil size={15} /> Editar</Button>}
-                {canEdit && <IconButton title="Excluir relatório" danger onClick={() => onDeleteReport(r)}><Trash2 size={15} /></IconButton>}
+                {canEdit && <Button variant="secondary" onClick={() => { if (r.origemNovo) { alert('Esta visita foi criada no modelo novo e ainda não pode ser editada por aqui. Use a aba "Atendimentos (novo)".'); return; } handleStartEdit(r); }}><Pencil size={15} /> Editar</Button>}
+                {canEdit && <IconButton title="Excluir relatório" danger onClick={() => { if (r.origemNovo) { alert('Esta visita foi criada no modelo novo e ainda não pode ser excluída por aqui.'); return; } onDeleteReport(r); }}><Trash2 size={15} /></IconButton>}
               </div>
             </div>
           ))}
@@ -2015,29 +2109,13 @@ function IndicadorForm({ initial, data, areaSuggestions, onSubmit, onCancel }) {
         onChange={(e) => setV({ ...v, descritivo: e.target.value })} /></Field>
       <Field label="Status">
         <select className={inputCls} value={v.status} onChange={(e) => setV({ ...v, status: e.target.value })}>
-          {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          <option value="Aguardando">Aguardando</option>
+          <option value="Andamento">Andamento</option>
+          <option value="Resolvido">Resolvido</option>
         </select>
       </Field>
-      <Field label="Explanação"><textarea rows={2} className={inputCls} value={v.explanacao}
-        onChange={(e) => setV({ ...v, explanacao: e.target.value })} /></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Data diagnóstico"><input type="date" className={inputCls} value={v.dataDiagnostico}
-          onChange={(e) => setV({ ...v, dataDiagnostico: e.target.value })} /></Field>
-        <Field label="Data solução"><input type="date" className={inputCls} value={v.dataSolucao}
-          onChange={(e) => setV({ ...v, dataSolucao: e.target.value })} /></Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Intervenção 1"><input type="date" className={inputCls} value={v.dataIntervencao1}
-          onChange={(e) => setV({ ...v, dataIntervencao1: e.target.value })} /></Field>
-        <Field label="Intervenção 2"><input type="date" className={inputCls} value={v.dataIntervencao2}
-          onChange={(e) => setV({ ...v, dataIntervencao2: e.target.value })} /></Field>
-        <Field label="Intervenção 3"><input type="date" className={inputCls} value={v.dataIntervencao3}
-          onChange={(e) => setV({ ...v, dataIntervencao3: e.target.value })} /></Field>
-        <Field label="Intervenção 4"><input type="date" className={inputCls} value={v.dataIntervencao4}
-          onChange={(e) => setV({ ...v, dataIntervencao4: e.target.value })} /></Field>
-      </div>
-      <Field label="Solução"><textarea rows={2} className={inputCls} value={v.solucao}
-        onChange={(e) => setV({ ...v, solucao: e.target.value })} /></Field>
+      <Field label="Data"><input type="date" className={inputCls} value={v.dataDiagnostico}
+        onChange={(e) => setV({ ...v, dataDiagnostico: e.target.value })} /></Field>
       <div className="mb-4">
         <MultiPhotoUpload photos={v.fotos} onChange={(fotos) => setV({ ...v, fotos })} />
       </div>
@@ -2231,14 +2309,23 @@ function InspectionForm({ item, onSubmit, onCancel }) {
     networkComm: item.networkComm || '',
     lastInspection: item.lastInspection || todayISO(),
     nextInspection: item.nextInspection || '',
-    technician: '', falha: '',
+    technician: '', observacoes: '', falha: '',
   });
+  const metodo = getMetodoTeste(item);
+  const categoriaLabel = FUNCTIONAL_CATEGORY_MAP[item.categoriaFuncional] || '';
+  const papelLabel = PAPEL_SINAL_MAP[item.papelSinal] || '';
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
+      {(categoriaLabel || metodo) && (
+        <div className="mb-3 p-2 rounded-lg text-xs" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+          {categoriaLabel && <div>Categoria: <strong style={{ color: 'var(--text-primary)' }}>{categoriaLabel}</strong>{papelLabel && ` · Papel do sinal: ${papelLabel}`}</div>}
+          {metodo && <div>Método de teste: <strong style={{ color: 'var(--text-primary)' }}>{metodo}</strong></div>}
+        </div>
+      )}
       <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
         onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do técnico" /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Status">
+        <Field label="Resultado do teste">
           <select className={inputCls} value={v.operationalStatus} onChange={(e) => setV({ ...v, operationalStatus: e.target.value })}>
             <option value="">Não avaliado</option>
             {OPERATIONAL_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -2267,8 +2354,10 @@ function InspectionForm({ item, onSubmit, onCancel }) {
         <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.nextInspection}
           onChange={(e) => setV({ ...v, nextInspection: e.target.value })} /></Field>
       </div>
-      <Field label="Observação / falha encontrada (opcional)"><input className={inputCls} value={v.falha}
-        onChange={(e) => setV({ ...v, falha: e.target.value })} placeholder="Deixe em branco se não houve problema" /></Field>
+      <Field label="Observações (opcional)"><input className={inputCls} value={v.observacoes}
+        onChange={(e) => setV({ ...v, observacoes: e.target.value })} placeholder="Observações gerais da inspeção" /></Field>
+      <Field label="Falha (opcional)"><input className={inputCls} value={v.falha}
+        onChange={(e) => setV({ ...v, falha: e.target.value })} placeholder="Deixe em branco se não houve problema — gera corretiva automática" /></Field>
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit"><CheckCircle2 size={15} /> Salvar inspeção</Button>
@@ -2636,8 +2725,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await window.storage.get(clientDataKey(client.id), false);
-        setData(res && res.value ? JSON.parse(res.value) : emptyData());
+      const loaded = await loadClientData(client.id);
+      setData(loaded);
       } catch (e) {
         setData(emptyData());
       } finally {
@@ -2648,8 +2737,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   async function persist(next) {
     try {
-      const res = await window.storage.set(clientDataKey(client.id), JSON.stringify(next), false);
-      if (!res) throw new Error('Falha ao salvar');
+      await saveClientData(client.id, next);
       setSaveError(false);
     } catch (e) {
       console.error(e);
@@ -2691,6 +2779,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         type: d.type,
         modelo: d.modelo,
         description: d.label,
+        subEndereco: d.subEndereco || '',
+        categoriaFuncional: '',
+        papelSinal: '',
         lastMaintenance: '',
         nextMaintenance: '',
         intervalMonths: '',
@@ -2790,8 +2881,15 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
 
   function submitDevice(values) {
-    if (modal.mode === 'create') updateData((prev) => ({ ...prev, devices: [...prev.devices, { id: uid(), loopId: modal.context.loopId, ...values }] }));
-    else updateData((prev) => ({ ...prev, devices: prev.devices.map((d) => (d.id === modal.initial.id ? { ...d, ...values } : d)) }));
+    if (modal.mode === 'create') {
+      const arr = Array.isArray(values) ? values : [values];
+      updateData((prev) => ({
+        ...prev,
+        devices: [...prev.devices, ...arr.map((v) => ({ id: uid(), loopId: modal.context.loopId, ...v }))],
+      }));
+    } else {
+      updateData((prev) => ({ ...prev, devices: prev.devices.map((d) => (d.id === modal.initial.id ? { ...d, ...values } : d)) }));
+    }
     closeModal();
   }
   function deleteDevice(id) {
@@ -2820,11 +2918,67 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
 
   function submitIndicador(values) {
+    if (modal.mode === 'edit' && modal.initial && modal.initial.origemNovo) {
+      const initialId = modal.initial.id;
+      (async () => {
+        try {
+          if (initialId.startsWith('novo-at-')) {
+            await updateAtendimento(initialId.replace('novo-at-', ''), {
+              falha: values.falha, status: (values.status || 'Aguardando').toLowerCase(),
+              descritivo: values.descritivo, fotos: values.fotos,
+            });
+          } else if (initialId.startsWith('novo-insp-')) {
+            await updateInspecao(initialId.replace('novo-insp-', ''), {
+              falha: values.falha, observacoes: values.descritivo,
+            });
+          }
+          const reloaded = await loadClientData(client.id);
+          setData(reloaded);
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+      closeModal();
+      return;
+    }
+    const usaModeloNovo = ['devices', 'nacs', 'gasDetectors'].includes(values.categoria) && values.deviceId;
+    if (usaModeloNovo && modal.mode === 'create') {
+      (async () => {
+        try {
+          const visitaNova = await createVisita({ clienteId: client.id, dataVisita: values.dataDiagnostico || undefined });
+          await createAtendimento({
+            dispositivoId: values.deviceId, falha: values.falha, status: (values.status || 'Aguardando').toLowerCase(),
+            descritivo: values.descritivo || '', fotos: values.fotos || [], rvtId: visitaNova.id,
+          });
+          const reloaded = await loadClientData(client.id);
+          setData(reloaded);
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+      closeModal();
+      return;
+    }
     if (modal.mode === 'create') updateData((prev) => ({ ...prev, indicador: [...(prev.indicador || []), { id: uid(), ...values }] }));
     else updateData((prev) => ({ ...prev, indicador: (prev.indicador || []).map((r) => (r.id === modal.initial.id ? { ...r, ...values } : r)) }));
     closeModal();
   }
   function deleteIndicador(id) {
+    const registroAtual = (data.indicador || []).find((r) => r.id === id);
+    if (registroAtual && registroAtual.origemNovo) {
+      (async () => {
+        try {
+          if (id.startsWith('novo-at-')) await deleteAtendimento(id.replace('novo-at-', ''));
+          else if (id.startsWith('novo-insp-')) await deleteInspecao(id.replace('novo-insp-', ''));
+          const reloaded = await loadClientData(client.id);
+          setData(reloaded);
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+      setConfirmState(null);
+      return;
+    }
     updateData((prev) => {
       const registro = (prev.indicador || []).find((r) => r.id === id);
       // exclusão em cascata: se esse registro veio de um RVT, apaga o RVT e o histórico junto
@@ -2983,6 +3137,24 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
   function submitMaintenance(values) {
     const { category, id } = modal.context;
+
+    if (['devices', 'nacs', 'gasDetectors'].includes(category)) {
+      (async () => {
+        try {
+          const visitaNova = await createVisita({ clienteId: client.id, dataVisita: values.date });
+          await createAtendimento({
+            dispositivoId: id, falha: values.falha, status: (values.status || 'Resolvido').toLowerCase(),
+            descritivo: values.description || '', tecnico: values.technician || '', fotos: [], rvtId: visitaNova.id,
+          });
+          const reloaded = await loadClientData(client.id);
+          setData(reloaded);
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+      closeModal();
+      return;
+    }
     const fields = resolveIndicadorFields(data, category, modal.item);
     const falhaTexto = (values.falha || '').trim() || 'Realizado sem apontamentos';
     const statusFinal = values.status || 'Resolvido';
@@ -3059,6 +3231,28 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
   function submitInspection(values) {
     const { category, id } = modal.context;
+
+    if (['devices', 'nacs', 'gasDetectors'].includes(category)) {
+      (async () => {
+        try {
+          const dataInspecaoNova = values.lastInspection || todayISO();
+          const visitaNova = await createVisita({ clienteId: client.id, dataVisita: dataInspecaoNova, tecnico: values.technician || '' });
+          await createInspecao({
+            dispositivoId: id, tecnico: values.technician || '',
+            resultadoTeste: values.operationalStatus || '', aparencia: values.appearance || '',
+            comunicacaoLocal: values.localComm || '', comunicacaoRede: values.networkComm || '',
+            observacoes: values.observacoes || '', falha: values.falha || '', metodo: getMetodoTeste(modal.item), dataInspecao: dataInspecaoNova,
+            proximaInspecao: values.nextInspection || '', fotos: [], rvtId: visitaNova.id,
+          });
+          const reloaded = await loadClientData(client.id);
+          setData(reloaded);
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+      closeModal();
+      return;
+    }
     const fields = resolveIndicadorFields(data, category, modal.item);
     const falhaTexto = (values.falha || '').trim() || 'Realizado sem apontamentos';
     const dataInspecao = values.lastInspection || todayISO();
@@ -3181,11 +3375,16 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onInspect={(it) => openInspectModal(it.category, it, it.title)}
             onGoPanels={() => setView('panels')} />
         )}
+        {view === 'atendimentos' && (
+          <AtendimentosNovo data={data} clientId={client.id} canEdit={canEdit}
+            onRefresh={async () => setData(await loadClientData(client.id))} />
+        )}
 
         {view === 'panels' && (
           <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch} canEdit={canEdit}
             onOpenPanel={(id) => { setPanelId(id); setPanelTab('loops'); setView('panelDetail'); }}
             onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })}
+            onImport={role === 'admin' ? () => { setSettingsTab('importar'); setView('settings'); } : undefined}
             onBulkDeletePanels={(ids) => setConfirmState({ title: 'Excluir painéis selecionados', message: `Excluir ${ids.length} painel(éis) selecionado(s)? Todos os laços, circuitos e dispositivos vinculados também serão removidos. Essa ação não pode ser desfeita.`, onConfirm: () => deletePanelsBulk(ids) })} />
         )}
 
@@ -3306,7 +3505,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       )}
       {modal?.type === 'device' && (
         <Modal title={modal.mode === 'create' ? 'Novo dispositivo' : 'Editar dispositivo'} onClose={closeModal} wide>
-          <DeviceForm initial={modal.initial} onSubmit={submitDevice} onCancel={closeModal} />
+          <DeviceForm initial={modal.initial} isCreate={modal.mode === 'create'} onSubmit={submitDevice} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'pump' && (
@@ -3498,6 +3697,9 @@ function countByMonth(list, months = 12) {
 }
 
 function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspect, onGoPanels }) {
+  const [dashFiltroInicio, setDashFiltroInicio] = useState('');
+  const [dashFiltroFim, setDashFiltroFim] = useState('');
+  const [dashFiltroTipo, setDashFiltroTipo] = useState('all');
   const total = counts.overdue + counts.soon + counts.ok + counts.none;
   const todayLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -3516,12 +3718,97 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
         <p className="text-sm capitalize" style={{ color: 'var(--text-secondary)' }}>{todayLabel}</p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Vencidos" value={counts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
-        <StatCard label="A vencer (30 dias)" value={counts.soon} color="var(--status-warn)" icon={Clock} />
-        <StatCard label="Em dia" value={counts.ok} color="var(--status-ok)" icon={CheckCircle2} />
-        <StatCard label="Total monitorado" value={total} color="var(--text-secondary)" icon={LayoutDashboard} />
-      </div>
+      {(() => {
+        const indicador = data.indicador || [];
+        const dentroDoPeriodo = (r) => {
+          const d = r.dataDiagnostico || '';
+          if (dashFiltroInicio && d < dashFiltroInicio) return false;
+          if (dashFiltroFim && d > dashFiltroFim) return false;
+          return true;
+        };
+        const ehCorretivaReal = (r) => r.tipo === 'manutencao' && r.falha && r.falha !== 'Realizado sem apontamentos';
+        const filtrado = indicador.filter(dentroDoPeriodo).filter((r) => {
+          if (dashFiltroTipo === 'all') return true;
+          if (dashFiltroTipo === 'corretiva') return ehCorretivaReal(r);
+          if (dashFiltroTipo === 'preventiva') return r.tipo === 'manutencao' && !ehCorretivaReal(r);
+          if (dashFiltroTipo === 'inspecao') return r.tipo === 'inspecao';
+          return true;
+        });
+        const corretivas = filtrado.filter(ehCorretivaReal);
+        const corretivaCounts = { Aguardando: 0, Andamento: 0, Resolvido: 0 };
+        corretivas.forEach((r) => { if (corretivaCounts[r.status] !== undefined) corretivaCounts[r.status] += 1; });
+        const inspecaoAguardando = counts.overdue;
+
+        const corretivaStatusData = [
+          { label: 'Aguardando', value: corretivaCounts.Aguardando, color: 'var(--status-danger)' },
+          { label: 'Andamento', value: corretivaCounts.Andamento, color: 'var(--status-warn)' },
+          { label: 'Resolvido', value: corretivaCounts.Resolvido, color: 'var(--status-ok)' },
+        ].filter((d) => d.value > 0);
+
+        const areaData = sortDesc(countBy(filtrado, (r) => r.area, 'Sem área')).slice(0, 10);
+        const falhaData = sortDesc(countBy(corretivas, (r) => r.falha, 'Sem falha')).slice(0, 10);
+
+        return (
+          <div className="flex flex-col gap-6">
+            <div>
+              <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção dos dispositivos</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard label="Vencidos" value={counts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
+                <StatCard label="A vencer (30 dias)" value={counts.soon} color="var(--status-warn)" icon={Clock} />
+                <StatCard label="Em dia" value={counts.ok} color="var(--status-ok)" icon={CheckCircle2} />
+                <StatCard label="Total monitorado" value={total} color="var(--text-secondary)" icon={LayoutDashboard} />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Falhas e inspeções (Indicador)</h3>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div>
+                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>De</label>
+                    <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                      value={dashFiltroInicio} onChange={(e) => setDashFiltroInicio(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Até</label>
+                    <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                      value={dashFiltroFim} onChange={(e) => setDashFiltroFim(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Tipo</label>
+                    <select className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                      value={dashFiltroTipo} onChange={(e) => setDashFiltroTipo(e.target.value)}>
+                      <option value="all">Todos</option>
+                      <option value="corretiva">Corretiva</option>
+                      <option value="preventiva">Preventiva</option>
+                      <option value="inspecao">Inspeção</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <StatCard label="Corretivas — Aguardando" value={corretivaCounts.Aguardando} color="var(--status-danger)" icon={AlertTriangle} />
+                <StatCard label="Corretivas — Andamento" value={corretivaCounts.Andamento} color="var(--status-warn)" icon={Clock} />
+                <StatCard label="Corretivas — Resolvido" value={corretivaCounts.Resolvido} color="var(--status-ok)" icon={CheckCircle2} />
+                <StatCard label="Inspeção — Aguardando" value={inspecaoAguardando} color="var(--status-danger)" icon={Activity} />
+              </div>
+
+              {filtrado.length === 0 ? (
+                <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no período/filtro selecionado.</p>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <ChartCard title="Status das corretivas"><SimplePieChart data={corretivaStatusData} /></ChartCard>
+                  <ChartCard title="Registros por área" subtitle="Onde mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
+                  <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       <div>
         <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenção</h3>
@@ -3535,6 +3822,7 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
             {attentionItems.slice(0, 12).map((it) => (
               <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
                 status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }}
+                warning={(it.type === 'entrada' || it.type === 'entrada_duplo') && !it.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
                 onMaintain={canEdit ? () => onMaintain(it) : undefined} onInspect={canEdit ? () => onInspect(it) : undefined} />
             ))}
           </div>
@@ -3544,7 +3832,7 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
   );
 }
 
-function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, onBulkDeletePanels }) {
+function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, onImport, onBulkDeletePanels }) {
   const filtered = data.panels.filter((p) => (p.name + ' ' + (p.location || '')).toLowerCase().includes(search.toLowerCase()));
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -3566,23 +3854,16 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
                 <Button variant="secondary" onClick={() => setSelectMode(true)}><ClipboardList size={15} /> Selecionar múltiplos</Button>
               )
             )}
+            {onImport && <Button variant="secondary" onClick={onImport}><Upload size={15} /> Importar</Button>}
             <Button variant="primary" onClick={onCreate}><Plus size={16} /> Novo painel</Button>
           </div>
         )}
       </div>
-
-      {selectMode && (
-        <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
-            {selectedIds.length === 0 ? 'Marque os painéis que quer excluir de uma vez.' : `${selectedIds.length} painel(éis) selecionado(s)`}
-          </p>
           {selectedIds.length > 0 && (
             <Button variant="danger" onClick={() => { onBulkDeletePanels(selectedIds); exitSelectMode(); }}>
               <Trash2 size={15} /> Excluir selecionados
             </Button>
           )}
-        </div>
-      )}
 
       {data.panels.length > 0 && (
         <div className="relative">
@@ -3782,6 +4063,7 @@ function PanelDetail({
                             title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                             status={{ ...computeStatus(d.nextInspection), lastMaintenance: d.lastMaintenance, lastInspection: d.lastInspection, operationalStatus: d.operationalStatus }}
                             indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
+                            warning={(d.type === 'entrada' || d.type === 'entrada_duplo') && !d.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
                             onInspect={canEdit ? () => onInspectDevice(d) : undefined} onMaintain={canEdit ? () => onMaintainDevice(d) : undefined}
                             onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
