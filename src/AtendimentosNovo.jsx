@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState, useCallback, useRef } from 'react';
+import { ShieldAlert } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, listVisitas, deleteVisita,
+  updateAtendimento, updateInspecao, updateOutroItem,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, DEVICE_TYPE_LABELS,
 } from './supabaseAdapter';
 
@@ -12,6 +14,7 @@ const inputStyle = {
 const labelStyle = { fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' };
 const cardStyle = { border: '1px solid var(--border)', borderRadius: 16, padding: 16, background: 'var(--surface)' };
 const btnStyle = { background: '#8B2F2F', color: '#fff', padding: '8px 16px', borderRadius: 8, border: 'none', fontWeight: 600, cursor: 'pointer' };
+const smallBtnStyle = { padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' };
 const tabBtnStyle = (active) => ({
   padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer',
   background: active ? '#8B2F2F' : 'var(--surface)', color: active ? '#fff' : 'var(--text-primary)', fontSize: 13, fontWeight: 600,
@@ -24,6 +27,19 @@ function Field({ label, children }) {
       {children}
     </div>
   );
+}
+
+function formatDateBR(dateStr) {
+  if (!dateStr) return '—';
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function statusColor(status) {
+  if (status === 'Resolvido') return 'var(--status-ok)';
+  if (status === 'Andamento') return 'var(--status-warn, #f59f00)';
+  if (status === 'Aguardando') return 'var(--status-danger)';
+  return 'var(--text-secondary)';
 }
 
 function filesToBase64(fileList) {
@@ -114,7 +130,370 @@ function ItemResumo({ item }) {
   );
 }
 
-export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh }) {
+/** Buscador + seleção múltipla de dispositivos — mesmo padrão de "Marcar todos" por tipo
+    já usado na tela de Painéis (Laço inteiro / por tipo), calculado dinamicamente a partir
+    dos tipos realmente presentes na lista filtrada (então Entrada Duplo, por ex., já entra sozinho). */
+function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  const tiposPresentes = [...new Set(filtered.map((o) => o.type))];
+
+  function tipoLabel(tipo) {
+    if (tipo === 'gasDetector') return 'Detector de gás';
+    return DEVICE_TYPE_LABELS[tipo] || tipo;
+  }
+  function addIds(ids) {
+    setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
+  }
+  function toggle(id) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function clearFilteredSelection() {
+    const filteredIds = new Set(filtered.map((o) => o.id));
+    setSelectedIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+  }
+
+  return (
+    <Field label={`Dispositivo(s) — ${selectedIds.length} selecionado(s)`}>
+      <input style={inputStyle} placeholder="Buscar por etiqueta, endereço, painel..." value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, margin: '8px 0' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Marcar todos:</span>
+        <button type="button" onClick={() => addIds(filtered.map((o) => o.id))}
+          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #8B2F2F', color: '#8B2F2F', background: 'transparent', fontSize: 12, cursor: 'pointer' }}>
+          Todos ({filtered.length})
+        </button>
+        {tiposPresentes.map((tipo) => {
+          const idsDoTipo = filtered.filter((o) => o.type === tipo).map((o) => o.id);
+          return (
+            <button key={tipo || 'sem-tipo'} type="button" onClick={() => addIds(idsDoTipo)} style={smallBtnStyle}>
+              {tipoLabel(tipo)} ({idsDoTipo.length})
+            </button>
+          );
+        })}
+        {selectedIds.length > 0 && (
+          <button type="button" onClick={clearFilteredSelection} style={smallBtnStyle}>Limpar seleção</button>
+        )}
+      </div>
+      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhum dispositivo encontrado.</div>
+        )}
+        {filtered.map((o) => (
+          <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggle(o.id)} />
+            <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{o.label}</span>
+          </label>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+/** Achata os rvt_itens de uma visita (formato bruto vindo do listVisitas) num array
+    de itens de exibição — usado tanto no resumo colapsado quanto na impressão. */
+function itemsFromVisita(v) {
+  return (v.rvt_itens || []).map((it) => {
+    if (it.outro_descricao !== null && it.outro_descricao !== undefined) {
+      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido', descritivo: it.outro_descricao, fotos: [] };
+    }
+    if (it.atendimentos) {
+      const a = it.atendimentos;
+      return {
+        id: it.id, tipo: 'atendimento',
+        etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
+        endereco: a.dispositivos?.endereco || '',
+        falha: a.falha || '', descritivo: a.descritivo || '',
+        status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : '',
+        fotos: a.fotos || [],
+      };
+    }
+    if (it.inspecoes) {
+      const i = it.inspecoes;
+      return {
+        id: it.id, tipo: 'inspecao',
+        etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || 'Dispositivo',
+        endereco: i.dispositivos?.endereco || '',
+        falha: i.falha || '',
+        descritivo: [i.resultado_teste, i.metodo].filter(Boolean).join(' · '),
+        status: 'Resolvido', fotos: i.fotos || [],
+      };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+function RvtFieldLabelLocal({ children }) {
+  return <p style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 600, marginBottom: 2, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
+}
+
+/** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, print-area
+    etc.) que o RVT antigo usava, então imprime/exporta exatamente igual. Aceita 1 visita (impressão
+    individual) ou várias (impressão de período, agrupadas por dia dentro do mesmo documento). */
+function VisitaPrintView({ visitas, client, onBack }) {
+  const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
+  const isPeriodo = dias.length > 1;
+  const todosItens = visitas.flatMap((v) => itemsFromVisita(v));
+  const totalResolvidos = todosItens.filter((it) => it.status === 'Resolvido').length;
+  const tecnicos = [...new Set(visitas.map((v) => v.tecnico).filter(Boolean))];
+  const periodoLabel = isPeriodo ? `${formatDateBR(dias[0])} a ${formatDateBR(dias[dias.length - 1])}` : formatDateBR(dias[0]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
+        <button type="button" onClick={onBack} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+          ← Voltar
+        </button>
+        <button type="button" onClick={() => window.print()} style={btnStyle}>Imprimir / Salvar PDF</button>
+      </div>
+
+      <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="rvt-brand-band">
+          <div className="flex items-center gap-3 flex-wrap" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="rvt-wordmark">
+              <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: '#fff' }} /></div>
+              <div className="rvt-wordmark-text">
+                <div className="maj">M.A.J</div>
+                <div className="sol">Soluções</div>
+              </div>
+            </div>
+            <div className="rvt-divider-v" />
+            <div className="flex items-center gap-3">
+              {client?.branding?.logoData
+                ? <img src={client.branding.logoData} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.4)' }} />
+                : null}
+              <div>
+                <p style={{ color: '#fff', fontWeight: 600, fontSize: 16 }}>{client?.name || ''}</p>
+                {client?.address && <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>{client.address}</p>}
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', position: 'relative', zIndex: 1 }}>
+            <p style={{ color: '#fff', fontWeight: 600, fontSize: 16, letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÉCNICA</p>
+            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>RVT · {periodoLabel}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-5 p-4 sm:p-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+              <RvtFieldLabelLocal>{isPeriodo ? 'Período' : 'Data da visita'}</RvtFieldLabelLocal>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{periodoLabel}</p>
+            </div>
+            <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+              <RvtFieldLabelLocal>Técnico(s)</RvtFieldLabelLocal>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{tecnicos.join(', ') || '—'}</p>
+            </div>
+            <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+              <RvtFieldLabelLocal>Itens registrados</RvtFieldLabelLocal>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{todosItens.length}</p>
+            </div>
+            <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
+              <RvtFieldLabelLocal>Resolvidos</RvtFieldLabelLocal>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--status-ok)' }}>{totalResolvidos} de {todosItens.length}</p>
+            </div>
+          </div>
+
+          {dias.map((dia) => {
+            const itensDoDia = visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v));
+            return (
+              <div key={dia} className="flex flex-col gap-3">
+                {isPeriodo && (
+                  <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
+                    {formatDateBR(dia)}
+                  </p>
+                )}
+                {itensDoDia.map((it, i) => (
+                  <div key={it.id} className="rvt-item-card rounded-lg p-4" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>
+                    <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: '#8B2F2F', color: '#fff' }}>{i + 1}</span>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
+                      </div>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, flexShrink: 0, fontWeight: 600, color: statusColor(it.status), border: `1px solid ${statusColor(it.status)}` }}>
+                        {it.status || 'Sem status'}
+                      </span>
+                    </div>
+                    {it.falha && (
+                      <div style={{ marginBottom: 6 }}>
+                        <RvtFieldLabelLocal>Falha</RvtFieldLabelLocal>
+                        <p style={{ fontSize: 12, color: 'var(--text-primary)' }}>{it.falha}</p>
+                      </div>
+                    )}
+                    {it.descritivo && (
+                      <div style={{ marginBottom: 6 }}>
+                        <RvtFieldLabelLocal>{it.tipo === 'inspecao' ? 'Resultado / Método' : 'Descritivo'}</RvtFieldLabelLocal>
+                        <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{it.descritivo}</p>
+                      </div>
+                    )}
+                    {it.fotos && it.fotos.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <RvtFieldLabelLocal>Registro fotográfico</RvtFieldLabelLocal>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 4 }}>
+                          {it.fotos.map((f, fi) => <img key={fi} src={f} alt="" style={{ width: '100%', aspectRatio: '1', borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <div className="rvt-footer-band">
+            <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
+            <p style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Formulário inline de edição de 1 item de visita — o tipo de campos muda conforme
+    o tipo do item (atendimento / inspeção / outro). */
+function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
+  if (!editForm) return null;
+  if (editForm.kind === 'outro') {
+    return (
+      <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
+        <Field label="Descrição">
+          <textarea style={{ ...inputStyle, minHeight: 60 }} value={editForm.descricao} onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })} />
+        </Field>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
+          <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+  if (editForm.kind === 'atendimento') {
+    return (
+      <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
+        <Field label="Falha (deixe em branco para preventiva)">
+          <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
+        </Field>
+        <Field label="Status">
+          <select style={inputStyle} value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+            <option value="aguardando">Aguardando</option>
+            <option value="andamento">Andamento</option>
+            <option value="resolvido">Resolvido</option>
+          </select>
+        </Field>
+        <Field label="Descritivo">
+          <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.descritivo} onChange={(e) => setEditForm({ ...editForm, descritivo: e.target.value })} />
+        </Field>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
+          <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+  // inspecao
+  return (
+    <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <Field label="Funcionamento (resultado do teste)">
+          <select style={inputStyle} value={editForm.resultadoTeste} onChange={(e) => setEditForm({ ...editForm, resultadoTeste: e.target.value })}>
+            <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
+          </select>
+        </Field>
+        <Field label="Aparência">
+          <select style={inputStyle} value={editForm.aparencia} onChange={(e) => setEditForm({ ...editForm, aparencia: e.target.value })}>
+            <option>Ótimo</option><option>Bom</option><option>Regular</option><option>Precisa Trocar</option>
+          </select>
+        </Field>
+        <Field label="Comunicação local">
+          <select style={inputStyle} value={editForm.comunicacaoLocal} onChange={(e) => setEditForm({ ...editForm, comunicacaoLocal: e.target.value })}>
+            <option>Conforme</option><option>Não conforme</option>
+          </select>
+        </Field>
+        <Field label="Comunicação em rede">
+          <select style={inputStyle} value={editForm.comunicacaoRede} onChange={(e) => setEditForm({ ...editForm, comunicacaoRede: e.target.value })}>
+            <option>Conforme</option><option>Não conforme</option>
+          </select>
+        </Field>
+      </div>
+      <Field label="Observações">
+        <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.observacoes} onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })} />
+      </Field>
+      <Field label="Falha (se preenchida, cria/mantém corretiva)">
+        <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
+      </Field>
+      <Field label="Próxima inspeção">
+        <input type="date" style={inputStyle} value={editForm.proximaInspecao} onChange={(e) => setEditForm({ ...editForm, proximaInspecao: e.target.value })} />
+      </Field>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
+        <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+/** Card de 1 visita anterior — colapsado por padrão (só resumo), com seta pra expandir
+    a lista de itens, e nesse modo expandido dá pra editar item por item. */
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit }) {
+  const itens = itemsFromVisita(visita);
+  const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
+  const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
+  const nOutro = itens.filter((it) => it.tipo === 'outro').length;
+  const painel = panelOptions.find((p) => p.id === visita.painel_id);
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={onToggleExpand} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: 0, flex: 1, minWidth: 0, textAlign: 'left' }}>
+          <span style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
+              {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
+            </div>
+          </div>
+        </button>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button type="button" onClick={() => onVerImprimir(visita)} style={smallBtnStyle}>Ver / Imprimir</button>
+          {canEdit && (
+            <button type="button" onClick={onToggleExpand} style={smallBtnStyle}>Editar</button>
+          )}
+          {canEdit && (
+            <button type="button" onClick={() => onDelete(visita.id)}
+              style={{ ...smallBtnStyle, border: '1px solid var(--status-danger)', color: 'var(--status-danger)' }}>
+              Excluir
+            </button>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ display: 'grid', gap: 6, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          {itens.map((it) => (
+            <div key={it.id}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}><ItemResumo item={{ ...it, dispositivoLabel: it.etiqueta, resultado: it.status }} /></div>
+                {canEdit && editingItemId !== it.id && (
+                  <button type="button" onClick={() => onStartEdit(visita, it)} style={{ ...smallBtnStyle, flexShrink: 0 }}>Editar item</button>
+                )}
+              </div>
+              {editingItemId === it.id && (
+                <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} />
+              )}
+            </div>
+          ))}
+          {itens.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhum item nesta visita.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AtendimentosNovo({ data, client, clientId, canEdit, onRefresh }) {
   const deviceOptions = buildDeviceOptions(data);
   const panelOptions = data.panels || [];
 
@@ -147,19 +526,26 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
     refreshVisitas();
   }
 
-  const [atForm, setAtForm] = useState({ dispositivoId: '', falha: '', status: 'aguardando', descritivo: '' });
+  const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
   const [atFotos, setAtFotos] = useState([]);
   async function submitAtendimento(e) {
     e.preventDefault();
-    if (!atForm.dispositivoId) { setMsg('Selecione um dispositivo.'); return; }
+    if (atForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
     try {
-      const result = await createAtendimento({ ...atForm, tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos });
-      const label = deviceOptions.find((o) => o.id === atForm.dispositivoId)?.label || '';
-      setItensVisita((prev) => [...prev, { tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos }]);
-      setAtForm({ dispositivoId: '', falha: '', status: 'aguardando', descritivo: '' });
+      const novosItens = [];
+      for (const dispositivoId of atForm.dispositivoIds) {
+        const result = await createAtendimento({
+          dispositivoId, falha: atForm.falha, status: atForm.status, descritivo: atForm.descritivo,
+          tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
+        });
+        const label = deviceOptions.find((o) => o.id === dispositivoId)?.label || '';
+        novosItens.push({ tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos });
+      }
+      setItensVisita((prev) => [...prev, ...novosItens]);
+      setAtForm({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
       setAtFotos([]);
       if (onRefresh) onRefresh();
-      setMsg('Item adicionado à visita.');
+      setMsg(`${novosItens.length} item(ns) adicionado(s) à visita.`);
     } catch (err) {
       console.error(err);
       setMsg('Erro ao registrar atendimento.');
@@ -167,39 +553,45 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
   }
 
   const [inspForm, setInspForm] = useState({
-    dispositivoId: '', resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
+    dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
     comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '',
-    metodo: '', proximaInspecao: '',
+    proximaInspecao: '',
   });
   const [inspFotos, setInspFotos] = useState([]);
-  const inspDevice = deviceOptions.find((o) => o.id === inspForm.dispositivoId);
-  const inspMetodo = inspDevice ? getMetodoTeste(inspDevice) : '';
-  const inspCategoriaLabel = inspDevice ? (FUNCTIONAL_CATEGORY_MAP[inspDevice.categoriaFuncional] || '') : '';
-  const inspPapelLabel = inspDevice ? (PAPEL_SINAL_MAP[inspDevice.papelSinal] || '') : '';
-  useEffect(() => {
-    setInspForm((prev) => ({ ...prev, metodo: inspMetodo }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspForm.dispositivoId]);
+  const inspDevicesSelecionados = deviceOptions.filter((o) => inspForm.dispositivoIds.includes(o.id));
+  const inspMetodosUnicos = [...new Set(inspDevicesSelecionados.map((d) => getMetodoTeste(d)).filter(Boolean))];
+  const inspCategoriasUnicas = [...new Set(inspDevicesSelecionados.map((d) => FUNCTIONAL_CATEGORY_MAP[d.categoriaFuncional]).filter(Boolean))];
   async function submitInspecao(e) {
     e.preventDefault();
-    if (!inspForm.dispositivoId) { setMsg('Selecione um dispositivo.'); return; }
+    if (inspForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
     try {
-      const result = await createInspecao({
-        ...inspForm, tecnico: visita.tecnico, dataInspecao: visita.data_visita, rvtId: visita.id, fotos: inspFotos,
-      });
-      const label = deviceOptions.find((o) => o.id === inspForm.dispositivoId)?.label || '';
-      setItensVisita((prev) => [...prev, {
-        tipo: 'inspecao', resultado: result.inspecao.resultado_teste, dispositivoLabel: label,
-        criouCorretiva: !!result.atendimento, fotos: result.inspecao.fotos,
-      }]);
+      const novosItens = [];
+      let corretivasGeradas = 0;
+      for (const dispositivoId of inspForm.dispositivoIds) {
+        const device = deviceOptions.find((o) => o.id === dispositivoId);
+        const result = await createInspecao({
+          dispositivoId, tecnico: visita.tecnico, resultadoTeste: inspForm.resultadoTeste, aparencia: inspForm.aparencia,
+          comunicacaoLocal: inspForm.comunicacaoLocal, comunicacaoRede: inspForm.comunicacaoRede,
+          observacoes: inspForm.observacoes, falha: inspForm.falha, metodo: getMetodoTeste(device),
+          dataInspecao: visita.data_visita, proximaInspecao: inspForm.proximaInspecao, rvtId: visita.id, fotos: inspFotos,
+        });
+        if (result.atendimento) corretivasGeradas += 1;
+        novosItens.push({
+          tipo: 'inspecao', resultado: result.inspecao.resultado_teste, dispositivoLabel: device?.label || '',
+          criouCorretiva: !!result.atendimento, fotos: result.inspecao.fotos,
+        });
+      }
+      setItensVisita((prev) => [...prev, ...novosItens]);
       setInspForm({
-        dispositivoId: '', resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
+        dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
         comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '',
-        metodo: '', proximaInspecao: '',
+        proximaInspecao: '',
       });
       setInspFotos([]);
       if (onRefresh) onRefresh();
-      setMsg(result.atendimento ? 'Inspeção adicionada — corretiva criada automaticamente.' : 'Item adicionado à visita.');
+      setMsg(corretivasGeradas > 0
+        ? `${novosItens.length} inspeção(ões) adicionada(s) — ${corretivasGeradas} corretiva(s) criada(s) automaticamente.`
+        : `${novosItens.length} inspeção(ões) adicionada(s) à visita.`);
     } catch (err) {
       console.error(err);
       setMsg('Erro ao registrar inspeção.');
@@ -249,12 +641,107 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
     }
   }
 
+  // ---- Filtro + agrupamento por dia das visitas anteriores ----
+  const [filtroTecnico, setFiltroTecnico] = useState('');
+  const [filtroPainelId, setFiltroPainelId] = useState('');
+  const [filtroDataDe, setFiltroDataDe] = useState('');
+  const [filtroDataAte, setFiltroDataAte] = useState('');
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  function toggleExpand(id) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const visitasFiltradas = visitas.filter((v) => {
+    if (filtroTecnico && !(v.tecnico || '').toLowerCase().includes(filtroTecnico.toLowerCase())) return false;
+    if (filtroPainelId && v.painel_id !== filtroPainelId) return false;
+    if (filtroDataDe && v.data_visita < filtroDataDe) return false;
+    if (filtroDataAte && v.data_visita > filtroDataAte) return false;
+    return true;
+  });
+  const diasVisitas = [...new Set(visitasFiltradas.map((v) => v.data_visita))].sort().reverse();
+
+  // ---- Ver/Imprimir (individual ou período) ----
+  const [printTarget, setPrintTarget] = useState(null); // array de visitas, ou null
+
+  // ---- Editar item de uma visita já salva ----
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
+  function startEditItem(v, item) {
+    const raw = (v.rvt_itens || []).find((it) => it.id === item.id);
+    if (!raw) return;
+    if (raw.outro_descricao !== null && raw.outro_descricao !== undefined) {
+      setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao });
+    } else if (raw.atendimentos) {
+      const a = raw.atendimentos;
+      setEditForm({ kind: 'atendimento', id: a.id, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '' });
+    } else if (raw.inspecoes) {
+      const i = raw.inspecoes;
+      setEditForm({
+        kind: 'inspecao', id: i.id, resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
+        comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
+        observacoes: i.observacoes || '', falha: i.falha || '', proximaInspecao: i.proxima_inspecao || '',
+      });
+    } else {
+      return;
+    }
+    setEditingItemId(item.id);
+  }
+  function cancelEditItem() {
+    setEditingItemId(null);
+    setEditForm(null);
+  }
+  async function saveEditItem() {
+    if (!editForm) return;
+    try {
+      if (editForm.kind === 'atendimento') {
+        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo });
+      } else if (editForm.kind === 'inspecao') {
+        await updateInspecao(editForm.id, {
+          resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,
+          comunicacaoLocal: editForm.comunicacaoLocal, comunicacaoRede: editForm.comunicacaoRede,
+          observacoes: editForm.observacoes, falha: editForm.falha, proximaInspecao: editForm.proximaInspecao,
+        });
+      } else if (editForm.kind === 'outro') {
+        await updateOutroItem(editForm.rvtItemId, editForm.descricao);
+      }
+      cancelEditItem();
+      refreshVisitas();
+      if (onRefresh) onRefresh();
+      setMsg('Item atualizado.');
+    } catch (err) {
+      console.error(err);
+      setMsg('Erro ao salvar edição.');
+    }
+  }
+
+  // ---- Imprimir período (várias visitas de uma vez, agrupadas por dia) ----
+  const [periodoDe, setPeriodoDe] = useState('');
+  const [periodoAte, setPeriodoAte] = useState('');
+  function imprimirPeriodo() {
+    const alvo = visitasFiltradas.filter((v) => {
+      if (periodoDe && v.data_visita < periodoDe) return false;
+      if (periodoAte && v.data_visita > periodoAte) return false;
+      return true;
+    });
+    if (alvo.length === 0) { setMsg('Nenhuma visita no período selecionado.'); return; }
+    setPrintTarget(alvo);
+  }
+
+  if (printTarget) {
+    return <VisitaPrintView visitas={printTarget} client={client} onBack={() => setPrintTarget(null)} />;
+  }
+
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas técnicas (modelo novo)</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas técnicas</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Uma visita pode reunir manutenções, inspeções e outros itens (reuniões, ajustes). Roda em paralelo ao Indicador/RVT antigos.
+          Uma visita pode reunir manutenções, inspeções e outros itens (reuniões, ajustes).
         </p>
       </div>
 
@@ -301,12 +788,8 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
 
           {aba === 'manutencao' && (
             <form onSubmit={submitAtendimento} style={{ ...cardStyle, marginBottom: 16 }}>
-              <Field label="Dispositivo">
-                <select style={inputStyle} value={atForm.dispositivoId} onChange={(e) => setAtForm({ ...atForm, dispositivoId: e.target.value })}>
-                  <option value="">Selecione...</option>
-                  {deviceOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </Field>
+              <DeviceMultiSelect options={deviceOptions} selectedIds={atForm.dispositivoIds}
+                setSelectedIds={(next) => setAtForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
               <Field label="Falha (deixe em branco para preventiva)">
                 <textarea style={{ ...inputStyle, minHeight: 60 }} value={atForm.falha} onChange={(e) => setAtForm({ ...atForm, falha: e.target.value })} />
               </Field>
@@ -321,22 +804,21 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={atForm.descritivo} onChange={(e) => setAtForm({ ...atForm, descritivo: e.target.value })} />
               </Field>
               <FotosField fotos={atFotos} setFotos={setAtFotos} />
-              <button type="submit" disabled={!canEdit} style={btnStyle}>Adicionar à visita</button>
+              <button type="submit" disabled={!canEdit} style={btnStyle}>
+                Adicionar à visita{atForm.dispositivoIds.length > 1 ? ` (${atForm.dispositivoIds.length} itens)` : ''}
+              </button>
             </form>
           )}
 
           {aba === 'inspecao' && (
             <form onSubmit={submitInspecao} style={{ ...cardStyle, marginBottom: 16 }}>
-              <Field label="Dispositivo">
-                <select style={inputStyle} value={inspForm.dispositivoId} onChange={(e) => setInspForm({ ...inspForm, dispositivoId: e.target.value })}>
-                  <option value="">Selecione...</option>
-                  {deviceOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </Field>
-              {(inspCategoriaLabel || inspMetodo) && (
+              <DeviceMultiSelect options={deviceOptions} selectedIds={inspForm.dispositivoIds}
+                setSelectedIds={(next) => setInspForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
+              {(inspCategoriasUnicas.length > 0 || inspMetodosUnicos.length > 0) && (
                 <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {inspCategoriaLabel && <div>Categoria: <strong style={{ color: 'var(--text-primary)' }}>{inspCategoriaLabel}</strong>{inspPapelLabel && ` · Papel do sinal: ${inspPapelLabel}`}</div>}
-                  {inspMetodo && <div>Método de teste: <strong style={{ color: 'var(--text-primary)' }}>{inspMetodo}</strong></div>}
+                  {inspCategoriasUnicas.length > 0 && <div>Categoria(s): <strong style={{ color: 'var(--text-primary)' }}>{inspCategoriasUnicas.join(', ')}</strong></div>}
+                  {inspMetodosUnicos.length > 0 && <div>Método de teste: <strong style={{ color: 'var(--text-primary)' }}>{inspMetodosUnicos.join(' · ')}</strong></div>}
+                  {inspMetodosUnicos.length > 1 && <div style={{ color: 'var(--status-warning, #d97706)' }}>Atenção: a seleção mistura categorias com métodos diferentes.</div>}
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -366,14 +848,16 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
               <Field label="Observações">
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.observacoes} onChange={(e) => setInspForm({ ...inspForm, observacoes: e.target.value })} />
               </Field>
-              <Field label="Falha (se preenchida, cria corretiva automática)">
+              <Field label="Falha (se preenchida, cria corretiva automática em todos os selecionados)">
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.falha} onChange={(e) => setInspForm({ ...inspForm, falha: e.target.value })} />
               </Field>
               <Field label="Próxima inspeção">
                 <input type="date" style={inputStyle} value={inspForm.proximaInspecao} onChange={(e) => setInspForm({ ...inspForm, proximaInspecao: e.target.value })} />
               </Field>
               <FotosField fotos={inspFotos} setFotos={setInspFotos} />
-              <button type="submit" disabled={!canEdit} style={btnStyle}>Adicionar à visita</button>
+              <button type="submit" disabled={!canEdit} style={btnStyle}>
+                Adicionar à visita{inspForm.dispositivoIds.length > 1 ? ` (${inspForm.dispositivoIds.length} itens)` : ''}
+              </button>
             </form>
           )}
 
@@ -402,40 +886,63 @@ export default function AtendimentosNovo({ data, clientId, canEdit, onRefresh })
 
       <div style={{ marginTop: 32 }}>
         <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Visitas anteriores</h3>
+
+        <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <div style={{ minWidth: 160 }}>
+            <span style={labelStyle}>Técnico</span>
+            <input style={inputStyle} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} placeholder="Buscar técnico..." />
+          </div>
+          <div style={{ minWidth: 160 }}>
+            <span style={labelStyle}>Painel</span>
+            <select style={inputStyle} value={filtroPainelId} onChange={(e) => setFiltroPainelId(e.target.value)}>
+              <option value="">Todos os painéis</option>
+              {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div style={{ minWidth: 140 }}>
+            <span style={labelStyle}>De</span>
+            <input type="date" style={inputStyle} value={filtroDataDe} onChange={(e) => setFiltroDataDe(e.target.value)} />
+          </div>
+          <div style={{ minWidth: 140 }}>
+            <span style={labelStyle}>Até</span>
+            <input type="date" style={inputStyle} value={filtroDataAte} onChange={(e) => setFiltroDataAte(e.target.value)} />
+          </div>
+        </div>
+
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          <span style={{ ...labelStyle, marginBottom: 8 }}>Imprimir período (várias visitas de uma vez, agrupadas por dia)</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ minWidth: 140 }}>
+              <span style={labelStyle}>De</span>
+              <input type="date" style={inputStyle} value={periodoDe} onChange={(e) => setPeriodoDe(e.target.value)} />
+            </div>
+            <div style={{ minWidth: 140 }}>
+              <span style={labelStyle}>Até</span>
+              <input type="date" style={inputStyle} value={periodoAte} onChange={(e) => setPeriodoAte(e.target.value)} />
+            </div>
+            <button type="button" onClick={imprimirPeriodo} style={btnStyle}>Gerar impressão do período</button>
+          </div>
+        </div>
+
         {loadingVisitas && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Carregando...</p>}
-        <div style={{ display: 'grid', gap: 10 }}>
-          {visitas.map((v) => (
-            <div key={v.id} style={cardStyle}>
-              {canEdit && (
-                <button type="button" onClick={() => handleDeleteVisita(v.id)}
-                  style={{ float: 'right', background: 'transparent', border: '1px solid var(--status-danger)', color: 'var(--status-danger)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-                  Excluir
-                </button>
-              )}
-              <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
-                {v.data_visita} · {v.tecnico || 'sem técnico'} · {(v.rvt_itens || []).length} item(ns)
-              </div>
-              <div style={{ display: 'grid', gap: 4 }}>
-                {(v.rvt_itens || []).map((it) => {
-                  if (it.outro_descricao) return <div key={it.id} style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Outro · {it.outro_descricao}</div>;
-                  if (it.atendimentos) return (
-                    <div key={it.id} style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                      {it.atendimentos.tipo === 'corretiva' ? 'Corretiva' : 'Preventiva'} · {it.atendimentos.status} · {it.atendimentos.dispositivos?.etiqueta || it.atendimentos.dispositivos?.endereco}
-                      {(it.atendimentos.fotos || []).length > 0 && ` · ${it.atendimentos.fotos.length} foto(s)`}
-                    </div>
-                  );
-                  if (it.inspecoes) return (
-                    <div key={it.id} style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                      Inspeção · {it.inspecoes.resultado_teste} · {it.inspecoes.dispositivos?.etiqueta || it.inspecoes.dispositivos?.endereco}
-                      {(it.inspecoes.fotos || []).length > 0 && ` · ${it.inspecoes.fotos.length} foto(s)`}
-                    </div>
-                  );
-                  return null;
-                })}
+        <div style={{ display: 'grid', gap: 18 }}>
+          {diasVisitas.map((dia) => (
+            <div key={dia}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {formatDateBR(dia)}
+              </p>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {visitasFiltradas.filter((v) => v.data_visita === dia).map((v) => (
+                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit}
+                    expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
+                    onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])}
+                    editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
+                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} />
+                ))}
               </div>
             </div>
           ))}
-          {!loadingVisitas && visitas.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhuma visita registrada ainda.</p>}
+          {!loadingVisitas && diasVisitas.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhuma visita encontrada.</p>}
         </div>
       </div>
     </div>

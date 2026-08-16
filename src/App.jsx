@@ -10,7 +10,7 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera,
+  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -792,18 +792,16 @@ const NAV_ITEMS = [
   { key: 'atendimentos', label: 'Atendimentos (novo)', icon: ClipboardList },
   { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
   { key: 'panels', label: 'Painéis', icon: Cpu },
+  { key: 'complementares', label: 'Dispositivos Complementares', icon: Zap },
   { key: 'pumphouse', label: 'Casa de Bombas', icon: Droplet },
-  { key: 'gas', label: 'Detectores de Gases', icon: Wind },
   { key: 'report', label: 'Relatório', icon: ClipboardList },
-  { key: 'history', label: 'Histórico', icon: Clock },
-  { key: 'rvt', label: 'RVT', icon: Camera },
   { key: 'indicador', label: 'Indicador', icon: Activity },
-  { key: 'graficos', label: 'Gráficos', icon: BarChart3 },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
 
 const emptyData = () => ({
   panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
+  bateriasPainel: [], fontesAuxiliares: [],
   maintenanceLog: [], inspectionLog: [], modelPhotos: {}, indicador: [], rvt: [],
 });
 
@@ -1518,433 +1516,6 @@ const RVT_CATEGORY_OPTIONS = [
   { value: 'gasDetectors', label: 'Detector de Gás' },
   { value: 'outro', label: 'Outro / não listado' },
 ];
-
-/** Formulário de "adicionar item" do RVT — os campos de local (painel/laço/dispositivo)
-    ficam travados nos cadastros já existentes, pra não deixar o técnico digitar errado. */
-function RvtItemForm({ data, onAdd }) {
-  const [categoria, setCategoria] = useState('devices');
-  const [panelId, setPanelId] = useState('');
-  const [loopId, setLoopId] = useState('');
-  const [deviceId, setDeviceId] = useState('');
-  const [simpleId, setSimpleId] = useState('');
-  const [manualLabel, setManualLabel] = useState('');
-  const [deviceQuery, setDeviceQuery] = useState('');
-  const [falha, setFalha] = useState('');
-  const [descritivo, setDescritivo] = useState('');
-  const [status, setStatus] = useState('Resolvido');
-  const [explanacao, setExplanacao] = useState('');
-  const [dataIntervencao, setDataIntervencao] = useState(todayISO());
-  const [solucao, setSolucao] = useState('');
-  const [fotos, setFotos] = useState([]);
-
-  const panelLoops = data.loops.filter((l) => l.panelId === panelId);
-  const loopDevices = data.devices.filter((d) => d.loopId === loopId).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
-  const deviceQ = deviceQuery.trim().toLowerCase();
-  const filteredLoopDevices = deviceQ
-    ? loopDevices.filter((d) => d.id === deviceId
-        || `${d.address} ${DEVICE_TYPE_MAP[d.type]?.label || ''} ${d.modelo || ''} ${d.description || ''}`.toLowerCase().includes(deviceQ))
-    : loopDevices;
-
-  function handleCategoriaChange(val) {
-    setCategoria(val);
-    setPanelId(''); setLoopId(''); setDeviceId(''); setSimpleId(''); setManualLabel(''); setDeviceQuery('');
-  }
-
-  function resolveSelected() {
-    if (categoria === 'devices' && deviceId) {
-      const device = data.devices.find((d) => d.id === deviceId);
-      if (!device) return null;
-      const loop = data.loops.find((l) => l.id === device.loopId);
-      const panel = data.panels.find((p) => p.id === loop?.panelId);
-      const tipoLabel = DEVICE_TYPE_MAP[device.type]?.label || 'Dispositivo';
-      return {
-        deviceId: device.id, categoria: 'devices',
-        etiqueta: device.description || `${tipoLabel} ${device.address}`,
-        endereco: device.address, laco: loop?.name || '', painel: panel?.name || '',
-        equipamento: tipoLabel + (device.modelo ? ` (${device.modelo})` : ''), area: '',
-      };
-    }
-    if (categoria === 'nacs' && simpleId) {
-      const nac = data.nacs.find((n) => n.id === simpleId);
-      if (!nac) return null;
-      const panel = data.panels.find((p) => p.id === nac.panelId);
-      return { deviceId: nac.id, categoria: 'nacs', etiqueta: nac.name, endereco: '', laco: '', painel: panel?.name || '', equipamento: 'Circuito NAC', area: '' };
-    }
-    if (categoria === 'pumpDevices' && simpleId) {
-      const it = data.pumpDevices.find((p) => p.id === simpleId);
-      if (!it) return null;
-      return { deviceId: it.id, categoria: 'pumpDevices', etiqueta: it.name, endereco: '', laco: '', painel: '', equipamento: it.type || 'Casa de Bombas', area: '' };
-    }
-    if (categoria === 'gasDetectors' && simpleId) {
-      const it = data.gasDetectors.find((g) => g.id === simpleId);
-      if (!it) return null;
-      return { deviceId: it.id, categoria: 'gasDetectors', etiqueta: it.name, endereco: '', laco: '', painel: '', equipamento: 'Detector de Gás', area: '' };
-    }
-    if (categoria === 'outro' && manualLabel.trim()) {
-      return { deviceId: '', categoria: '', etiqueta: manualLabel.trim(), endereco: '', laco: '', painel: '', equipamento: '', area: '' };
-    }
-    return null;
-  }
-
-  const selected = resolveSelected();
-  const canAdd = !!selected && falha.trim().length > 0;
-
-  function handleAdd() {
-    if (!canAdd) return;
-    onAdd({ id: uid(), ...selected, falha: falha.trim(), descritivo, status, explanacao, dataIntervencao, solucao, fotos });
-    setFalha(''); setDescritivo(''); setStatus('Resolvido'); setExplanacao(''); setSolucao(''); setFotos([]);
-  }
-
-  return (
-    <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface-raised)', border: '1px dashed var(--border)' }}>
-      <Field label="Tipo de item">
-        <select className={inputCls} value={categoria} onChange={(e) => handleCategoriaChange(e.target.value)}>
-          {RVT_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </Field>
-
-      {categoria === 'devices' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <Field label="Painel">
-            <select className={inputCls} value={panelId} onChange={(e) => { setPanelId(e.target.value); setLoopId(''); setDeviceId(''); setDeviceQuery(''); }}>
-              <option value="">Selecione…</option>
-              {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Laço">
-            <select className={inputCls} value={loopId} onChange={(e) => { setLoopId(e.target.value); setDeviceId(''); setDeviceQuery(''); }} disabled={!panelId}>
-              <option value="">Selecione…</option>
-              {panelLoops.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </Field>
-          <Field label={`Dispositivo (endereço)${loopId && loopDevices.length > 8 ? ` — ${filteredLoopDevices.length} de ${loopDevices.length}` : ''}`}>
-            {loopId && loopDevices.length > 8 && (
-              <div className="relative mb-1.5">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                <input className={`${inputCls} pl-8`} placeholder="Buscar por endereço, tipo ou descrição..."
-                  value={deviceQuery} onChange={(e) => setDeviceQuery(e.target.value)} />
-              </div>
-            )}
-            <select className={inputCls} value={deviceId} onChange={(e) => setDeviceId(e.target.value)} disabled={!loopId}>
-              <option value="">Selecione…</option>
-              {filteredLoopDevices.map((d) => (
-                <option key={d.id} value={d.id}>{d.address} — {DEVICE_TYPE_MAP[d.type]?.label}{d.description ? ` (${d.description})` : ''}</option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      )}
-      {categoria === 'nacs' && (
-        <Field label="Circuito (NAC)">
-          <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecione…</option>
-            {data.nacs.map((n) => {
-              const panel = data.panels.find((p) => p.id === n.panelId);
-              return <option key={n.id} value={n.id}>{n.name}{panel ? ` — ${panel.name}` : ''}</option>;
-            })}
-          </select>
-        </Field>
-      )}
-      {categoria === 'pumpDevices' && (
-        <Field label="Equipamento da Casa de Bombas">
-          <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecione…</option>
-            {data.pumpDevices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </Field>
-      )}
-      {categoria === 'gasDetectors' && (
-        <Field label="Detector de Gás">
-          <select className={inputCls} value={simpleId} onChange={(e) => setSimpleId(e.target.value)}>
-            <option value="">Selecione…</option>
-            {data.gasDetectors.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-        </Field>
-      )}
-      {categoria === 'outro' && (
-        <Field label="Local / equipamento (descreva)">
-          <input className={inputCls} value={manualLabel} onChange={(e) => setManualLabel(e.target.value)} placeholder="Ex.: Bateria do painel BODY" />
-        </Field>
-      )}
-
-      <Field label="Falha *"><input className={inputCls} value={falha} onChange={(e) => setFalha(e.target.value)} placeholder="Ex.: Dispositivo Desconectado" /></Field>
-      <Field label="Descritivo"><textarea rows={2} className={inputCls} value={descritivo} onChange={(e) => setDescritivo(e.target.value)} /></Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Status">
-          <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)}>
-            {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Field>
-        <Field label="Data de intervenção"><input type="date" className={inputCls} value={dataIntervencao} onChange={(e) => setDataIntervencao(e.target.value)} /></Field>
-      </div>
-      <Field label="Explanação"><textarea rows={2} className={inputCls} value={explanacao} onChange={(e) => setExplanacao(e.target.value)} /></Field>
-      <Field label="Solução"><textarea rows={2} className={inputCls} value={solucao} onChange={(e) => setSolucao(e.target.value)} /></Field>
-      <MultiPhotoUpload photos={fotos} onChange={setFotos} />
-
-      <Button variant="primary" type="button" onClick={handleAdd} disabled={!canAdd}><Plus size={16} /> Adicionar item ao relatório</Button>
-    </div>
-  );
-}
-
-function RvtFieldLabel({ children }) {
-  return <p className="text-[9px] uppercase font-semibold mb-0.5" style={{ color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
-}
-
-function RvtDetail({ report, client, onBack }) {
-  const resolvidos = report.itens.filter((it) => it.status === 'Resolvido').length;
-
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = `RVT - ${client.name} - ${formatDateBR(report.data)}`;
-    return () => { document.title = prevTitle; };
-  }, [client.name, report.data]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
-        <Button variant="secondary" onClick={onBack}><ArrowLeft size={15} /> Voltar</Button>
-        <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
-      </div>
-
-      <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="rvt-brand-band">
-          <div className="flex items-center gap-3 flex-wrap" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="rvt-wordmark">
-              <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: '#fff' }} /></div>
-              <div className="rvt-wordmark-text">
-                <div className="maj">M.A.J</div>
-                <div className="sol">Soluções</div>
-              </div>
-            </div>
-            <div className="rvt-divider-v" />
-            <div className="flex items-center gap-3">
-              {client.branding?.logoData
-                ? <img src={client.branding.logoData} alt="" className="w-10 h-10 rounded-lg object-cover" style={{ border: '1px solid rgba(255,255,255,0.4)' }} />
-                : null}
-              <div>
-                <p className="font-display font-semibold text-base" style={{ color: '#fff' }}>{client.name}</p>
-                {client.address && <p className="text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>{client.address}</p>}
-              </div>
-            </div>
-          </div>
-          <div className="text-right" style={{ position: 'relative', zIndex: 1 }}>
-            <p className="font-display font-semibold text-base" style={{ color: '#fff', letterSpacing: '0.04em' }}>RELATÓRIO DE VISITA TÉCNICA</p>
-            <p className="text-xs mono" style={{ color: 'rgba(255,255,255,0.75)' }}>RVT · {formatDateBR(report.data)}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5 p-4 sm:p-6">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Data da visita</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(report.data)}</p>
-          </div>
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Técnico responsável</RvtFieldLabel>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{report.tecnico || '—'}</p>
-          </div>
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Itens registrados</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{report.itens.length}</p>
-          </div>
-          <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
-            <RvtFieldLabel>Resolvidos na visita</RvtFieldLabel>
-            <p className="text-sm font-medium mono" style={{ color: 'var(--status-ok)' }}>{resolvidos} de {report.itens.length}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          {report.itens.map((it, i) => (
-            <div key={it.id} className="rvt-item-card rounded-lg p-4" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>
-              <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold mono"
-                    style={{ background: 'var(--accent)', color: '#fff' }}>{i + 1}</span>
-                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta || 'Item'}</p>
-                </div>
-                <span className="text-xs px-2 py-0.5 rounded-md flex-shrink-0 font-medium"
-                  style={{ color: indicatorStatusColor(it.status), border: `1px solid ${indicatorStatusColor(it.status)}` }}>
-                  {it.status || 'Sem status'}
-                </span>
-              </div>
-
-              {(it.endereco || it.laco || it.painel || it.equipamento) && (
-                <div className="flex flex-wrap items-center gap-2 mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {it.endereco && <span className="mono-chip">END {it.endereco}</span>}
-                  {it.laco && <span className="mono-chip">{it.laco}</span>}
-                  {it.painel && <span>{it.painel}</span>}
-                  {it.equipamento && <span>· {it.equipamento}</span>}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                <div>
-                  <RvtFieldLabel>Falha</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-primary)' }}>{it.falha || '—'}</p>
-                </div>
-                {it.dataIntervencao && (
-                  <div>
-                    <RvtFieldLabel>Data de intervenção</RvtFieldLabel>
-                    <p className="text-xs mono" style={{ color: 'var(--text-primary)' }}>{formatDateBR(it.dataIntervencao)}</p>
-                  </div>
-                )}
-              </div>
-
-              {it.descritivo && (
-                <div className="mb-2">
-                  <RvtFieldLabel>Descritivo</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.descritivo}</p>
-                </div>
-              )}
-              {it.explanacao && (
-                <div className="mb-2">
-                  <RvtFieldLabel>Explanação</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.explanacao}</p>
-                </div>
-              )}
-              {it.solucao && (
-                <div className="mb-2 rounded-md p-2" style={{ background: 'rgba(79,138,109,0.08)' }}>
-                  <RvtFieldLabel>Solução aplicada</RvtFieldLabel>
-                  <p className="text-xs" style={{ color: 'var(--status-ok)' }}>{it.solucao}</p>
-                </div>
-              )}
-
-              {it.fotos && it.fotos.length > 0 && (
-                <div className="mt-3">
-                  <RvtFieldLabel>Registro fotográfico</RvtFieldLabel>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-1">
-                    {it.fotos.map((f, fi) => (
-                      <img key={fi} src={f} alt="" className="w-full aspect-square rounded-md object-cover" style={{ border: '1px solid var(--border)' }} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="rvt-footer-band">
-          <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
-          <p className="text-[10px]" style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01
-          </p>
-        </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RvtView({ data, client, canEdit, onSaveReport, onDeleteReport }) {
-  const reports = data.rvt || [];
-  const [mode, setMode] = useState('list');
-  const [viewingId, setViewingId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [visitDate, setVisitDate] = useState(todayISO());
-  const [tecnico, setTecnico] = useState('');
-  const [queue, setQueue] = useState([]);
-
-  function handleAddItem(item) { setQueue((prev) => [...prev, item]); }
-  function handleRemoveItem(id) { setQueue((prev) => prev.filter((it) => it.id !== id)); }
-
-  function handleStartEdit(report) {
-    setEditingId(report.id);
-    setVisitDate(report.data);
-    setTecnico(report.tecnico || '');
-    setQueue(report.itens || []);
-    setMode('new');
-  }
-
-  function handleCancelForm() {
-    setMode('list');
-    setEditingId(null);
-    setVisitDate(todayISO());
-    setTecnico('');
-    setQueue([]);
-  }
-
-  function handleSave() {
-    if (!visitDate || queue.length === 0) return;
-    onSaveReport({ id: editingId || uid(), data: visitDate, tecnico, itens: queue });
-    setVisitDate(todayISO()); setTecnico(''); setQueue([]);
-    setEditingId(null);
-    setMode('list');
-  }
-
-  const viewingReport = viewingId ? reports.find((r) => r.id === viewingId) : null;
-  if (viewingReport) return <RvtDetail report={viewingReport} client={client} onBack={() => setViewingId(null)} />;
-
-  if (mode === 'new') {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{editingId ? 'Editar Relatório de Visita Técnica (RVT)' : 'Novo Relatório de Visita Técnica (RVT)'}</h2>
-          <Button variant="secondary" onClick={handleCancelForm}><ArrowLeft size={15} /> Cancelar</Button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Data da visita *"><input type="date" className={inputCls} value={visitDate} required onChange={(e) => setVisitDate(e.target.value)} /></Field>
-          <Field label="Técnico responsável"><input className={inputCls} value={tecnico} onChange={(e) => setTecnico(e.target.value)} placeholder="Nome do técnico" /></Field>
-        </div>
-
-        {queue.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Itens desta visita ({queue.length})</p>
-            {queue.map((it) => (
-              <div key={it.id} className="rounded-lg p-3 flex items-start justify-between gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{it.falha} — {it.status}{it.fotos?.length ? ` · ${it.fotos.length} foto(s)` : ''}</p>
-                </div>
-                <IconButton title="Remover" danger onClick={() => handleRemoveItem(it.id)}><Trash2 size={15} /></IconButton>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <RvtItemForm data={data} onAdd={handleAddItem} />
-
-        <Button variant="primary" onClick={handleSave} disabled={queue.length === 0}>
-          <CheckCircle2 size={16} /> {editingId ? 'Salvar alterações' : 'Salvar relatório de visita'} ({queue.length} item{queue.length === 1 ? '' : 's'})
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>RVT — Relatórios de Visita Técnica</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Registros de campo, com fotos, que alimentam o Indicador automaticamente.</p>
-        </div>
-        
-      </div>
-
-      {reports.length === 0 ? (
-        <EmptyState icon={Camera} title="Nenhum RVT registrado ainda"
-          description="Crie o primeiro relatório de visita técnica, selecionando os dispositivos direto dos painéis já cadastrados."
-          />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {[...reports].sort((a, b) => b.data.localeCompare(a.data)).map((r) => (
-            <div key={r.id} className="rounded-lg p-3.5 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{formatDateBR(r.data)}{r.tecnico ? ` — ${r.tecnico}` : ''}</p>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.itens.length} item(ns) registrado(s)</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => setViewingId(r.id)}><FileText size={15} /> Ver / Imprimir</Button>
-                {canEdit && <Button variant="secondary" onClick={() => { if (r.origemNovo) { alert('Esta visita foi criada no modelo novo e ainda não pode ser editada por aqui. Use a aba "Atendimentos (novo)".'); return; } handleStartEdit(r); }}><Pencil size={15} /> Editar</Button>}
-                {canEdit && <IconButton title="Excluir relatório" danger onClick={() => { if (r.origemNovo) { alert('Esta visita foi criada no modelo novo e ainda não pode ser excluída por aqui.'); return; } onDeleteReport(r); }}><Trash2 size={15} /></IconButton>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function IndicadorForm({ initial, data, areaSuggestions, onSubmit, onCancel }) {
   const initialCategoria = initial?.deviceId && initial?.categoria ? initial.categoria : (initial ? 'outro' : 'devices');
@@ -2715,7 +2286,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const [panelTab, setPanelTab] = useState('loops');
   const [expandedLoops, setExpandedLoops] = useState({});
   const [panelSearch, setPanelSearch] = useState('');
-  const [historyFilter, setHistoryFilter] = useState('all');
   const [reportFilters, setReportFilters] = useState({ category: 'all', panelId: 'all', status: 'all', search: '' });
   const [settingsTab, setSettingsTab] = useState('cliente');
 
@@ -2813,6 +2383,52 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       panels: prev.panels.filter((p) => !lastImport.panelIds.includes(p.id)),
     }));
     setLastImport(null);
+  }
+
+  function submitBateriaPainel(panelId, values) {
+    updateData((prev) => {
+      const proximaInspecao = values.dataInspecao ? addMonthsToDate(values.dataInspecao, 12) : '';
+      const existing = (prev.bateriasPainel || []).find((b) => b.panelId === panelId);
+      const next = { ...(existing || { id: uid(), panelId }), ...values, proximaInspecao };
+      const list = existing
+        ? (prev.bateriasPainel || []).map((b) => (b.panelId === panelId ? next : b))
+        : [...(prev.bateriasPainel || []), next];
+      return { ...prev, bateriasPainel: list };
+    });
+    closeModal();
+  }
+
+  function submitFonteAuxiliar(mode, initial, values) {
+    updateData((prev) => {
+      const proximaInspecao = values.dataInspecao ? addMonthsToDate(values.dataInspecao, 12) : '';
+      if (mode === 'create') {
+        return { ...prev, fontesAuxiliares: [...(prev.fontesAuxiliares || []), { id: uid(), ...values, proximaInspecao }] };
+      }
+      return {
+        ...prev,
+        fontesAuxiliares: (prev.fontesAuxiliares || []).map((f) => (f.id === initial.id ? { ...f, ...values, proximaInspecao } : f)),
+      };
+    });
+  }
+
+  function deleteFonteAuxiliar(id) {
+    updateData((prev) => ({ ...prev, fontesAuxiliares: (prev.fontesAuxiliares || []).filter((f) => f.id !== id) }));
+    setConfirmState(null);
+  }
+
+  function submitCalibracaoDevice(deviceId, values) {
+    updateData((prev) => ({
+      ...prev,
+      devices: prev.devices.map((d) => (d.id === deviceId ? { ...d, ...values } : d)),
+    }));
+    closeModal();
+  }
+
+  function submitEtiquetaComplementar(deviceId, etiquetaComplementar) {
+    updateData((prev) => ({
+      ...prev,
+      devices: prev.devices.map((d) => (d.id === deviceId ? { ...d, etiquetaComplementar } : d)),
+    }));
   }
 
   function updateData(mutator) {
@@ -3031,74 +2647,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         maintenanceLog: origemRvt ? (prev.maintenanceLog || []).filter((l) => l.origemRvt !== origemRvt) : prev.maintenanceLog,
       };
     });
-    setConfirmState(null);
-  }
-  function handleDeleteHistoryEntry(logType, entry) {
-    setConfirmState({
-      title: 'Excluir registro do histórico',
-      message: entry.origemRvt
-        ? 'Isso também vai excluir o RVT e os outros registros (Indicador/histórico) ligados a ele. Continuar?'
-        : 'Excluir esse registro do histórico?',
-      onConfirm: () => (logType === 'manutencao' ? deleteMaintenanceLogEntry(entry) : deleteInspectionLogEntry(entry)),
-    });
-  }
-
-  function saveRvtReport(report) {
-    updateData((prev) => {
-      const indicadorEntries = report.itens.map((it) => ({
-        id: uid(),
-        deviceId: it.deviceId || '',
-        categoria: it.categoria || '',
-        etiqueta: it.etiqueta || '',
-        endereco: it.endereco || '',
-        laco: it.laco || '',
-        painel: it.painel || '',
-        area: it.area || '',
-        equipamento: it.equipamento || '',
-        falha: it.falha || '',
-        descritivo: it.descritivo || '',
-        status: it.status || '',
-        explanacao: it.explanacao || '',
-        dataDiagnostico: report.data,
-        dataIntervencao1: it.dataIntervencao || '',
-        dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
-        dataSolucao: it.status === 'Resolvido' ? (it.dataIntervencao || report.data) : '',
-        solucao: it.solucao || '',
-        fotos: it.fotos || [],
-        origemRvt: report.id,
-      }));
-      const historicoEntries = report.itens
-        .filter((it) => it.deviceId && it.categoria)
-        .map((it) => ({
-          id: uid(),
-          category: it.categoria,
-          itemId: it.deviceId,
-          date: it.dataIntervencao || report.data,
-          technician: report.tecnico || '',
-          description: it.descritivo || it.falha || '',
-          nextDate: '',
-          tipo: 'preventiva',
-          origemRvt: report.id,
-        }));
-      const rvtSemAntigo = (prev.rvt || []).filter((r) => r.id !== report.id);
-      const indicadorSemAntigo = (prev.indicador || []).filter((it) => it.origemRvt !== report.id);
-      const maintenanceLogSemAntigo = (prev.maintenanceLog || []).filter((l) => l.origemRvt !== report.id);
-      return {
-        ...prev,
-        rvt: [{ ...report }, ...rvtSemAntigo],
-        indicador: [...indicadorEntries, ...indicadorSemAntigo],
-        maintenanceLog: [...historicoEntries, ...maintenanceLogSemAntigo],
-      };
-    });
-  }
-  function deleteRvtReport(id) {
-    updateData((prev) => ({
-      ...prev,
-      rvt: (prev.rvt || []).filter((r) => r.id !== id),
-      indicador: (prev.indicador || []).filter((r) => r.origemRvt !== id),
-      maintenanceLog: (prev.maintenanceLog || []).filter((l) => l.origemRvt !== id),
-      inspectionLog: (prev.inspectionLog || []).filter((l) => l.origemRvt !== id),
-    }));
     setConfirmState(null);
   }
 
@@ -3376,7 +2924,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onGoPanels={() => setView('panels')} />
         )}
         {view === 'atendimentos' && (
-          <AtendimentosNovo data={data} clientId={client.id} canEdit={canEdit}
+          <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit}
             onRefresh={async () => setData(await loadClientData(client.id))} />
         )}
 
@@ -3428,6 +2976,16 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           />
         )}
 
+        {view === 'complementares' && (
+          <ComplementaresView data={data} canEdit={canEdit}
+            onSubmitBateriaPainel={submitBateriaPainel}
+            onSubmitFonteAuxiliar={submitFonteAuxiliar}
+            onDeleteFonteAuxiliar={(id) => setConfirmState({ title: 'Excluir fonte auxiliar', message: 'Excluir esta fonte auxiliar? Essa ação não pode ser desfeita.', onConfirm: () => deleteFonteAuxiliar(id) })}
+            onSubmitCalibracao={submitCalibracaoDevice}
+            onSubmitEtiqueta={submitEtiquetaComplementar}
+            onInspectDevice={openInspectModal} />
+        )}
+
         {view === 'pumphouse' && (
           <SimpleListView
             title="Casa de Bombas" description="Bombas, válvulas, painéis de controle e demais equipamentos do sistema de bombeamento."
@@ -3440,30 +2998,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             renderMeta={(p) => p.type || 'Equipamento da casa de bombas'} />
         )}
 
-        {view === 'gas' && (
-          <SimpleListView
-            title="Detectores de Gases" description="Detectores fixos de gases inflamáveis ou tóxicos instalados na edificação."
-            icon={Wind} data={data} category="gasDetectors" canEdit={canEdit}
-            onCreate={() => setModal({ type: 'gas', mode: 'create', initial: null })}
-            onEdit={(g) => setModal({ type: 'gas', mode: 'edit', initial: g })}
-            onDelete={(g) => setConfirmState({ title: 'Excluir detector', message: `Excluir "${g.name}"?`, onConfirm: () => deleteGasDetector(g.id) })}
-            onMaintain={(g) => openMaintainModal('gasDetectors', g, g.name)}
-            onInspect={(g) => openInspectModal('gasDetectors', g, g.name)}
-            renderMeta={(g) => [g.gasType, g.location].filter(Boolean).join(' · ') || 'Detector de gás fixo'} />
-        )}
-
         {view === 'report' && (
           <ReportView data={data} client={client} filters={reportFilters} setFilters={setReportFilters} />
-        )}
-
-        {view === 'history' && (
-          <HistoryView data={data} filter={historyFilter} setFilter={setHistoryFilter} onDeleteEntry={handleDeleteHistoryEntry} />
-        )}
-
-        {view === 'rvt' && (
-          <RvtView data={data} client={client} canEdit={canEdit}
-            onSaveReport={saveRvtReport}
-            onDeleteReport={(r) => setConfirmState({ title: 'Excluir relatório de visita', message: `Excluir o RVT de ${formatDateBR(r.data)}? Os registros já criados no Indicador a partir dele não serão apagados.`, onConfirm: () => deleteRvtReport(r.id) })} />
         )}
 
         {view === 'indicador' && (
@@ -3475,10 +3011,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
             onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
             onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
-        )}
-
-        {view === 'graficos' && (
-          <ChartsView data={data} />
         )}
 
         {view === 'settings' && (
@@ -3923,6 +3455,291 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Dispositivos Complementares                                        */
+/* ------------------------------------------------------------------ */
+
+const COMPLEMENTAR_TABS = [
+  { key: 'beam', label: 'Detector Linear (Beam)' },
+  { key: 'chama', label: 'Detector de Chama' },
+  { key: 'gas', label: 'Detector de Gás' },
+  { key: 'termo', label: 'Termovelocimétrico' },
+  { key: 'baterias_painel', label: 'Baterias de Painel' },
+  { key: 'fontes_auxiliares', label: 'Fontes Auxiliares' },
+];
+
+function complementarGroupFor(categoriaFuncional) {
+  if (categoriaFuncional === 'detector_linear') return 'beam';
+  if (categoriaFuncional === 'detector_chama') return 'chama';
+  if (['detector_gas_hc', 'detector_gas_co2', 'detector_gas_outro'].includes(categoriaFuncional)) return 'gas';
+  if (categoriaFuncional === 'termovelocimetrico') return 'termo';
+  return null;
+}
+
+function ComplementaresView({
+  data, canEdit, onSubmitBateriaPainel, onSubmitFonteAuxiliar, onDeleteFonteAuxiliar,
+  onSubmitCalibracao, onSubmitEtiqueta, onInspectDevice,
+}) {
+  const [tab, setTab] = useState('beam');
+  const grupo1Devices = (data.devices || []).filter((d) => complementarGroupFor(d.categoriaFuncional) === tab);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Dispositivos Complementares</h2>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Itens sem endereço próprio no laço — dependem de um módulo de entrada, ou são equipamentos auxiliares (baterias, fontes).
+        </p>
+      </div>
+      <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+        {COMPLEMENTAR_TABS.map((t) => (
+          <button key={t.key} className="nav-tab" data-active={tab === t.key} onClick={() => setTab(t.key)}>{t.label}</button>
+        ))}
+      </div>
+
+      {['beam', 'chama', 'gas', 'termo'].includes(tab) && (
+        <ComplementarGrupo1List data={data} devices={grupo1Devices} canEdit={canEdit} showCalibracao={tab === 'gas'}
+          onInspectDevice={onInspectDevice} onSubmitCalibracao={onSubmitCalibracao} onSubmitEtiqueta={onSubmitEtiqueta} />
+      )}
+      {tab === 'baterias_painel' && (
+        <BateriasPainelList data={data} canEdit={canEdit} onSubmit={onSubmitBateriaPainel} />
+      )}
+      {tab === 'fontes_auxiliares' && (
+        <FontesAuxiliaresList data={data} canEdit={canEdit} onSubmit={onSubmitFonteAuxiliar} onDelete={onDeleteFonteAuxiliar} />
+      )}
+    </div>
+  );
+}
+
+function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInspectDevice, onSubmitCalibracao, onSubmitEtiqueta }) {
+  const [editingId, setEditingId] = useState(null);
+  const [etiquetaDraft, setEtiquetaDraft] = useState('');
+  const [calibForm, setCalibForm] = useState(null);
+
+  if (devices.length === 0) {
+    return <EmptyState icon={Zap} title="Nenhum dispositivo nessa categoria"
+      description="Defina a categoria funcional no cadastro do módulo de entrada (aba Painéis) pra ele aparecer aqui." />;
+  }
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      {devices.map((d) => {
+        const loop = data.loops.find((l) => l.id === d.loopId);
+        const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+        const overdueCalib = showCalibracao && d.proximaCalibracao && d.proximaCalibracao < todayISO();
+        return (
+          <div key={d.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="mono-chip">{d.address}</span>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[loop?.name, panel?.name].filter(Boolean).join(' · ')}</span>
+            </div>
+            {editingId === d.id ? (
+              <div className="flex gap-2">
+                <input className={inputCls} value={etiquetaDraft} onChange={(e) => setEtiquetaDraft(e.target.value)}
+                  placeholder="Etiqueta / localização" autoFocus />
+                <Button variant="primary" onClick={() => { onSubmitEtiqueta(d.id, etiquetaDraft); setEditingId(null); }}>Salvar</Button>
+                <Button variant="secondary" onClick={() => setEditingId(null)}>Cancelar</Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{d.etiquetaComplementar || d.description || 'Sem etiqueta'}</span>
+                {canEdit && <IconButton title="Editar etiqueta" onClick={() => { setEditingId(d.id); setEtiquetaDraft(d.etiquetaComplementar || d.description || ''); }}><Pencil size={14} /></IconButton>}
+              </div>
+            )}
+            {showCalibracao && (
+              calibForm?.deviceId === d.id ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Data de calibração"><input type="date" className={inputCls} value={calibForm.dataCalibracao}
+                    onChange={(e) => setCalibForm({ ...calibForm, dataCalibracao: e.target.value })} /></Field>
+                  <Field label="Próxima calibração"><input type="date" className={inputCls} value={calibForm.proximaCalibracao}
+                    onChange={(e) => setCalibForm({ ...calibForm, proximaCalibracao: e.target.value })} /></Field>
+                  <div className="col-span-2 flex gap-2">
+                    <Button variant="primary" onClick={() => { onSubmitCalibracao(d.id, { dataCalibracao: calibForm.dataCalibracao, proximaCalibracao: calibForm.proximaCalibracao }); setCalibForm(null); }}>
+                      Salvar calibração
+                    </Button>
+                    <Button variant="secondary" onClick={() => setCalibForm(null)}>Cancelar</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs flex items-center justify-between gap-2" style={{ color: overdueCalib ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
+                  <span>
+                    {d.dataCalibracao ? `Calibrado em ${formatDateBR(d.dataCalibracao)}` : 'Sem calibração registrada'}
+                    {d.proximaCalibracao && ` · Próxima: ${formatDateBR(d.proximaCalibracao)}`}
+                    {overdueCalib && ' · VENCIDA'}
+                  </span>
+                  {canEdit && <button type="button" className="text-xs underline flex-shrink-0"
+                    onClick={() => setCalibForm({ deviceId: d.id, dataCalibracao: d.dataCalibracao || '', proximaCalibracao: d.proximaCalibracao || '' })}>
+                    editar
+                  </button>}
+                </div>
+              )
+            )}
+            {canEdit && (
+              <Button variant="secondary" onClick={() => onInspectDevice('devices', d, d.etiquetaComplementar || d.address)}>
+                <ClipboardCheck size={15} /> Registrar inspeção
+              </Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BateriaForm({ initial, onSubmit, onCancel }) {
+  const [v, setV] = useState({
+    tecnico: initial?.tecnico || '', dataInspecao: initial?.dataInspecao || todayISO(),
+    bateria1Tensao: initial?.bateria1Tensao ?? '', bateria1Data: initial?.bateria1Data || '',
+    bateria2Tensao: initial?.bateria2Tensao ?? '', bateria2Data: initial?.bateria2Data || '',
+  });
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }} className="flex flex-col gap-1 mt-2">
+      <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
+      <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Bateria 1 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria1Tensao} onChange={(e) => setV({ ...v, bateria1Tensao: e.target.value })} /></Field>
+        <Field label="Bateria 1 — Data fabr./validade"><input type="date" className={inputCls} value={v.bateria1Data} onChange={(e) => setV({ ...v, bateria1Data: e.target.value })} /></Field>
+        <Field label="Bateria 2 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria2Tensao} onChange={(e) => setV({ ...v, bateria2Tensao: e.target.value })} /></Field>
+        <Field label="Bateria 2 — Data fabr./validade"><input type="date" className={inputCls} value={v.bateria2Data} onChange={(e) => setV({ ...v, bateria2Data: e.target.value })} /></Field>
+      </div>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function BateriasPainelList({ data, canEdit, onSubmit }) {
+  const [editingPanelId, setEditingPanelId] = useState(null);
+
+  if ((data.panels || []).length === 0) {
+    return <EmptyState icon={Zap} title="Nenhum painel cadastrado" description="Cadastre um painel na aba Painéis pra ele aparecer aqui." />;
+  }
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      {data.panels.map((p) => {
+        const bateria = (data.bateriasPainel || []).find((b) => b.panelId === p.id);
+        const semBateria = !bateria || !bateria.dataInspecao;
+        const vencida = !semBateria && [bateria.bateria1Data, bateria.bateria2Data].some((dt) => dt && addMonthsToDate(dt, 24) < todayISO());
+        return (
+          <div key={p.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Baterias — {p.name}</span>
+            {semBateria && (
+              <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
+                <AlertTriangle size={11} /> Painel sem Bateria
+              </div>
+            )}
+            {vencida && (
+              <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
+                <AlertTriangle size={11} /> Bateria vencida (mais de 2 anos)
+              </div>
+            )}
+            {!semBateria && (
+              <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                Última inspeção: {formatDateBR(bateria.dataInspecao)}<br />
+                Bateria 1: {bateria.bateria1Tensao !== '' ? `${bateria.bateria1Tensao}V` : '—'} ({formatDateBR(bateria.bateria1Data)}) ·
+                Bateria 2: {bateria.bateria2Tensao !== '' ? `${bateria.bateria2Tensao}V` : '—'} ({formatDateBR(bateria.bateria2Data)})
+              </div>
+            )}
+            {editingPanelId === p.id ? (
+              <BateriaForm initial={bateria} onSubmit={(values) => { onSubmit(p.id, values); setEditingPanelId(null); }} onCancel={() => setEditingPanelId(null)} />
+            ) : (
+              canEdit && <Button variant="secondary" onClick={() => setEditingPanelId(p.id)}><ClipboardCheck size={15} /> Registrar inspeção de bateria</Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FonteAuxiliarForm({ initial, onSubmit, onCancel }) {
+  const [v, setV] = useState({
+    nome: initial?.nome || '', tensaoSaidas: initial?.tensaoSaidas ?? '',
+    tecnico: initial?.tecnico || '', dataInspecao: initial?.dataInspecao || todayISO(),
+    bateria1Tensao: initial?.bateria1Tensao ?? '', bateria1Data: initial?.bateria1Data || '',
+    bateria2Tensao: initial?.bateria2Tensao ?? '', bateria2Data: initial?.bateria2Data || '',
+  });
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (v.nome.trim()) onSubmit(v); }}>
+      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.nome}
+        onChange={(e) => setV({ ...v, nome: e.target.value })} placeholder="Ex.: Fonte auxiliar — Casa de Bombas" required /></Field>
+      <Field label="Tensão nominal das saídas (V)"><input type="number" step="0.1" className={inputCls} value={v.tensaoSaidas}
+        onChange={(e) => setV({ ...v, tensaoSaidas: e.target.value })} /></Field>
+      <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
+      <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Bateria 1 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria1Tensao} onChange={(e) => setV({ ...v, bateria1Tensao: e.target.value })} /></Field>
+        <Field label="Bateria 1 — Data fabr./validade"><input type="date" className={inputCls} value={v.bateria1Data} onChange={(e) => setV({ ...v, bateria1Data: e.target.value })} /></Field>
+        <Field label="Bateria 2 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria2Tensao} onChange={(e) => setV({ ...v, bateria2Tensao: e.target.value })} /></Field>
+        <Field label="Bateria 2 — Data fabr./validade"><input type="date" className={inputCls} value={v.bateria2Data} onChange={(e) => setV({ ...v, bateria2Data: e.target.value })} /></Field>
+      </div>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar fonte auxiliar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function FontesAuxiliaresList({ data, canEdit, onSubmit, onDelete }) {
+  const [modalState, setModalState] = useState(null);
+  const list = data.fontesAuxiliares || [];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canEdit && (
+        <div>
+          <Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Nova fonte auxiliar</Button>
+        </div>
+      )}
+      {list.length === 0 ? (
+        <EmptyState icon={Zap} title="Nenhuma fonte auxiliar cadastrada" description="Cadastre a primeira fonte auxiliar."
+          actionLabel={canEdit ? 'Nova fonte auxiliar' : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {list.map((f) => {
+            const vencida = [f.bateria1Data, f.bateria2Data].some((dt) => dt && addMonthsToDate(dt, 24) < todayISO());
+            const semInspecao = !f.dataInspecao;
+            return (
+              <div key={f.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{f.nome}</span>
+                  {canEdit && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      <IconButton title="Editar" onClick={() => setModalState({ mode: 'edit', initial: f })}><Pencil size={14} /></IconButton>
+                      <IconButton title="Excluir" danger onClick={() => onDelete(f.id)}><Trash2 size={14} /></IconButton>
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>Tensão nas saídas: {f.tensaoSaidas !== '' ? `${f.tensaoSaidas}V` : '—'}</div>
+                {semInspecao && <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}><AlertTriangle size={11} /> Sem inspeção registrada</div>}
+                {!semInspecao && vencida && <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}><AlertTriangle size={11} /> Bateria vencida (mais de 2 anos)</div>}
+                {!semInspecao && (
+                  <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Última inspeção: {formatDateBR(f.dataInspecao)}<br />
+                    Bateria 1: {f.bateria1Tensao !== '' ? `${f.bateria1Tensao}V` : '—'} ({formatDateBR(f.bateria1Data)}) ·
+                    Bateria 2: {f.bateria2Tensao !== '' ? `${f.bateria2Tensao}V` : '—'} ({formatDateBR(f.bateria2Data)})
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {modalState && (
+        <Modal title={modalState.mode === 'create' ? 'Nova fonte auxiliar' : 'Editar fonte auxiliar'} onClose={() => setModalState(null)}>
+          <FonteAuxiliarForm initial={modalState.initial}
+            onSubmit={(values) => { onSubmit(modalState.mode, modalState.initial, values); setModalState(null); }}
+            onCancel={() => setModalState(null)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function PanelDetail({
   data, panelId, tab, setTab, canEdit, expandedLoops, setExpandedLoops, onBack, onEditPanel, onDeletePanel,
   onCreateLoop, onEditLoop, onDeleteLoop, onCreateNac, onEditNac, onDeleteNac,
@@ -4132,113 +3949,9 @@ function SimpleListView({ title, description, icon, data, category, canEdit, onC
   );
 }
 
-function HistoryView({ data, filter, setFilter, onDeleteEntry }) {
-  const [logType, setLogType] = useState('manutencao');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [tipoFilter, setTipoFilter] = useState('all');
-  const [panelFilter, setPanelFilter] = useState('all');
 
-  const filters = [
-    { value: 'all', label: 'Todos' },
-    { value: 'devices', label: 'Dispositivos' },
-    { value: 'nacs', label: 'Circuitos (NAC)' },
-    { value: 'pumpDevices', label: 'Casa de Bombas' },
-    { value: 'gasDetectors', label: 'Detectores de gás' },
-  ];
-
-  const sourceLog = logType === 'manutencao' ? (data.maintenanceLog || []) : (data.inspectionLog || []);
-
-  const panelOptions = [...new Set(
-    sourceLog.map((e) => getItemPanelName(data, e.category, e.itemId)).filter(Boolean)
-  )].sort();
-
-  const entries = sourceLog.filter((e) => {
-    if (filter !== 'all' && e.category !== filter) return false;
-    if (dateFrom && e.date < dateFrom) return false;
-    if (dateTo && e.date > dateTo) return false;
-    if (logType === 'manutencao' && tipoFilter !== 'all' && (e.tipo || 'preventiva') !== tipoFilter) return false;
-    if (panelFilter !== 'all' && getItemPanelName(data, e.category, e.itemId) !== panelFilter) return false;
-    return true;
-  });
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Histórico de {logType === 'manutencao' ? 'manutenções' : 'inspeções'}
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Registro de todas as {logType === 'manutencao' ? 'manutenções' : 'inspeções'} realizadas, da mais recente para a mais antiga.
-        </p>
-      </div>
-
-      <div className="flex gap-1 overflow-x-auto">
-        <button className="nav-tab" data-active={logType === 'manutencao'} onClick={() => setLogType('manutencao')}>Manutenção</button>
-        <button className="nav-tab" data-active={logType === 'inspecao'} onClick={() => setLogType('inspecao')}>Inspeção</button>
-      </div>
-
-      <div className="flex gap-1 overflow-x-auto">
-        {filters.map((f) => (
-          <button key={f.value} className="nav-tab" data-active={filter === f.value} onClick={() => setFilter(f.value)}>{f.label}</button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Field label="De"><input type="date" className={inputCls} style={{ maxWidth: '160px' }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></Field>
-        <Field label="Até"><input type="date" className={inputCls} style={{ maxWidth: '160px' }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></Field>
-        {logType === 'manutencao' && (
-          <Field label="Tipo">
-            <select className={inputCls} style={{ maxWidth: '180px' }} value={tipoFilter} onChange={(e) => setTipoFilter(e.target.value)}>
-              <option value="all">Todos os tipos</option>
-              <option value="preventiva">Preventiva</option>
-              <option value="corretiva">Corretiva</option>
-            </select>
-          </Field>
-        )}
-        <Field label="Painel">
-          <select className={inputCls} style={{ maxWidth: '220px' }} value={panelFilter} onChange={(e) => setPanelFilter(e.target.value)}>
-            <option value="all">Todos os painéis</option>
-            {panelOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </Field>
-      </div>
-
-      {entries.length === 0 ? (
-        <EmptyState icon={Inbox} title="Nenhum registro encontrado" description="As manutenções e inspeções registradas em dispositivos, circuitos e demais equipamentos aparecerão aqui." />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {entries.map((entry) => {
-            const { label, context } = getItemLabelAndContext(data, entry.category, entry.itemId);
-            return (
-              <div key={entry.id} className="rounded-lg p-3.5 flex flex-col gap-1" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{label}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="mono-chip">{formatDateBR(entry.date)}</span>
-                    {onDeleteEntry && <IconButton title="Excluir" danger onClick={() => onDeleteEntry(logType, entry)}><Trash2 size={15} /></IconButton>}
-                  </div>
-                </div>
-                <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{context}</div>
-                {(entry.technician || entry.description) && (
-                  <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    {entry.technician && <span>Técnico: {entry.technician}. </span>}
-                    {entry.description}
-                  </div>
-                )}
-                {logType === 'manutencao' && entry.nextDate && (
-                  <div className="text-xs mono mt-1" style={{ color: 'var(--text-secondary)' }}>Próxima manutenção: {formatDateBR(entry.nextDate)}</div>
-                )}
-                {logType === 'inspecao' && entry.operationalStatus && (
-                  <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Status: {entry.operationalStatus}</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+function RvtFieldLabel({ children }) {
+  return <p className="text-[9px] uppercase font-semibold mb-0.5" style={{ color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
 }
 
 function IndicadorPrintView({ entries, client, onBack }) {
@@ -4394,6 +4107,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
   const [linkFilter, setLinkFilter] = useState('all');
+  const [panelFilter, setPanelFilter] = useState('all');
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState(null);
   const [linkMsg, setLinkMsg] = useState(null);
@@ -4402,6 +4116,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   const [statusToDelete, setStatusToDelete] = useState(INDICATOR_STATUS_OPTIONS[0]);
 
   const areaOptions = [...new Set(list.map((r) => r.area).filter(Boolean))].sort();
+  const panelOptions = [...new Set(list.map((r) => deviceContext(r)?.panelName).filter(Boolean))].sort();
 
   function deviceContext(r) {
     if (!r.deviceId) return null;
@@ -4413,24 +4128,24 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       const panel = loop && data.panels.find((p) => p.id === loop.panelId);
       return {
         title: (DEVICE_TYPE_MAP[device.type]?.label || 'Dispositivo') + (device.modelo ? ` · ${device.modelo}` : ''),
-        address: device.address, sub: [loop?.name, panel?.name].filter(Boolean).join(' · '),
+        address: device.address, sub: [loop?.name, panel?.name].filter(Boolean).join(' · '), panelName: panel?.name || '',
       };
     }
     if (cat === 'nacs') {
       const nac = data.nacs.find((n) => n.id === r.deviceId);
       if (!nac) return null;
       const panel = data.panels.find((p) => p.id === nac.panelId);
-      return { title: nac.name, address: null, sub: ['Circuito NAC', panel?.name].filter(Boolean).join(' · ') };
+      return { title: nac.name, address: null, sub: ['Circuito NAC', panel?.name].filter(Boolean).join(' · '), panelName: panel?.name || '' };
     }
     if (cat === 'pumpDevices') {
       const it = data.pumpDevices.find((p) => p.id === r.deviceId);
       if (!it) return null;
-      return { title: it.name, address: null, sub: it.type || 'Casa de Bombas' };
+      return { title: it.name, address: null, sub: it.type || 'Casa de Bombas', panelName: '' };
     }
     if (cat === 'gasDetectors') {
       const it = data.gasDetectors.find((g) => g.id === r.deviceId);
       if (!it) return null;
-      return { title: it.name, address: null, sub: 'Detector de Gás' };
+      return { title: it.name, address: null, sub: 'Detector de Gás', panelName: '' };
     }
     return null;
   }
@@ -4438,6 +4153,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   const filtered = list.filter((r) => {
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
     if (areaFilter !== 'all' && r.area !== areaFilter) return false;
+    if (panelFilter !== 'all' && deviceContext(r)?.panelName !== panelFilter) return false;
     if (linkFilter === 'linked' && !r.deviceId) return false;
     if (linkFilter === 'unlinked' && r.deviceId) return false;
     if (search) {
@@ -4930,6 +4646,10 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
               <option value="all">Todas as áreas</option>
               {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
+            <select className={inputCls} style={{ maxWidth: '220px' }} value={panelFilter} onChange={(e) => setPanelFilter(e.target.value)}>
+              <option value="all">Todos os painéis</option>
+              {panelOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
             <select className={inputCls} style={{ maxWidth: '220px' }} value={linkFilter} onChange={(e) => setLinkFilter(e.target.value)}>
               <option value="all">Vinculados e não vinculados</option>
               <option value="linked">Só vinculados a dispositivo</option>
@@ -5027,94 +4747,6 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   );
 }
 
-function ChartsView({ data }) {
-  const indicador = data.indicador || [];
-  const maintenanceLog = data.maintenanceLog || [];
-  const inspectionLog = data.inspectionLog || [];
-
-  const statusData = sortDesc(countBy(indicador, (r) => r.status, 'Sem status')).map((d) => ({ ...d, color: indicatorStatusColor(d.label) }));
-  const areaData = sortDesc(countBy(indicador, (r) => r.area, 'Sem área')).slice(0, 10);
-  const falhaData = sortDesc(countBy(indicador, (r) => r.falha, 'Sem falha')).slice(0, 10);
-
-  const CATEGORY_LABELS = { devices: 'Dispositivos', nacs: 'Circuitos (NAC)', pumpDevices: 'Casa de Bombas', gasDetectors: 'Detectores de gás' };
-  const tipoData = [
-    { label: 'Preventiva', value: maintenanceLog.filter((e) => e.tipo !== 'corretiva').length, color: 'var(--status-ok)' },
-    { label: 'Corretiva', value: maintenanceLog.filter((e) => e.tipo === 'corretiva').length, color: 'var(--status-danger)' },
-    { label: 'Inspeção', value: inspectionLog.length, color: 'var(--accent)' },
-  ].filter((d) => d.value > 0);
-  const categoryData = sortDesc(countBy([...maintenanceLog, ...inspectionLog], (e) => CATEGORY_LABELS[e.category] || e.category, 'Outro'));
-  const monthData = countByMonth([...maintenanceLog, ...inspectionLog], 12);
-
-  const hasIndicador = indicador.length > 0;
-  const hasManutencao = maintenanceLog.length + inspectionLog.length > 0;
-
-  function exportIndicadorCsv() {
-    exportChartCsv('indicador-resumo.csv', ['Categoria', 'Rótulo', 'Quantidade'], [
-      ...statusData.map((d) => ['Status', d.label, d.value]),
-      ...areaData.map((d) => ['Área', d.label, d.value]),
-      ...falhaData.map((d) => ['Falha', d.label, d.value]),
-    ]);
-  }
-  function exportManutencaoCsv() {
-    exportChartCsv('manutencoes-resumo.csv', ['Categoria', 'Rótulo', 'Quantidade'], [
-      ...tipoData.map((d) => ['Tipo', d.label, d.value]),
-      ...categoryData.map((d) => ['Categoria do item', d.label, d.value]),
-      ...monthData.map((d) => ['Mês', d.label, d.value]),
-    ]);
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
-        <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Gráficos</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Visão geral do Indicador e das manutenções realizadas nos painéis.</p>
-        </div>
-        <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
-      </div>
-
-      <div className="print-area flex flex-col gap-8 rounded-xl p-4 sm:p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div>
-              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Indicador — diagnóstico e falhas</h3>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{indicador.length} registro(s) no total</p>
-            </div>
-            {hasIndicador && <Button variant="secondary" className="no-print" onClick={exportIndicadorCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
-          </div>
-          {!hasIndicador ? (
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no Indicador ainda.</p>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              <ChartCard title="Status dos registros"><SimplePieChart data={statusData} /></ChartCard>
-              <ChartCard title="Registros por área" subtitle="Onde as falhas mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
-              <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div>
-              <h3 className="font-display text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Manutenções realizadas</h3>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{maintenanceLog.length + inspectionLog.length} registro(s) no total</p>
-            </div>
-            {hasManutencao && <Button variant="secondary" className="no-print" onClick={exportManutencaoCsv}><FileSpreadsheet size={15} /> Exportar planilha</Button>}
-          </div>
-          {!hasManutencao ? (
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhuma manutenção ou inspeção registrada ainda.</p>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              <ChartCard title="Por tipo" subtitle="Preventiva, corretiva e inspeção"><SimplePieChart data={tipoData} /></ChartCard>
-              <ChartCard title="Por categoria de equipamento"><SimpleBarChart data={categoryData} /></ChartCard>
-              <ChartCard title="Últimos 12 meses" subtitle="Volume por mês"><SimpleBarChart data={monthData} emptyLabel="Sem manutenções nos últimos 12 meses." /></ChartCard>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ReportView({ data, client, filters, setFilters }) {
   const items = allTrackableItems(data);

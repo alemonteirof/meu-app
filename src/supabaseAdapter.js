@@ -169,7 +169,7 @@ export async function listVisitas(clienteId) {
       rvt_itens (
         id, outro_descricao,
         atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) ),
-        inspecoes ( id, falha, resultado_teste, metodo, data_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) )
+        inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) )
       )
     `)
     .eq('cliente_id', clienteId)
@@ -196,6 +196,26 @@ export async function loadClientData(clienteId) {
   const { data: dispositivos, error: eD } = await supabase.from('dispositivos').select('*').eq('cliente_id', clienteId);
   if (eD) throw eD;
 
+  const { data: bateriasPainelRows, error: eBP } = await supabase.from('baterias_painel').select('*').eq('cliente_id', clienteId);
+  if (eBP) throw eBP;
+  const { data: fontesAuxiliaresRows, error: eFA } = await supabase.from('fontes_auxiliares').select('*').eq('cliente_id', clienteId);
+  if (eFA) throw eFA;
+
+  const bateriasPainel = (bateriasPainelRows || []).map((b) => ({
+    id: b.id, panelId: b.painel_id, tecnico: b.tecnico || '', dataInspecao: b.data_inspecao || '',
+    bateria1Tensao: b.bateria1_tensao ?? '', bateria1Data: b.bateria1_data || '',
+    bateria2Tensao: b.bateria2_tensao ?? '', bateria2Data: b.bateria2_data || '',
+    proximaInspecao: b.proxima_inspecao || '', fotos: b.fotos || [],
+  }));
+
+  const fontesAuxiliares = (fontesAuxiliaresRows || []).map((f) => ({
+    id: f.id, nome: f.nome || '', tensaoSaidas: f.tensao_saidas ?? '',
+    tecnico: f.tecnico || '', dataInspecao: f.data_inspecao || '',
+    bateria1Tensao: f.bateria1_tensao ?? '', bateria1Data: f.bateria1_data || '',
+    bateria2Tensao: f.bateria2_tensao ?? '', bateria2Data: f.bateria2_data || '',
+    proximaInspecao: f.proxima_inspecao || '', fotos: f.fotos || [],
+  }));
+
   const panels = paineis.map((p) => ({
     id: p.id, name: p.nome, location: p.localizacao || '', model: p.modelo || '',
     installDate: p.data_instalacao || '', notes: p.observacoes || '',
@@ -209,6 +229,7 @@ export async function loadClientData(clienteId) {
     id: d.id, loopId: d.laco_id, address: d.endereco || '', type: d.tipo_modulo,
     modelo: d.modelo || '', description: d.etiqueta || '',
     categoriaFuncional: d.categoria_funcional || '', papelSinal: d.papel_sinal || '', subEndereco: d.sub_endereco || '',
+    etiquetaComplementar: d.etiqueta_complementar || '', dataCalibracao: d.data_calibracao || '', proximaCalibracao: d.proxima_calibracao || '',
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
   }));
 
@@ -296,6 +317,7 @@ export async function loadClientData(clienteId) {
 
   return {
     panels, loops, nacs, devices, gasDetectors,
+    bateriasPainel, fontesAuxiliares,
     pumpDevices: legacy.pumpDevices || [],
     maintenanceLog: legacy.maintenanceLog || [],
     inspectionLog: legacy.inspectionLog || [],
@@ -325,6 +347,7 @@ async function doSaveClientData(clienteId, data) {
       endereco: d.address || null, etiqueta: d.description || null,
       tipo_modulo: d.type || 'outro', modelo: d.modelo || null,
       categoria_funcional: d.categoriaFuncional || null, papel_sinal: d.papelSinal || null, sub_endereco: d.subEndereco || null,
+      etiqueta_complementar: d.etiquetaComplementar || null, data_calibracao: d.dataCalibracao || null, proxima_calibracao: d.proximaCalibracao || null,
       proxima_inspecao: d.nextMaintenance || null, ultima_manutencao: d.lastMaintenance || null,
     })),
     ...(data.nacs || []).map((n) => ({
@@ -409,6 +432,45 @@ async function doSaveClientData(clienteId, data) {
     const { error } = await q;
     if (error) throw error;
   }
+
+  // ---- Baterias de painel: upsert + remove só as que saíram ----
+  const bateriasPainelRows = (data.bateriasPainel || []).map((b) => ({
+    id: b.id, painel_id: b.panelId, cliente_id: clienteId, tecnico: b.tecnico || null,
+    data_inspecao: b.dataInspecao || null,
+    bateria1_tensao: b.bateria1Tensao === '' ? null : b.bateria1Tensao, bateria1_data: b.bateria1Data || null,
+    bateria2_tensao: b.bateria2Tensao === '' ? null : b.bateria2Tensao, bateria2_data: b.bateria2Data || null,
+    proxima_inspecao: b.proximaInspecao || null, fotos: b.fotos || [],
+  }));
+  if (bateriasPainelRows.length) {
+    const { error } = await supabase.from('baterias_painel').upsert(bateriasPainelRows);
+    if (error) throw error;
+  }
+  {
+    let q = supabase.from('baterias_painel').delete().eq('cliente_id', clienteId);
+    if (bateriasPainelRows.length) q = q.not('id', 'in', `(${bateriasPainelRows.map((b) => b.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
+
+  // ---- Fontes auxiliares: upsert + remove só as que saíram ----
+  const fontesAuxiliaresRows = (data.fontesAuxiliares || []).map((f) => ({
+    id: f.id, cliente_id: clienteId, nome: f.nome || null,
+    tensao_saidas: f.tensaoSaidas === '' ? null : f.tensaoSaidas,
+    tecnico: f.tecnico || null, data_inspecao: f.dataInspecao || null,
+    bateria1_tensao: f.bateria1Tensao === '' ? null : f.bateria1Tensao, bateria1_data: f.bateria1Data || null,
+    bateria2_tensao: f.bateria2Tensao === '' ? null : f.bateria2Tensao, bateria2_data: f.bateria2Data || null,
+    proxima_inspecao: f.proximaInspecao || null, fotos: f.fotos || [],
+  }));
+  if (fontesAuxiliaresRows.length) {
+    const { error } = await supabase.from('fontes_auxiliares').upsert(fontesAuxiliaresRows);
+    if (error) throw error;
+  }
+  {
+    let q = supabase.from('fontes_auxiliares').delete().eq('cliente_id', clienteId);
+    if (fontesAuxiliaresRows.length) q = q.not('id', 'in', `(${fontesAuxiliaresRows.map((f) => f.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
 }
 
 export async function updateAtendimento(id, { falha, status, descritivo, fotos }) {
@@ -445,6 +507,11 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
 
 export async function deleteInspecao(id) {
   const { error } = await supabase.from('inspecoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateOutroItem(rvtItemId, descricao) {
+  const { error } = await supabase.from('rvt_itens').update({ outro_descricao: descricao }).eq('id', rvtItemId);
   if (error) throw error;
 }
 
