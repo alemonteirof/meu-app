@@ -64,6 +64,105 @@ export function getMetodoTeste(device) {
   return METODO_POR_TIPO[device.type] || '';
 }
 
+// ---- Combate a Incêndio ----
+// Duas estruturas:
+// 1) CONJUNTO = pai com checklist fixo (mecânico/estrutural) — ao criar, já nascem todos os sub-itens.
+//    Tudo isso é UMA LISTA SÓ (fácil de ajustar: adicionar/remover/editar um item aqui, sem mexer no banco).
+// 2) COMPONENTE = elétrico/supervisionado (fluxostato, pressostato, solenoide, chaves) — cadastro livre,
+//    quantidade variável, linkável opcionalmente a um Conjunto ("pertence a") e a um módulo do painel.
+
+export const COMBATE_CONJUNTO_TIPOS = {
+  casa_bombas: {
+    label: 'Casa de Bombas',
+    subItens: [
+      { categoria: 'bomba_eletrica', label: 'Bomba Elétrica (principal)', metodo: 'Teste de vazão/pressão com medidor (curva característica)', periodicidade: 'Anual', unidade: 'L/min ou mca' },
+      { categoria: 'bomba_diesel', label: 'Bomba Diesel (reserva)', metodo: 'Acionamento cronometrado + verificação de óleo/combustível', periodicidade: 'Semanal', unidade: 's (tempo de partida)' },
+      { categoria: 'bomba_jockey', label: 'Bomba Jockey (pressurização)', metodo: 'Verificação de ciclos de partida/parada', periodicidade: 'Mensal', unidade: 'ciclos/dia' },
+      { categoria: 'bateria_partida', label: 'Bateria de Partida (motor diesel)', metodo: 'Tensão + densidade do eletrólito', periodicidade: 'Mensal', unidade: 'V' },
+      { categoria: 'quadro_comando', label: 'Quadro de Comando / Alarmes', metodo: 'Teste funcional de sinalização', periodicidade: 'Mensal', unidade: '' },
+      { categoria: 'reservatorio', label: 'Reservatório de Água', metodo: 'Inspeção visual de nível', periodicidade: 'Mensal', unidade: '%' },
+    ],
+  },
+  hidrante: {
+    label: 'Hidrante / Mangotinho',
+    subItens: [
+      { categoria: 'abrigo', label: 'Abrigo/Caixa', metodo: 'Inspeção visual (integridade, acesso, fechamento)', periodicidade: 'Mensal', unidade: '' },
+      { categoria: 'mangueira', label: 'Mangueira', metodo: 'Visual mensal + teste hidrostático anual (NBR 12779)', periodicidade: 'Mensal / Anual', unidade: 'bar' },
+      { categoria: 'esguicho', label: 'Esguicho/Requinte', metodo: 'Inspeção + acionamento do jato', periodicidade: 'Mensal', unidade: '' },
+      { categoria: 'registro', label: 'Registro (Globo/Ângulo/Gaveta)', metodo: 'Acionamento manual + lubrificação, estanqueidade', periodicidade: 'Mensal', unidade: '' },
+      { categoria: 'uniao_storz', label: 'Adaptador/União Storz', metodo: 'Verificação de rosca/encaixe', periodicidade: 'Mensal', unidade: '' },
+      { categoria: 'chave_mangueira', label: 'Chave de Mangueira', metodo: 'Presença e estado', periodicidade: 'Mensal', unidade: '' },
+      { categoria: 'sinalizacao', label: 'Sinalização/Iluminação do Abrigo', metodo: 'Visibilidade da placa + luz de emergência', periodicidade: 'Mensal', unidade: '' },
+    ],
+  },
+  vga: {
+    label: 'VGA (Sprinklers)',
+    subItens: [
+      { categoria: 'clapper', label: 'Corpo da VGA (Clapper)', metodo: 'Inspeção visual + acionamento manual', periodicidade: 'Semestral/Anual', unidade: '' },
+      { categoria: 'gongo', label: 'Gongo Hidráulico', metodo: 'Teste sonoro durante o acionamento da VGA', periodicidade: 'Semestral/Anual', unidade: '' },
+      { categoria: 'camara_retardo', label: 'Câmara de Retardo', metodo: 'Inspeção do dreno, sem obstrução', periodicidade: 'Anual', unidade: '' },
+      { categoria: 'manometros', label: 'Manômetros', metodo: 'Leitura/comparação, dentro da faixa', periodicidade: 'Mensal', unidade: 'bar' },
+      { categoria: 'dreno_principal', label: 'Válvula de Dreno Principal', metodo: 'Main drain test — queda/recuperação de pressão', periodicidade: 'Anual', unidade: '' },
+      { categoria: 'sprinklers_amostragem', label: 'Sprinklers do Setor (Amostragem)', metodo: 'Inspeção visual de amostra representativa (obstrução/corrosão/pintura)', periodicidade: 'Trimestral', unidade: '' },
+    ],
+  },
+  lge: {
+    label: 'LGE (Espuma)',
+    temRetestLaboratorial: true,
+    subItens: [
+      { categoria: 'clapper', label: 'Corpo da Válvula (Dilúvio)', metodo: 'Inspeção visual + acionamento manual', periodicidade: 'Semestral/Anual', unidade: '' },
+      { categoria: 'gongo', label: 'Gongo Hidráulico', metodo: 'Teste sonoro durante o acionamento', periodicidade: 'Semestral/Anual', unidade: '' },
+      { categoria: 'manometros', label: 'Manômetros', metodo: 'Leitura/comparação, dentro da faixa', periodicidade: 'Mensal', unidade: 'bar' },
+      { categoria: 'dreno_principal', label: 'Válvula de Dreno Principal', metodo: 'Main drain test', periodicidade: 'Anual', unidade: '' },
+      { categoria: 'tanque_lge', label: 'Tanque de LGE', metodo: 'Inspeção visual/medição de nível', periodicidade: 'Mensal', unidade: '%' },
+      { categoria: 'proporcionador', label: 'Proporcionador', metodo: 'Teste de proporção água/LGE (refratômetro)', periodicidade: 'Anual', unidade: '%' },
+      { categoria: 'camara_espuma', label: 'Câmara de Espuma', metodo: 'Inspeção visual + teste de descarga', periodicidade: 'Anual', unidade: '' },
+      { categoria: 'bicos_abertos', label: 'Bicos Abertos (Amostragem)', metodo: 'Inspeção visual de amostra representativa (sem bulbo)', periodicidade: 'Trimestral', unidade: '' },
+    ],
+  },
+  sistema_gas: {
+    label: 'Sistema (Agente Gasoso)',
+    subItens: [
+      { categoria: 'painel_acionamento', label: 'Painel de Acionamento Dedicado', metodo: 'Teste funcional de reconhecimento de sinal', periodicidade: 'Semestral', unidade: '' },
+      { categoria: 'valvula_direcional', label: 'Válvula Direcional/Seletora', metodo: 'Teste de abertura/fechamento', periodicidade: 'Semestral', unidade: '' },
+      { categoria: 'sirenes', label: 'Sirenes/Estrobos de Pré-Descarga', metodo: 'Teste sonoro/visual', periodicidade: 'Semestral', unidade: '' },
+      { categoria: 'temporizador', label: 'Temporizador de Retardo', metodo: 'Cronometragem do tempo de retardo', periodicidade: 'Semestral', unidade: 's' },
+      { categoria: 'difusores', label: 'Difusores/Bicos', metodo: 'Inspeção visual de obstrução', periodicidade: 'Semestral', unidade: '' },
+      { categoria: 'tubulacao', label: 'Tubulação e Suportes', metodo: 'Inspeção visual', periodicidade: 'Anual', unidade: '' },
+    ],
+  },
+};
+export const COMBATE_AGUA_TIPOS = ['casa_bombas', 'hidrante', 'vga', 'lge'];
+export const COMBATE_GAS_AGENTES = [
+  { value: 'co2', label: 'CO₂' },
+  { value: 'novec', label: 'NOVEC 1230' },
+  { value: 'po_quimico', label: 'Pó Químico' },
+];
+
+export function conjuntoSubitemInfo(tipo, categoria) {
+  return COMBATE_CONJUNTO_TIPOS[tipo]?.subItens.find((s) => s.categoria === categoria) || null;
+}
+
+export const COMBATE_COMPONENTE_TIPOS = [
+  { value: 'fluxostato', label: 'Fluxostato', metodo: 'Acionamento manual/dreno, verificar sinal e retardo', periodicidade: 'Semestral', unidade: '', moduloTipo: 'entrada' },
+  { value: 'pressostato', label: 'Pressostato', metodo: 'Verificar setpoint de atuação com manômetro de referência', periodicidade: 'Semestral', unidade: 'bar', moduloTipo: 'entrada' },
+  { value: 'solenoide', label: 'Válvula Solenoide', metodo: 'Energiza/desenergiza, verifica abertura, fechamento e posição', periodicidade: 'Semestral', unidade: '', moduloTipo: 'saida' },
+  { value: 'chave_supervisora', label: 'Chave Supervisora (Tamper)', metodo: 'Move a válvula, verifica sinal de supervisão', periodicidade: 'Semestral', unidade: '', moduloTipo: 'entrada' },
+  { value: 'chave_abandono', label: 'Chave de Abandono/Bloqueio', metodo: 'Teste funcional, verifica bloqueio de descarga', periodicidade: 'Semestral', unidade: '', moduloTipo: 'entrada' },
+];
+export const COMBATE_COMPONENTE_TIPO_MAP = Object.fromEntries(COMBATE_COMPONENTE_TIPOS.map((c) => [c.value, c]));
+
+// ---- Bateria de Cilindros (CO2/NOVEC/Pó Químico) ----
+// Pressão já é visual no manômetro (item de checklist, sem valor numérico); peso e demais medições
+// ficam só no retest laboratorial terceirizado (1 data só — o app calcula a próxima sozinho, 5 anos).
+export const COMBATE_CILINDRO_ITENS = [
+  { key: 'valvula', label: 'Válvula/Cabeça de Comando', metodo: 'Inspeção visual de corrosão, vazamento e integridade do lacre' },
+  { key: 'manometro', label: 'Manômetro (leitura visual)', metodo: 'Leitura visual — ponteiro na faixa verde/pressão normal' },
+  { key: 'corpo', label: 'Corpo do Cilindro', metodo: 'Inspeção visual de corrosão, amassados e pintura' },
+  { key: 'etiqueta', label: 'Etiqueta de Dados', metodo: 'Verificação de legibilidade (peso, data de fabricação/teste, capacidade)' },
+];
+export const COMBATE_RETEST_LABORATORIAL_MESES = 60; // 5 anos — período padrão de retest/requalificação de cilindro
+
 function statusCapitalizado(s) {
   if (s === 'aguardando') return 'Aguardando';
   if (s === 'andamento') return 'Andamento';
@@ -200,6 +299,16 @@ export async function loadClientData(clienteId) {
   if (eBP) throw eBP;
   const { data: fontesAuxiliaresRows, error: eFA } = await supabase.from('fontes_auxiliares').select('*').eq('cliente_id', clienteId);
   if (eFA) throw eFA;
+  const { data: combateConjuntosRows, error: eCC } = await supabase.from('combate_conjuntos').select('*').eq('cliente_id', clienteId);
+  if (eCC) throw eCC;
+  const { data: combateSubitensRows, error: eCS } = await supabase.from('combate_subitens').select('*').eq('cliente_id', clienteId);
+  if (eCS) throw eCS;
+  const { data: combateComponentesRows, error: eCP } = await supabase.from('combate_componentes').select('*').eq('cliente_id', clienteId);
+  if (eCP) throw eCP;
+  const { data: combateBateriasRows, error: eCB } = await supabase.from('combate_baterias_cilindros').select('*').eq('cliente_id', clienteId);
+  if (eCB) throw eCB;
+  const { data: combateCilindrosRows, error: eCI } = await supabase.from('combate_cilindros').select('*').eq('cliente_id', clienteId);
+  if (eCI) throw eCI;
 
   const bateriasPainel = (bateriasPainelRows || []).map((b) => ({
     id: b.id, panelId: b.painel_id, tecnico: b.tecnico || '', dataInspecao: b.data_inspecao || '',
@@ -214,6 +323,38 @@ export async function loadClientData(clienteId) {
     bateria1Tensao: f.bateria1_tensao ?? '', bateria1Data: f.bateria1_data || '',
     bateria2Tensao: f.bateria2_tensao ?? '', bateria2Data: f.bateria2_data || '',
     proximaInspecao: f.proxima_inspecao || '', fotos: f.fotos || [],
+  }));
+
+  const combateConjuntos = (combateConjuntosRows || []).map((c) => ({
+    id: c.id, tipo: c.tipo || '', agente: c.agente || '', panelId: c.painel_id || '', etiqueta: c.etiqueta || '',
+  }));
+
+  const combateSubitens = (combateSubitensRows || []).map((s) => ({
+    id: s.id, conjuntoId: s.conjunto_id, categoria: s.categoria || '',
+    tecnico: s.tecnico || '', dataInspecao: s.data_inspecao || '', resultadoTeste: s.resultado_teste || '',
+    valorMedido: s.valor_medido ?? '', observacoes: s.observacoes || '', falha: s.falha || '',
+    proximaInspecao: s.proxima_inspecao || '', fotos: s.fotos || [],
+    dataRetestLaboratorial: s.data_retest_laboratorial || '', proximaRetestLaboratorial: s.proxima_retest_laboratorial || '',
+  }));
+
+  const combateComponentes = (combateComponentesRows || []).map((c) => ({
+    id: c.id, tipo: c.tipo || '', etiqueta: c.etiqueta || '', conjuntoId: c.conjunto_id || '', dispositivoId: c.dispositivo_id || '',
+    tecnico: c.tecnico || '', dataInspecao: c.data_inspecao || '', resultadoTeste: c.resultado_teste || '',
+    valorMedido: c.valor_medido ?? '', observacoes: c.observacoes || '', falha: c.falha || '',
+    proximaInspecao: c.proxima_inspecao || '', fotos: c.fotos || [],
+  }));
+
+  const combateBaterias = (combateBateriasRows || []).map((b) => ({
+    id: b.id, agente: b.agente || '', etiqueta: b.etiqueta || '', panelId: b.painel_id || '',
+  }));
+
+  const combateCilindros = (combateCilindrosRows || []).map((c) => ({
+    id: c.id, bateriaId: c.bateria_id, identificacao: c.identificacao || '',
+    tecnico: c.tecnico || '', dataInspecao: c.data_inspecao || '',
+    resultadoValvula: c.resultado_valvula || '', resultadoManometro: c.resultado_manometro || '',
+    resultadoCorpo: c.resultado_corpo || '', resultadoEtiqueta: c.resultado_etiqueta || '',
+    observacoes: c.observacoes || '', falha: c.falha || '', proximaInspecao: c.proxima_inspecao || '', fotos: c.fotos || [],
+    dataRetestLaboratorial: c.data_retest_laboratorial || '', proximaRetestLaboratorial: c.proxima_retest_laboratorial || '',
   }));
 
   const panels = paineis.map((p) => ({
@@ -317,7 +458,7 @@ export async function loadClientData(clienteId) {
 
   return {
     panels, loops, nacs, devices, gasDetectors,
-    bateriasPainel, fontesAuxiliares,
+    bateriasPainel, fontesAuxiliares, combateConjuntos, combateSubitens, combateComponentes, combateBaterias, combateCilindros,
     pumpDevices: legacy.pumpDevices || [],
     maintenanceLog: legacy.maintenanceLog || [],
     inspectionLog: legacy.inspectionLog || [],
@@ -391,12 +532,22 @@ async function doSaveClientData(clienteId, data) {
     if (error) throw error;
   }
   {
-    // Visitas (rvts) que apontavam pra painéis que vão sair perdem só a referência do painel
-    // (painel_id = null) — a visita e os itens dela continuam existindo. Sem isso, a FK trava o delete.
+    // Visitas (rvts) e itens de Combate a Incêndio que apontavam pra painéis que vão sair
+    // perdem só a referência do painel (painel_id = null) — continuam existindo. Sem isso, a FK trava o delete.
     let qNull = supabase.from('rvts').update({ painel_id: null }).eq('cliente_id', clienteId).not('painel_id', 'is', null);
     if (panelRows.length) qNull = qNull.not('painel_id', 'in', `(${panelRows.map((p) => p.id).join(',')})`);
     const { error: nullErr } = await qNull;
     if (nullErr) throw nullErr;
+
+    let qNullCombate = supabase.from('combate_conjuntos').update({ painel_id: null }).eq('cliente_id', clienteId).not('painel_id', 'is', null);
+    if (panelRows.length) qNullCombate = qNullCombate.not('painel_id', 'in', `(${panelRows.map((p) => p.id).join(',')})`);
+    const { error: nullErr2 } = await qNullCombate;
+    if (nullErr2) throw nullErr2;
+
+    let qNullBaterias = supabase.from('combate_baterias_cilindros').update({ painel_id: null }).eq('cliente_id', clienteId).not('painel_id', 'is', null);
+    if (panelRows.length) qNullBaterias = qNullBaterias.not('painel_id', 'in', `(${panelRows.map((p) => p.id).join(',')})`);
+    const { error: nullErr3 } = await qNullBaterias;
+    if (nullErr3) throw nullErr3;
 
     let q = supabase.from('paineis').delete().eq('cliente_id', clienteId);
     if (panelRows.length) q = q.not('id', 'in', `(${panelRows.map((p) => p.id).join(',')})`);
@@ -468,6 +619,94 @@ async function doSaveClientData(clienteId, data) {
   {
     let q = supabase.from('fontes_auxiliares').delete().eq('cliente_id', clienteId);
     if (fontesAuxiliaresRows.length) q = q.not('id', 'in', `(${fontesAuxiliaresRows.map((f) => f.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
+
+  // ---- Combate a Incêndio: Conjuntos (pai) → Sub-itens (filhos, FK) → Componentes ----
+  const combateConjuntosRows = (data.combateConjuntos || []).map((c) => ({
+    id: c.id, cliente_id: clienteId, tipo: c.tipo || null, agente: c.agente || null,
+    painel_id: c.panelId || null, etiqueta: c.etiqueta || null,
+  }));
+  if (combateConjuntosRows.length) {
+    const { error } = await supabase.from('combate_conjuntos').upsert(combateConjuntosRows);
+    if (error) throw error;
+  }
+
+  const combateSubitensRows = (data.combateSubitens || []).map((s) => ({
+    id: s.id, conjunto_id: s.conjuntoId, cliente_id: clienteId, categoria: s.categoria || null,
+    tecnico: s.tecnico || null, data_inspecao: s.dataInspecao || null, resultado_teste: s.resultadoTeste || null,
+    valor_medido: s.valorMedido === '' ? null : s.valorMedido, observacoes: s.observacoes || null, falha: s.falha || null,
+    proxima_inspecao: s.proximaInspecao || null, fotos: s.fotos || [],
+    data_retest_laboratorial: s.dataRetestLaboratorial || null, proxima_retest_laboratorial: s.proximaRetestLaboratorial || null,
+  }));
+  if (combateSubitensRows.length) {
+    const { error } = await supabase.from('combate_subitens').upsert(combateSubitensRows);
+    if (error) throw error;
+  }
+  {
+    let q = supabase.from('combate_subitens').delete().eq('cliente_id', clienteId);
+    if (combateSubitensRows.length) q = q.not('id', 'in', `(${combateSubitensRows.map((s) => s.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
+
+  {
+    let q = supabase.from('combate_conjuntos').delete().eq('cliente_id', clienteId);
+    if (combateConjuntosRows.length) q = q.not('id', 'in', `(${combateConjuntosRows.map((c) => c.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
+
+  const combateComponentesRows = (data.combateComponentes || []).map((c) => ({
+    id: c.id, cliente_id: clienteId, tipo: c.tipo || null, etiqueta: c.etiqueta || null,
+    conjunto_id: c.conjuntoId || null, dispositivo_id: c.dispositivoId || null,
+    tecnico: c.tecnico || null, data_inspecao: c.dataInspecao || null, resultado_teste: c.resultadoTeste || null,
+    valor_medido: c.valorMedido === '' ? null : c.valorMedido, observacoes: c.observacoes || null, falha: c.falha || null,
+    proxima_inspecao: c.proximaInspecao || null, fotos: c.fotos || [],
+  }));
+  if (combateComponentesRows.length) {
+    const { error } = await supabase.from('combate_componentes').upsert(combateComponentesRows);
+    if (error) throw error;
+  }
+  {
+    let q = supabase.from('combate_componentes').delete().eq('cliente_id', clienteId);
+    if (combateComponentesRows.length) q = q.not('id', 'in', `(${combateComponentesRows.map((c) => c.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
+
+  // ---- Bateria de Cilindros (pai) → Cilindros (filhos, FK), mesma ordem de dependência ----
+  const combateBateriasRows = (data.combateBaterias || []).map((b) => ({
+    id: b.id, cliente_id: clienteId, agente: b.agente || null, etiqueta: b.etiqueta || null, painel_id: b.panelId || null,
+  }));
+  if (combateBateriasRows.length) {
+    const { error } = await supabase.from('combate_baterias_cilindros').upsert(combateBateriasRows);
+    if (error) throw error;
+  }
+
+  const combateCilindrosRows = (data.combateCilindros || []).map((c) => ({
+    id: c.id, bateria_id: c.bateriaId, cliente_id: clienteId, identificacao: c.identificacao || null,
+    tecnico: c.tecnico || null, data_inspecao: c.dataInspecao || null,
+    resultado_valvula: c.resultadoValvula || null, resultado_manometro: c.resultadoManometro || null,
+    resultado_corpo: c.resultadoCorpo || null, resultado_etiqueta: c.resultadoEtiqueta || null,
+    observacoes: c.observacoes || null, falha: c.falha || null, proxima_inspecao: c.proximaInspecao || null, fotos: c.fotos || [],
+    data_retest_laboratorial: c.dataRetestLaboratorial || null, proxima_retest_laboratorial: c.proximaRetestLaboratorial || null,
+  }));
+  if (combateCilindrosRows.length) {
+    const { error } = await supabase.from('combate_cilindros').upsert(combateCilindrosRows);
+    if (error) throw error;
+  }
+  {
+    let q = supabase.from('combate_cilindros').delete().eq('cliente_id', clienteId);
+    if (combateCilindrosRows.length) q = q.not('id', 'in', `(${combateCilindrosRows.map((c) => c.id).join(',')})`);
+    const { error } = await q;
+    if (error) throw error;
+  }
+
+  {
+    let q = supabase.from('combate_baterias_cilindros').delete().eq('cliente_id', clienteId);
+    if (combateBateriasRows.length) q = q.not('id', 'in', `(${combateBateriasRows.map((b) => b.id).join(',')})`);
     const { error } = await q;
     if (error) throw error;
   }

@@ -2,6 +2,8 @@
 import {
   loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, deleteAtendimento, updateInspecao, deleteInspecao,
   FUNCTIONAL_CATEGORIES, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
+  COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
+  COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
 } from './supabaseAdapter';
 import React, { useState, useEffect } from 'react';
 import {
@@ -10,7 +12,7 @@ import {
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
-  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal,
+  FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -793,7 +795,7 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
   { key: 'panels', label: 'Painéis', icon: Cpu },
   { key: 'complementares', label: 'Dispositivos Complementares', icon: Zap },
-  { key: 'pumphouse', label: 'Casa de Bombas', icon: Droplet },
+  { key: 'combate', label: 'Combate a Incêndio', icon: Flame },
   { key: 'report', label: 'Relatório', icon: ClipboardList },
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
@@ -802,9 +804,9 @@ const NAV_ITEMS = [
 // Admin vê tudo. Operador (técnico) e Visualizador (cliente) têm menu restrito —
 // mesma lista no mobile e no desktop.
 const NAV_KEYS_BY_ROLE = {
-  admin: ['atendimentos', 'dashboard', 'panels', 'complementares', 'pumphouse', 'report', 'indicador', 'settings'],
-  operador: ['dashboard', 'atendimentos', 'panels', 'complementares', 'report', 'indicador'],
-  visualizador: ['dashboard', 'panels', 'complementares', 'report', 'indicador'],
+  admin: ['atendimentos', 'dashboard', 'panels', 'complementares', 'combate', 'report', 'indicador', 'settings'],
+  operador: ['dashboard', 'atendimentos', 'panels', 'complementares', 'combate', 'report', 'indicador'],
+  visualizador: ['dashboard', 'panels', 'complementares', 'combate', 'report', 'indicador'],
 };
 function navItemsForRole(role) {
   const keys = NAV_KEYS_BY_ROLE[role] || NAV_KEYS_BY_ROLE.visualizador;
@@ -819,7 +821,8 @@ function mobilePrimaryKeysForRole(role) {
 
 const emptyData = () => ({
   panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
-  bateriasPainel: [], fontesAuxiliares: [],
+  bateriasPainel: [], fontesAuxiliares: [], combateConjuntos: [], combateSubitens: [], combateComponentes: [],
+  combateBaterias: [], combateCilindros: [],
   maintenanceLog: [], inspectionLog: [], modelPhotos: {}, indicador: [], rvt: [],
 });
 
@@ -1298,7 +1301,7 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
 function MaintenanceScheduleFields({ values, setValues }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Última manutenção">
           <input type="date" className={inputCls} value={values.lastMaintenance || ''}
             onChange={(e) => setValues((v) => ({ ...v, lastMaintenance: e.target.value }))} />
@@ -1376,7 +1379,7 @@ function NacForm({ initial, onSubmit, onCancel }) {
     cada sub-endereço da entrada duplo. */
 function CategoriaFuncionalFields({ categoriaFuncional, papelSinal, onChange }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Categoria funcional">
         <select className={inputCls} value={categoriaFuncional || ''}
           onChange={(e) => onChange({ categoriaFuncional: e.target.value, papelSinal: '' })}>
@@ -1429,7 +1432,7 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label={isEntradaDuploCreate ? 'Endereço base *' : 'Endereço *'}
           hint={isEntradaDuploCreate ? 'Os 2 sub-endereços serão gerados automaticamente (ex.: 60 → 60.01 e 60.02).' : undefined}>
           <input autoFocus className={`${inputCls} mono`} value={v.address}
@@ -1688,7 +1691,7 @@ function IndicadorForm({ initial, data, areaSuggestions, onSubmit, onCancel }) {
         <Field label="Painel"><input className={inputCls} value={v.painel}
           onChange={(e) => setV({ ...v, painel: e.target.value })} placeholder="1" /></Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Equipamento"><input className={inputCls} value={v.equipamento}
           onChange={(e) => setV({ ...v, equipamento: e.target.value })} placeholder="Ex.: Sensor de fumaça" /></Field>
         <Field label="Área">
@@ -1731,7 +1734,7 @@ function BulkInspectionForm({ count, onSubmit, onCancel }) {
       <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
         Este registro será aplicado aos <strong>{count} dispositivos selecionados</strong>.
       </p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Status">
           <select className={inputCls} value={v.operationalStatus} onChange={(e) => setV({ ...v, operationalStatus: e.target.value })}>
             <option value="">Não avaliado</option>
@@ -1812,7 +1815,7 @@ function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
           <option value="corretiva">Corretiva</option>
         </select>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
           onChange={(e) => handleDateChange(e.target.value)} /></Field>
         <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
@@ -1820,7 +1823,7 @@ function BulkMaintenanceForm({ count, onSubmit, onCancel }) {
       </div>
       <Field label="Observações / serviço realizado"><textarea rows={3} className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Limpeza preventiva, troca de bateria..." /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Periodicidade">
           <select className={inputCls} value={v.intervalMonths} onChange={(e) => handleIntervalChange(e.target.value)}>
             <option value="">Definir manualmente</option>
@@ -1858,7 +1861,7 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
           <option value="corretiva">Corretiva</option>
         </select>
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Data da manutenção *"><input type="date" className={inputCls} value={v.date} required
           onChange={(e) => handleDateChange(e.target.value)} /></Field>
         <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
@@ -1868,7 +1871,7 @@ function MaintenanceForm({ item, onSubmit, onCancel }) {
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Ex.: Teste funcional, limpeza, troca de bateria..." /></Field>
       <Field label="Falha encontrada (opcional)"><input className={inputCls} value={v.falha}
         onChange={(e) => setV({ ...v, falha: e.target.value })} placeholder="Deixe em branco se não houve problema" /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Status">
           <select className={inputCls} value={v.status} onChange={(e) => setV({ ...v, status: e.target.value })}>
             {INDICATOR_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -1918,7 +1921,7 @@ function InspectionForm({ item, onSubmit, onCancel }) {
       )}
       <Field label="Técnico responsável"><input className={inputCls} value={v.technician}
         onChange={(e) => setV({ ...v, technician: e.target.value })} placeholder="Nome do técnico" /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Resultado do teste">
           <select className={inputCls} value={v.operationalStatus} onChange={(e) => setV({ ...v, operationalStatus: e.target.value })}>
             <option value="">Não avaliado</option>
@@ -1989,7 +1992,7 @@ function UserForm({ client, onSave, onRemove }) {
         onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
       <Field label="Telefone"><input className={inputCls} value={v.phone}
         onChange={(e) => setV({ ...v, phone: e.target.value })} /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Usuário (login) *"><input className={inputCls} value={v.username}
           onChange={(e) => setV({ ...v, username: e.target.value })} required /></Field>
         <Field label="Senha *"><input type="password" className={inputCls} value={v.password}
@@ -2443,6 +2446,94 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   function deleteFonteAuxiliar(id) {
     updateData((prev) => ({ ...prev, fontesAuxiliares: (prev.fontesAuxiliares || []).filter((f) => f.id !== id) }));
+    setConfirmState(null);
+  }
+
+  function submitConjunto(mode, initial, values) {
+    updateData((prev) => {
+      if (mode === 'create') {
+        const conjuntoId = uid();
+        const tipoInfo = COMBATE_CONJUNTO_TIPOS[values.tipo];
+        const novosSubitens = (tipoInfo?.subItens || []).map((s) => ({
+          id: uid(), conjuntoId, categoria: s.categoria,
+          tecnico: '', dataInspecao: '', resultadoTeste: '', valorMedido: '', observacoes: '', falha: '', proximaInspecao: '', fotos: [],
+          dataRetestLaboratorial: '', proximaRetestLaboratorial: '',
+        }));
+        return {
+          ...prev,
+          combateConjuntos: [...(prev.combateConjuntos || []), { id: conjuntoId, tipo: values.tipo, agente: values.agente || '', panelId: values.panelId, etiqueta: values.etiqueta }],
+          combateSubitens: [...(prev.combateSubitens || []), ...novosSubitens],
+        };
+      }
+      return {
+        ...prev,
+        combateConjuntos: (prev.combateConjuntos || []).map((c) => (c.id === initial.id ? { ...c, etiqueta: values.etiqueta, panelId: values.panelId } : c)),
+      };
+    });
+  }
+
+  function deleteConjunto(id) {
+    updateData((prev) => ({
+      ...prev,
+      combateConjuntos: (prev.combateConjuntos || []).filter((c) => c.id !== id),
+      combateSubitens: (prev.combateSubitens || []).filter((s) => s.conjuntoId !== id),
+    }));
+    setConfirmState(null);
+  }
+
+  function submitSubitemInspecao(subitemId, values) {
+    updateData((prev) => ({
+      ...prev,
+      combateSubitens: (prev.combateSubitens || []).map((s) => (s.id === subitemId ? { ...s, ...values } : s)),
+    }));
+  }
+
+  function submitComponente(mode, initial, values) {
+    updateData((prev) => {
+      if (mode === 'create') {
+        return { ...prev, combateComponentes: [...(prev.combateComponentes || []), { id: uid(), ...values }] };
+      }
+      return { ...prev, combateComponentes: (prev.combateComponentes || []).map((c) => (c.id === initial.id ? { ...c, ...values } : c)) };
+    });
+  }
+
+  function deleteComponente(id) {
+    updateData((prev) => ({ ...prev, combateComponentes: (prev.combateComponentes || []).filter((c) => c.id !== id) }));
+    setConfirmState(null);
+  }
+
+  function submitBateriaCilindros(mode, initial, values) {
+    updateData((prev) => {
+      if (mode === 'create') {
+        return { ...prev, combateBaterias: [...(prev.combateBaterias || []), { id: uid(), ...values }] };
+      }
+      return { ...prev, combateBaterias: (prev.combateBaterias || []).map((b) => (b.id === initial.id ? { ...b, ...values } : b)) };
+    });
+  }
+
+  function deleteBateriaCilindros(id) {
+    updateData((prev) => ({
+      ...prev,
+      combateBaterias: (prev.combateBaterias || []).filter((b) => b.id !== id),
+      combateCilindros: (prev.combateCilindros || []).filter((c) => c.bateriaId !== id),
+    }));
+    setConfirmState(null);
+  }
+
+  function submitCilindro(mode, initial, bateriaId, values) {
+    const proximaRetestLaboratorial = values.dataRetestLaboratorial
+      ? addMonthsToDate(values.dataRetestLaboratorial, COMBATE_RETEST_LABORATORIAL_MESES) : '';
+    const payload = { ...values, proximaRetestLaboratorial };
+    updateData((prev) => {
+      if (mode === 'create') {
+        return { ...prev, combateCilindros: [...(prev.combateCilindros || []), { id: uid(), bateriaId, ...payload }] };
+      }
+      return { ...prev, combateCilindros: (prev.combateCilindros || []).map((c) => (c.id === initial.id ? { ...c, ...payload } : c)) };
+    });
+  }
+
+  function deleteCilindro(id) {
+    updateData((prev) => ({ ...prev, combateCilindros: (prev.combateCilindros || []).filter((c) => c.id !== id) }));
     setConfirmState(null);
   }
 
@@ -3079,16 +3170,17 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onInspectDevice={openInspectModal} />
         )}
 
-        {view === 'pumphouse' && (
-          <SimpleListView
-            title="Casa de Bombas" description="Bombas, válvulas, painéis de controle e demais equipamentos do sistema de bombeamento."
-            icon={Droplet} data={data} category="pumpDevices" canEdit={canEdit}
-            onCreate={() => setModal({ type: 'pump', mode: 'create', initial: null })}
-            onEdit={(p) => setModal({ type: 'pump', mode: 'edit', initial: p })}
-            onDelete={(p) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir "${p.name}"?`, onConfirm: () => deletePumpDevice(p.id) })}
-            onMaintain={(p) => openMaintainModal('pumpDevices', p, p.name)}
-            onInspect={(p) => openInspectModal('pumpDevices', p, p.name)}
-            renderMeta={(p) => p.type || 'Equipamento da casa de bombas'} />
+        {view === 'combate' && (
+          <CombateIncendioView data={data} canEdit={canEdit}
+            onSubmitConjunto={submitConjunto}
+            onDeleteConjunto={(id) => setConfirmState({ title: 'Excluir', message: 'Excluir este item e todos os sub-itens do checklist dele? Essa ação não pode ser desfeita.', onConfirm: () => deleteConjunto(id) })}
+            onSubmitSubitem={submitSubitemInspecao}
+            onSubmitComponente={submitComponente}
+            onDeleteComponente={(id) => setConfirmState({ title: 'Excluir componente', message: 'Excluir este componente? Essa ação não pode ser desfeita.', onConfirm: () => deleteComponente(id) })}
+            onSubmitBateria={submitBateriaCilindros}
+            onDeleteBateria={(id) => setConfirmState({ title: 'Excluir bateria de cilindros', message: 'Excluir esta bateria e todos os cilindros cadastrados nela? Essa ação não pode ser desfeita.', onConfirm: () => deleteBateriaCilindros(id) })}
+            onSubmitCilindro={submitCilindro}
+            onDeleteCilindro={(id) => setConfirmState({ title: 'Excluir cilindro', message: 'Excluir este cilindro? Essa ação não pode ser desfeita.', onConfirm: () => deleteCilindro(id) })} />
         )}
 
         {view === 'report' && (
@@ -3641,7 +3733,7 @@ function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInsp
             )}
             {showCalibracao && (
               calibForm?.deviceId === d.id ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Field label="Data de calibração"><input type="date" className={inputCls} value={calibForm.dataCalibracao}
                     onChange={(e) => setCalibForm({ ...calibForm, dataCalibracao: e.target.value })} /></Field>
                   <Field label="Próxima calibração"><input type="date" className={inputCls} value={calibForm.proximaCalibracao}
@@ -3689,7 +3781,7 @@ function BateriaForm({ initial, onSubmit, onCancel }) {
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }} className="flex flex-col gap-1 mt-2">
       <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
       <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Field label="Bateria 1 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria1Tensao} onChange={(e) => setV({ ...v, bateria1Tensao: e.target.value })} /></Field>
         <Field label="Bateria 1 — Data fabr./validade"><input type="date" className={inputCls} value={v.bateria1Data} onChange={(e) => setV({ ...v, bateria1Data: e.target.value })} /></Field>
         <Field label="Bateria 2 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria2Tensao} onChange={(e) => setV({ ...v, bateria2Tensao: e.target.value })} /></Field>
@@ -3763,7 +3855,7 @@ function FonteAuxiliarForm({ initial, onSubmit, onCancel }) {
         onChange={(e) => setV({ ...v, tensaoSaidas: e.target.value })} /></Field>
       <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
       <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Bateria 1 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria1Tensao} onChange={(e) => setV({ ...v, bateria1Tensao: e.target.value })} /></Field>
         <Field label="Bateria 1 — Data fabr./validade"><input type="date" className={inputCls} value={v.bateria1Data} onChange={(e) => setV({ ...v, bateria1Data: e.target.value })} /></Field>
         <Field label="Bateria 2 — Tensão (V)"><input type="number" step="0.1" className={inputCls} value={v.bateria2Tensao} onChange={(e) => setV({ ...v, bateria2Tensao: e.target.value })} /></Field>
@@ -3828,6 +3920,615 @@ function FontesAuxiliaresList({ data, canEdit, onSubmit, onDelete }) {
             onSubmit={(values) => { onSubmit(modalState.mode, modalState.initial, values); setModalState(null); }}
             onCancel={() => setModalState(null)} />
         </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Combate a Incêndio                                                 */
+/* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Combate a Incêndio                                                 */
+/* ------------------------------------------------------------------ */
+
+function moduleDeviceOptions(data, moduloTipo) {
+  const wantedTypes = moduloTipo === 'saida' ? ['saida', 'rele'] : ['entrada', 'entrada_duplo'];
+  return (data.devices || []).filter((d) => wantedTypes.includes(d.type)).map((d) => {
+    const loop = data.loops.find((l) => l.id === d.loopId);
+    const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+    return {
+      id: d.id, panelId: panel?.id || '', panelName: panel?.name || '',
+      label: `${d.description || DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
+    };
+  });
+}
+
+/** Seletor de vínculo com módulo do painel: painel (cascata) → busca → lista filtrada.
+    Usado sempre que precisamos linkar algo a um dispositivo já cadastrado em Painéis. */
+function DeviceLinkPicker({ options, value, onChange }) {
+  const [painelFiltro, setPainelFiltro] = useState('');
+  const [busca, setBusca] = useState('');
+  const panelOptions = [...new Map(options.filter((o) => o.panelId).map((o) => [o.panelId, o.panelName])).entries()]
+    .map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  const q = busca.trim().toLowerCase();
+  const filtered = options.filter((o) => (!painelFiltro || o.panelId === painelFiltro) && (!q || o.label.toLowerCase().includes(q)));
+  const selected = options.find((o) => o.id === value);
+
+  return (
+    <div>
+      {selected && (
+        <div className="mb-2 p-2 rounded-lg text-xs flex items-center justify-between gap-2" style={{ border: '1px solid var(--accent)', color: 'var(--text-primary)' }}>
+          <span className="truncate">{selected.label}</span>
+          <button type="button" onClick={() => onChange('')} className="text-xs flex-shrink-0" style={{ color: 'var(--text-secondary)', textDecoration: 'underline' }}>remover</button>
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <select className={inputCls} value={painelFiltro} onChange={(e) => setPainelFiltro(e.target.value)}>
+          <option value="">Todos os painéis</option>
+          {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <input className={inputCls} placeholder="Buscar dispositivo..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+      </div>
+      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+        {filtered.length === 0 && <div className="p-3 text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum dispositivo encontrado.</div>}
+        {filtered.map((o) => (
+          <button key={o.id} type="button" onClick={() => onChange(o.id)}
+            className="w-full text-left px-3 py-2 text-xs"
+            style={{ background: value === o.id ? 'var(--surface-raised)' : 'transparent', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConjuntoForm({ initial, tipo, agente, panelOptions, onSubmit, onCancel }) {
+  const [v, setV] = useState({ etiqueta: initial?.etiqueta || '', panelId: initial?.panelId || '' });
+  const tipoInfo = COMBATE_CONJUNTO_TIPOS[tipo];
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (v.etiqueta.trim()) onSubmit({ tipo, agente, etiqueta: v.etiqueta.trim(), panelId: v.panelId }); }}>
+      <div className="mb-3 p-2 rounded-lg text-xs" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+        Ao salvar, os {tipoInfo?.subItens.length} sub-itens de checklist de <strong style={{ color: 'var(--text-primary)' }}>{tipoInfo?.label}</strong> já nascem prontos, cada um com seu método travado.
+      </div>
+      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.etiqueta}
+        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: Casa de Bombas 1, Hidrante Corredor 2º andar, VGA Setor A" required /></Field>
+      <Field label="Painel vinculado (opcional)">
+        <select className={inputCls} value={v.panelId} onChange={(e) => setV({ ...v, panelId: e.target.value })}>
+          <option value="">Sem painel específico</option>
+          {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </Field>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function SubitemEditForm({ subitem, info, isLge, onSave, onCancel }) {
+  const [v, setV] = useState({
+    tecnico: subitem.tecnico || '', dataInspecao: subitem.dataInspecao || todayISO(),
+    resultadoTeste: subitem.resultadoTeste || '', valorMedido: subitem.valorMedido ?? '',
+    observacoes: subitem.observacoes || '', falha: subitem.falha || '', proximaInspecao: subitem.proximaInspecao || '',
+    dataRetestLaboratorial: subitem.dataRetestLaboratorial || '', proximaRetestLaboratorial: subitem.proximaRetestLaboratorial || '',
+  });
+  return (
+    <div className="mt-2 p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+      <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
+      <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Resultado do teste">
+          <select className={inputCls} value={v.resultadoTeste} onChange={(e) => setV({ ...v, resultadoTeste: e.target.value })}>
+            <option value="">Não avaliado</option>
+            <option>Aprovado</option><option>Reprovado</option>
+          </select>
+        </Field>
+        <Field label={`Valor medido${info?.unidade ? ` (${info.unidade})` : ''}`}>
+          <input className={inputCls} value={v.valorMedido} onChange={(e) => setV({ ...v, valorMedido: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="Observações"><textarea className={`${inputCls} min-h-[60px]`} value={v.observacoes} onChange={(e) => setV({ ...v, observacoes: e.target.value })} /></Field>
+      <Field label="Falha (opcional)"><textarea className={`${inputCls} min-h-[50px]`} value={v.falha} onChange={(e) => setV({ ...v, falha: e.target.value })} /></Field>
+      <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.proximaInspecao} onChange={(e) => setV({ ...v, proximaInspecao: e.target.value })} /></Field>
+      {isLge && (
+        <div className="mt-1 p-2 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Item de teste laboratorial (terceirizado)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Data do último retest"><input type="date" className={inputCls} value={v.dataRetestLaboratorial}
+              onChange={(e) => setV({ ...v, dataRetestLaboratorial: e.target.value })} /></Field>
+            <Field label="Próximo retest"><input type="date" className={inputCls} value={v.proximaRetestLaboratorial}
+              onChange={(e) => setV({ ...v, proximaRetestLaboratorial: e.target.value })} /></Field>
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2 flex-wrap mt-2">
+        <Button variant="primary" onClick={() => onSave(v)}>Salvar</Button>
+        <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
+      </div>
+    </div>
+  );
+}
+
+function ConjuntoCard({ conjunto, subitens, panelOptions, canEdit, onEditConjunto, onDeleteConjunto, onSubmitSubitem }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editingSubitemId, setEditingSubitemId] = useState(null);
+  const tipoInfo = COMBATE_CONJUNTO_TIPOS[conjunto.tipo];
+  const panel = panelOptions.find((p) => p.id === conjunto.panelId);
+  const nSemInspecao = subitens.filter((s) => !s.dataInspecao).length;
+
+  return (
+    <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <button type="button" onClick={() => setExpanded((v) => !v)} className="flex items-center justify-between gap-2 text-left" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div className="min-w-0">
+          <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{conjunto.etiqueta}</div>
+          <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{tipoInfo?.label}{panel ? ` · ${panel.name}` : ''} · {subitens.length} sub-item(ns)</div>
+        </div>
+        <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
+      </button>
+      {nSemInspecao > 0 && (
+        <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
+          <AlertTriangle size={11} /> {nSemInspecao} sub-item(ns) sem inspeção registrada
+        </div>
+      )}
+      {canEdit && (
+        <div className="flex gap-1">
+          <IconButton title="Editar" onClick={() => onEditConjunto(conjunto)}><Pencil size={14} /></IconButton>
+          <IconButton title="Excluir" danger onClick={() => onDeleteConjunto(conjunto.id)}><Trash2 size={14} /></IconButton>
+        </div>
+      )}
+      {expanded && (
+        <div className="flex flex-col gap-2 mt-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+          {subitens.map((s) => {
+            const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
+            const isLgeTanque = conjunto.tipo === 'lge' && s.categoria === 'tanque_lge';
+            const retestVencido = isLgeTanque && s.proximaRetestLaboratorial && s.proximaRetestLaboratorial < todayISO();
+            return (
+              <div key={s.id}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{info?.label}</div>
+                    <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{info?.metodo} · {info?.periodicidade}</div>
+                    {!s.dataInspecao ? (
+                      <div className="text-xs" style={{ color: 'var(--status-danger)' }}>Sem inspeção registrada</div>
+                    ) : (
+                      <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        Última inspeção: {formatDateBR(s.dataInspecao)} · {s.resultadoTeste || 'Não avaliado'}
+                        {s.valorMedido !== '' && ` · ${s.valorMedido}${info?.unidade ? ' ' + info.unidade : ''}`}
+                      </div>
+                    )}
+                    {isLgeTanque && (
+                      <div className="text-xs flex items-center gap-1" style={{ color: retestVencido ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
+                        {retestVencido && <AlertTriangle size={11} />}
+                        {s.dataRetestLaboratorial ? `Retest lab.: ${formatDateBR(s.dataRetestLaboratorial)}` : 'Sem retest laboratorial'}
+                        {s.proximaRetestLaboratorial && ` · Próximo: ${formatDateBR(s.proximaRetestLaboratorial)}`}
+                      </div>
+                    )}
+                  </div>
+                  {canEdit && editingSubitemId !== s.id && (
+                    <button type="button" onClick={() => setEditingSubitemId(s.id)}
+                      style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--accent)', color: 'var(--accent)', background: 'transparent', fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer' }}>
+                      Registrar inspeção
+                    </button>
+                  )}
+                </div>
+                {editingSubitemId === s.id && (
+                  <SubitemEditForm subitem={s} info={info} isLge={isLgeTanque}
+                    onSave={(values) => { onSubmitSubitem(s.id, values); setEditingSubitemId(null); }}
+                    onCancel={() => setEditingSubitemId(null)} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConjuntosList({ data, canEdit, tipo, agente, onSubmitConjunto, onDeleteConjunto, onSubmitSubitem }) {
+  const [modalState, setModalState] = useState(null);
+  const panelOptions = data.panels || [];
+  const conjuntos = (data.combateConjuntos || []).filter((c) => c.tipo === tipo && (tipo !== 'sistema_gas' || c.agente === agente));
+  const tipoInfo = COMBATE_CONJUNTO_TIPOS[tipo];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canEdit && (
+        <div><Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Novo {tipoInfo?.label}</Button></div>
+      )}
+      {conjuntos.length === 0 ? (
+        <EmptyState icon={Flame} title={`Nenhum ${tipoInfo?.label} cadastrado`} description="Cadastre pra gerar o checklist de inspeção automaticamente."
+          actionLabel={canEdit ? `Novo ${tipoInfo?.label}` : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {conjuntos.map((c) => (
+            <ConjuntoCard key={c.id} conjunto={c} subitens={(data.combateSubitens || []).filter((s) => s.conjuntoId === c.id)}
+              panelOptions={panelOptions} canEdit={canEdit}
+              onEditConjunto={(conj) => setModalState({ mode: 'edit', initial: conj })}
+              onDeleteConjunto={onDeleteConjunto} onSubmitSubitem={onSubmitSubitem} />
+          ))}
+        </div>
+      )}
+      {modalState && (
+        <Modal title={modalState.mode === 'create' ? `Novo ${tipoInfo?.label}` : `Editar ${tipoInfo?.label}`} onClose={() => setModalState(null)}>
+          <ConjuntoForm initial={modalState.initial} tipo={tipo} agente={agente} panelOptions={panelOptions}
+            onSubmit={(values) => { onSubmitConjunto(modalState.mode, modalState.initial, values); setModalState(null); }}
+            onCancel={() => setModalState(null)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ComponenteForm({ initial, data, onSubmit, onCancel }) {
+  const [v, setV] = useState({
+    tipo: initial?.tipo || '', etiqueta: initial?.etiqueta || '', conjuntoId: initial?.conjuntoId || '', dispositivoId: initial?.dispositivoId || '',
+    tecnico: initial?.tecnico || '', dataInspecao: initial?.dataInspecao || todayISO(), resultadoTeste: initial?.resultadoTeste || '',
+    valorMedido: initial?.valorMedido ?? '', observacoes: initial?.observacoes || '', falha: initial?.falha || '', proximaInspecao: initial?.proximaInspecao || '',
+  });
+  const tipoInfo = COMBATE_COMPONENTE_TIPO_MAP[v.tipo];
+  const deviceOptions = tipoInfo ? moduleDeviceOptions(data, tipoInfo.moduloTipo) : [];
+  const conjuntoOptions = data.combateConjuntos || [];
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (v.tipo) onSubmit(v); }}>
+      <Field label="Tipo de componente *">
+        <select className={inputCls} value={v.tipo} onChange={(e) => setV({ ...v, tipo: e.target.value, dispositivoId: '' })} required>
+          <option value="">Selecione...</option>
+          {COMBATE_COMPONENTE_TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </Field>
+      {tipoInfo && (
+        <div className="mb-3 p-2 rounded-lg text-xs" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+          <div>Método: <strong style={{ color: 'var(--text-primary)' }}>{tipoInfo.metodo}</strong></div>
+          <div>Periodicidade: <strong style={{ color: 'var(--text-primary)' }}>{tipoInfo.periodicidade}</strong></div>
+        </div>
+      )}
+      <Field label="Identificação / etiqueta"><input className={inputCls} value={v.etiqueta}
+        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: Fluxostato 2º andar" /></Field>
+      <Field label="Pertence a (opcional)">
+        <select className={inputCls} value={v.conjuntoId} onChange={(e) => setV({ ...v, conjuntoId: e.target.value })}>
+          <option value="">Sem vínculo</option>
+          {conjuntoOptions.map((c) => <option key={c.id} value={c.id}>{c.etiqueta} ({COMBATE_CONJUNTO_TIPOS[c.tipo]?.label})</option>)}
+        </select>
+      </Field>
+      <Field label={`Módulo do painel (${tipoInfo?.moduloTipo === 'saida' ? 'Saída/Relé' : 'Entrada'}, opcional)`}>
+        {tipoInfo ? (
+          <DeviceLinkPicker options={deviceOptions} value={v.dispositivoId} onChange={(id) => setV({ ...v, dispositivoId: id })} />
+        ) : (
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Selecione o tipo de componente primeiro.</p>
+        )}
+      </Field>
+      <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
+      <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Resultado do teste">
+          <select className={inputCls} value={v.resultadoTeste} onChange={(e) => setV({ ...v, resultadoTeste: e.target.value })}>
+            <option value="">Não avaliado</option>
+            <option>Aprovado</option><option>Reprovado</option>
+          </select>
+        </Field>
+        <Field label={`Valor medido${tipoInfo?.unidade ? ` (${tipoInfo.unidade})` : ''}`}>
+          <input className={inputCls} value={v.valorMedido} onChange={(e) => setV({ ...v, valorMedido: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="Observações"><textarea className={`${inputCls} min-h-[60px]`} value={v.observacoes} onChange={(e) => setV({ ...v, observacoes: e.target.value })} /></Field>
+      <Field label="Falha (opcional)"><textarea className={`${inputCls} min-h-[50px]`} value={v.falha} onChange={(e) => setV({ ...v, falha: e.target.value })} /></Field>
+      <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.proximaInspecao} onChange={(e) => setV({ ...v, proximaInspecao: e.target.value })} /></Field>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function ComponentesList({ data, canEdit, onSubmit, onDelete }) {
+  const [modalState, setModalState] = useState(null);
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const list = (data.combateComponentes || []).filter((c) => !filtroTipo || c.tipo === filtroTipo);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-1 flex-wrap">
+          <button type="button" onClick={() => setFiltroTipo('')} className="nav-tab" data-active={filtroTipo === ''}>Todos</button>
+          {COMBATE_COMPONENTE_TIPOS.map((t) => (
+            <button key={t.value} type="button" onClick={() => setFiltroTipo(t.value)} className="nav-tab" data-active={filtroTipo === t.value}>{t.label}</button>
+          ))}
+        </div>
+        {canEdit && <Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Novo componente</Button>}
+      </div>
+      {list.length === 0 ? (
+        <EmptyState icon={Zap} title="Nenhum componente cadastrado" description="Fluxostatos, pressostatos, solenoides e chaves supervisoras entram aqui, quantos precisar."
+          actionLabel={canEdit ? 'Novo componente' : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {list.map((c) => {
+            const tipoInfo = COMBATE_COMPONENTE_TIPO_MAP[c.tipo];
+            const conjunto = (data.combateConjuntos || []).find((cj) => cj.id === c.conjuntoId);
+            const device = (data.devices || []).find((d) => d.id === c.dispositivoId);
+            const semInspecao = !c.dataInspecao;
+            return (
+              <div key={c.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{c.etiqueta || tipoInfo?.label}</span>
+                  {canEdit && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      <IconButton title="Editar" onClick={() => setModalState({ mode: 'edit', initial: c })}><Pencil size={14} /></IconButton>
+                      <IconButton title="Excluir" danger onClick={() => onDelete(c.id)}><Trash2 size={14} /></IconButton>
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {tipoInfo?.label}{conjunto ? ` · Pertence a: ${conjunto.etiqueta}` : ''}{device ? ` · Módulo: ${device.address}` : ''}
+                </div>
+                {semInspecao ? (
+                  <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
+                    <AlertTriangle size={11} /> Sem inspeção registrada
+                  </div>
+                ) : (
+                  <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Última inspeção: {formatDateBR(c.dataInspecao)} · {c.resultadoTeste || 'Não avaliado'}
+                    {c.valorMedido !== '' && ` · ${c.valorMedido}${tipoInfo?.unidade ? ' ' + tipoInfo.unidade : ''}`}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {modalState && (
+        <Modal title={modalState.mode === 'create' ? 'Novo componente' : 'Editar componente'} onClose={() => setModalState(null)}>
+          <ComponenteForm initial={modalState.initial} data={data}
+            onSubmit={(values) => { onSubmit(modalState.mode, modalState.initial, values); setModalState(null); }}
+            onCancel={() => setModalState(null)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function BateriaCilindrosForm({ initial, panelOptions, onSubmit, onCancel }) {
+  const [v, setV] = useState({ etiqueta: initial?.etiqueta || '', panelId: initial?.panelId || '' });
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (v.etiqueta.trim()) onSubmit(v); }}>
+      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.etiqueta}
+        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: Bateria CO2 - Sala Eletrica" required /></Field>
+      <Field label="Painel vinculado (opcional)">
+        <select className={inputCls} value={v.panelId} onChange={(e) => setV({ ...v, panelId: e.target.value })}>
+          <option value="">Sem painel específico</option>
+          {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </Field>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function CilindroForm({ initial, onSubmit, onCancel }) {
+  const [v, setV] = useState({
+    identificacao: initial?.identificacao || '', tecnico: initial?.tecnico || '', dataInspecao: initial?.dataInspecao || todayISO(),
+    resultadoValvula: initial?.resultadoValvula || '', resultadoManometro: initial?.resultadoManometro || '',
+    resultadoCorpo: initial?.resultadoCorpo || '', resultadoEtiqueta: initial?.resultadoEtiqueta || '',
+    observacoes: initial?.observacoes || '', falha: initial?.falha || '', proximaInspecao: initial?.proximaInspecao || '',
+    dataRetestLaboratorial: initial?.dataRetestLaboratorial || '',
+  });
+  const resultadoKeyMap = { valvula: 'resultadoValvula', manometro: 'resultadoManometro', corpo: 'resultadoCorpo', etiqueta: 'resultadoEtiqueta' };
+  const proximaRetestPreview = v.dataRetestLaboratorial ? addMonthsToDate(v.dataRetestLaboratorial, COMBATE_RETEST_LABORATORIAL_MESES) : '';
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (v.identificacao.trim()) onSubmit(v); }}>
+      <Field label="Identificação do cilindro *"><input autoFocus className={inputCls} value={v.identificacao}
+        onChange={(e) => setV({ ...v, identificacao: e.target.value })} placeholder="Ex.: Cilindro 1" required /></Field>
+      <Field label="Técnico"><input className={inputCls} value={v.tecnico} onChange={(e) => setV({ ...v, tecnico: e.target.value })} /></Field>
+      <Field label="Data da inspeção"><input type="date" className={inputCls} value={v.dataInspecao} onChange={(e) => setV({ ...v, dataInspecao: e.target.value })} /></Field>
+      <div className="mb-3 p-2 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Checklist do cilindro</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {COMBATE_CILINDRO_ITENS.map((item) => (
+            <Field key={item.key} label={item.label}>
+              <select className={inputCls} value={v[resultadoKeyMap[item.key]]}
+                onChange={(e) => setV({ ...v, [resultadoKeyMap[item.key]]: e.target.value })}>
+                <option value="">Não avaliado</option>
+                <option>Aprovado</option><option>Reprovado</option>
+              </select>
+            </Field>
+          ))}
+        </div>
+      </div>
+      <Field label="Observações"><textarea className={`${inputCls} min-h-[60px]`} value={v.observacoes} onChange={(e) => setV({ ...v, observacoes: e.target.value })} /></Field>
+      <Field label="Falha (opcional)"><textarea className={`${inputCls} min-h-[50px]`} value={v.falha} onChange={(e) => setV({ ...v, falha: e.target.value })} /></Field>
+      <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.proximaInspecao} onChange={(e) => setV({ ...v, proximaInspecao: e.target.value })} /></Field>
+      <div className="mt-1 p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+        <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Retest laboratorial (terceirizado)</p>
+        <Field label="Data do retest">
+          <input type="date" className={inputCls} value={v.dataRetestLaboratorial} onChange={(e) => setV({ ...v, dataRetestLaboratorial: e.target.value })} />
+        </Field>
+        {proximaRetestPreview && (
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Próximo retest (automático, +5 anos): <strong style={{ color: 'var(--text-primary)' }}>{formatDateBR(proximaRetestPreview)}</strong></p>
+        )}
+      </div>
+      <FormActions>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button variant="primary" type="submit">Salvar</Button>
+      </FormActions>
+    </form>
+  );
+}
+
+function BateriaCard({ bateria, cilindros, panelOptions, canEdit, onEditBateria, onDeleteBateria, onSubmitCilindro, onDeleteCilindro }) {
+  const [expanded, setExpanded] = useState(false);
+  const [modalState, setModalState] = useState(null);
+  const panel = panelOptions.find((p) => p.id === bateria.panelId);
+  const nSemInspecao = cilindros.filter((c) => !c.dataInspecao).length;
+  const nRetestVencido = cilindros.filter((c) => c.proximaRetestLaboratorial && c.proximaRetestLaboratorial < todayISO()).length;
+
+  return (
+    <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <button type="button" onClick={() => setExpanded((v) => !v)} className="flex items-center justify-between gap-2 text-left" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div className="min-w-0">
+          <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{bateria.etiqueta}</div>
+          <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{panel ? panel.name + ' · ' : ''}{cilindros.length} cilindro(s)</div>
+        </div>
+        <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
+      </button>
+      {nSemInspecao > 0 && (
+        <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
+          <AlertTriangle size={11} /> {nSemInspecao} cilindro(s) sem inspeção
+        </div>
+      )}
+      {nRetestVencido > 0 && (
+        <div className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
+          <AlertTriangle size={11} /> {nRetestVencido} cilindro(s) com retest laboratorial vencido
+        </div>
+      )}
+      {canEdit && (
+        <div className="flex gap-1 flex-wrap">
+          <IconButton title="Editar" onClick={() => onEditBateria(bateria)}><Pencil size={14} /></IconButton>
+          <IconButton title="Excluir" danger onClick={() => onDeleteBateria(bateria.id)}><Trash2 size={14} /></IconButton>
+          <Button variant="secondary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={15} /> Adicionar cilindro</Button>
+        </div>
+      )}
+      {expanded && (
+        <div className="flex flex-col gap-2 mt-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+          {cilindros.length === 0 && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum cilindro cadastrado nessa bateria ainda.</p>}
+          {cilindros.map((c) => {
+            const retestVencido = c.proximaRetestLaboratorial && c.proximaRetestLaboratorial < todayISO();
+            return (
+              <div key={c.id} className="flex items-start justify-between gap-2 p-2 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{c.identificacao}</div>
+                  {!c.dataInspecao ? (
+                    <div className="text-xs" style={{ color: 'var(--status-danger)' }}>Sem inspeção registrada</div>
+                  ) : (
+                    <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {formatDateBR(c.dataInspecao)} · Válvula: {c.resultadoValvula || '—'} · Manômetro: {c.resultadoManometro || '—'} · Corpo: {c.resultadoCorpo || '—'} · Etiqueta: {c.resultadoEtiqueta || '—'}
+                    </div>
+                  )}
+                  <div className="text-xs flex items-center gap-1" style={{ color: retestVencido ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
+                    {retestVencido && <AlertTriangle size={11} />}
+                    {c.dataRetestLaboratorial ? `Retest lab.: ${formatDateBR(c.dataRetestLaboratorial)} · Próximo: ${formatDateBR(c.proximaRetestLaboratorial)}` : 'Sem retest laboratorial'}
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex gap-1 flex-shrink-0">
+                    <IconButton title="Editar" onClick={() => setModalState({ mode: 'edit', initial: c })}><Pencil size={14} /></IconButton>
+                    <IconButton title="Excluir" danger onClick={() => onDeleteCilindro(c.id)}><Trash2 size={14} /></IconButton>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {modalState && (
+        <Modal title={modalState.mode === 'create' ? 'Novo cilindro' : 'Editar cilindro'} onClose={() => setModalState(null)}>
+          <CilindroForm initial={modalState.initial}
+            onSubmit={(values) => { onSubmitCilindro(modalState.mode, modalState.initial, bateria.id, values); setModalState(null); }}
+            onCancel={() => setModalState(null)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function BateriasCilindrosList({ data, canEdit, agente, onSubmitBateria, onDeleteBateria, onSubmitCilindro, onDeleteCilindro }) {
+  const [modalState, setModalState] = useState(null);
+  const panelOptions = data.panels || [];
+  const baterias = (data.combateBaterias || []).filter((b) => b.agente === agente);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canEdit && (
+        <div><Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Nova bateria de cilindros</Button></div>
+      )}
+      {baterias.length === 0 ? (
+        <EmptyState icon={Flame} title="Nenhuma bateria cadastrada" description="Cadastre a bateria e depois adicione os cilindros um a um."
+          actionLabel={canEdit ? 'Nova bateria de cilindros' : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {baterias.map((b) => (
+            <BateriaCard key={b.id} bateria={b} cilindros={(data.combateCilindros || []).filter((c) => c.bateriaId === b.id)}
+              panelOptions={panelOptions} canEdit={canEdit}
+              onEditBateria={(bat) => setModalState({ mode: 'edit', initial: bat })}
+              onDeleteBateria={onDeleteBateria} onSubmitCilindro={onSubmitCilindro} onDeleteCilindro={onDeleteCilindro} />
+          ))}
+        </div>
+      )}
+      {modalState && (
+        <Modal title={modalState.mode === 'create' ? 'Nova bateria de cilindros' : 'Editar bateria de cilindros'} onClose={() => setModalState(null)}>
+          <BateriaCilindrosForm initial={modalState.initial} panelOptions={panelOptions}
+            onSubmit={(values) => { onSubmitBateria(modalState.mode, modalState.initial, { ...values, agente }); setModalState(null); }}
+            onCancel={() => setModalState(null)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function CombateIncendioView({
+  data, canEdit, onSubmitConjunto, onDeleteConjunto, onSubmitSubitem, onSubmitComponente, onDeleteComponente,
+  onSubmitBateria, onDeleteBateria, onSubmitCilindro, onDeleteCilindro,
+}) {
+  const [grupo, setGrupo] = useState('agua');
+  const [aguaTipo, setAguaTipo] = useState('casa_bombas');
+  const [gasAgente, setGasAgente] = useState('co2');
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Combate a Incêndio</h2>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Conjuntos (checklist fixo, item a item) e Componentes (fluxostatos, pressostatos, solenoides — cadastro livre, linkáveis a um módulo do painel).
+        </p>
+      </div>
+      <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+        <button className="nav-tab" data-active={grupo === 'agua'} onClick={() => setGrupo('agua')}>Água</button>
+        <button className="nav-tab" data-active={grupo === 'gas'} onClick={() => setGrupo('gas')}>Agentes Gasosos</button>
+        <button className="nav-tab" data-active={grupo === 'componentes'} onClick={() => setGrupo('componentes')}>Componentes</button>
+      </div>
+
+      {grupo === 'agua' && (
+        <>
+          <div className="flex gap-1 flex-wrap">
+            {COMBATE_AGUA_TIPOS.map((t) => (
+              <button key={t} type="button" onClick={() => setAguaTipo(t)} className="nav-tab" data-active={aguaTipo === t}>
+                {COMBATE_CONJUNTO_TIPOS[t]?.label}
+              </button>
+            ))}
+          </div>
+          <ConjuntosList data={data} canEdit={canEdit} tipo={aguaTipo} agente={null}
+            onSubmitConjunto={onSubmitConjunto} onDeleteConjunto={onDeleteConjunto} onSubmitSubitem={onSubmitSubitem} />
+        </>
+      )}
+
+      {grupo === 'gas' && (
+        <>
+          <div className="flex gap-1 flex-wrap">
+            {COMBATE_GAS_AGENTES.map((a) => (
+              <button key={a.value} type="button" onClick={() => setGasAgente(a.value)} className="nav-tab" data-active={gasAgente === a.value}>{a.label}</button>
+            ))}
+          </div>
+          <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Sistema</h3>
+          <ConjuntosList data={data} canEdit={canEdit} tipo="sistema_gas" agente={gasAgente}
+            onSubmitConjunto={onSubmitConjunto} onDeleteConjunto={onDeleteConjunto} onSubmitSubitem={onSubmitSubitem} />
+          <h3 className="font-medium text-sm mt-2" style={{ color: 'var(--text-primary)' }}>Bateria de Cilindros</h3>
+          <BateriasCilindrosList data={data} canEdit={canEdit} agente={gasAgente}
+            onSubmitBateria={onSubmitBateria} onDeleteBateria={onDeleteBateria}
+            onSubmitCilindro={onSubmitCilindro} onDeleteCilindro={onDeleteCilindro} />
+        </>
+      )}
+
+      {grupo === 'componentes' && (
+        <ComponentesList data={data} canEdit={canEdit} onSubmit={onSubmitComponente} onDelete={onDeleteComponente} />
       )}
     </div>
   );
