@@ -2938,7 +2938,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                   {role === 'visualizador' ? 'Somente leitura' : 'Falha ao salvar'}
                 </span>
               )}
-              <IconButton title="Trocar cliente" onClick={onSwitchClient}><LogOut size={16} /></IconButton>
+              <IconButton title="Trocar cliente" onClick={onSwitchClient}><Building2 size={16} /></IconButton>
               {signOut && <IconButton title="Sair da conta" onClick={signOut}><LogOut size={16} /></IconButton>}
             </div>
           </div>
@@ -2982,10 +2982,10 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         </>
       )}
 
-      <nav className="sm:hidden no-print" style={{
+      <nav className="sm:hidden no-print flex" style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30,
         background: 'var(--surface)', borderTop: '1px solid var(--border)',
-        display: 'flex', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         {mobilePrimaryNavItems.map((item) => {
           const active = !mobileMoreOpen && (view === item.key || (item.key === 'panels' && view === 'panelDetail'));
@@ -5623,7 +5623,7 @@ function PageStyles() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-      html, body { overflow-x: hidden; max-width: 100vw; }
+      html, body { overflow-x: hidden; max-width: 100vw; background: var(--bg); }
       #root { overflow-x: hidden; }
       :root {
         --bg: #181414;
