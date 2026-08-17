@@ -2985,6 +2985,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       <nav className="sm:hidden no-print flex" style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30,
         background: 'var(--surface)', borderTop: '1px solid var(--border)',
+        boxShadow: '0 30px 0 0 var(--surface)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         {mobilePrimaryNavItems.map((item) => {
@@ -5623,8 +5624,8 @@ function PageStyles() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-      html, body { overflow-x: hidden; max-width: 100vw; background: var(--bg); }
-      #root { overflow-x: hidden; }
+      html, body { overflow-x: hidden; max-width: 100vw; background: var(--bg); min-height: 100dvh; }
+      #root { overflow-x: hidden; min-height: 100dvh; }
       :root {
         --bg: #181414;
         --surface: #221D1D;
