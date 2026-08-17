@@ -3,7 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem,
-  getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, DEVICE_TYPE_LABELS,
+  getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico,
 } from './supabaseAdapter';
@@ -645,7 +645,7 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas (Sistemas de Combate)</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Vistoria em massa dos itens de Combate a Incêndio — Conjuntos, Componentes e Cilindros. Cada envio já grava no histórico (Indicador de Combate).
+          Vistoria em massa dos itens de Sistemas de Combate — Conjuntos, Componentes e Cilindros. Cada envio já grava no histórico (Indicador — sub-aba SPCI).
         </p>
       </div>
       {msg && (
@@ -662,7 +662,7 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
         {temCilindroSelecionado && (
           <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
             Cilindro selecionado: o resultado abaixo marca os 4 itens do checklist dele de uma vez (Válvula, Manômetro, Corpo, Etiqueta).
-            Pra registrar cada item do cilindro separado, edita ele direto em Combate a Incêndio.
+            Pra registrar cada item do cilindro separado, edita ele direto em Sistemas de Combate.
           </div>
         )}
         <div className="grid-2-mobile-safe">

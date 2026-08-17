@@ -8,7 +8,7 @@ import {
 } from './supabaseAdapter';
 import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard, Cpu, Droplet, Wind, Clock, Plus, X, Pencil, Trash2,
+  LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
   ChevronDown, ChevronRight, ArrowLeft, Cloud, Thermometer, Hand, LogOut,
   LogIn, ToggleLeft, Bell, CheckCircle2, AlertTriangle, Search, Wrench,
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
@@ -773,16 +773,6 @@ const COMM_OPTIONS = [
   { value: 'nao_operante', label: 'Não operante' },
 ];
 
-const PUMP_TYPE_SUGGESTIONS = [
-  'Bomba principal elétrica', 'Bomba principal diesel', 'Bomba jockey',
-  'Painel de controle da bomba', 'Válvula de governo', 'Manômetro',
-  'Chave de fluxo', 'Reservatório de água', 'Quadro de transferência automática',
-];
-
-const GAS_TYPE_SUGGESTIONS = [
-  'GLP', 'Gás Natural (GN)', 'Monóxido de carbono (CO)', 'Metano (CH4)', 'Amônia (NH3)',
-];
-
 const INDICATOR_STATUS_OPTIONS = ['Resolvido', 'Andamento', 'Aguardando'];
 function indicatorStatusColor(status) {
   if (status === 'Resolvido') return 'var(--status-ok)';
@@ -793,9 +783,8 @@ function indicatorStatusColor(status) {
 
 const NAV_ITEMS = [
   { key: 'atendimentos', label: 'Atendimentos (novo)', icon: ClipboardList },
-  { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
-  { key: 'panels', label: 'Painéis', icon: Cpu },
-  { key: 'complementares', label: 'Dispositivos Complementares', icon: Zap },
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'sdai', label: 'Sistemas de Detecção e Alarme', icon: Cpu },
   { key: 'combate', label: 'Sistemas de Combate', icon: Flame },
   { key: 'report', label: 'Relatório', icon: ClipboardList },
   { key: 'indicador', label: 'Indicador', icon: Activity },
@@ -805,9 +794,9 @@ const NAV_ITEMS = [
 // Admin vê tudo. Operador (técnico) e Visualizador (cliente) têm menu restrito —
 // mesma lista no mobile e no desktop.
 const NAV_KEYS_BY_ROLE = {
-  admin: ['atendimentos', 'dashboard', 'panels', 'complementares', 'combate', 'report', 'indicador', 'settings'],
-  operador: ['dashboard', 'atendimentos', 'panels', 'complementares', 'combate', 'report', 'indicador'],
-  visualizador: ['dashboard', 'panels', 'complementares', 'combate', 'report', 'indicador'],
+  admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'settings'],
+  operador: ['dashboard', 'atendimentos', 'sdai', 'combate', 'report', 'indicador'],
+  visualizador: ['dashboard', 'sdai', 'combate', 'report', 'indicador'],
 };
 function navItemsForRole(role) {
   const keys = NAV_KEYS_BY_ROLE[role] || NAV_KEYS_BY_ROLE.visualizador;
@@ -816,9 +805,13 @@ function navItemsForRole(role) {
 // Os 4 destinos mais usados ficam fixos na barra inferior do mobile (padrão "app", tipo CifraClub);
 // o resto (dentro do que o role pode ver) fica na aba "Mais".
 function mobilePrimaryKeysForRole(role) {
-  if (role === 'visualizador') return ['dashboard', 'indicador', 'panels', 'report'];
-  return ['atendimentos', 'dashboard', 'panels', 'indicador'];
+  if (role === 'visualizador') return ['dashboard', 'indicador', 'sdai', 'report'];
+  return ['atendimentos', 'dashboard', 'sdai', 'indicador'];
 }
+// Views internas que pertencem ao item de menu "Sistemas de Detecção e Alarme"
+// (painéis/laço/dispositivo continua com a navegação própria por baixo, isso só decide
+// quando o item do menu principal fica destacado e pra onde ele leva ao ser clicado).
+const SDAI_VIEWS = ['panels', 'panelDetail', 'complementares'];
 
 const emptyData = () => ({
   panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
@@ -1536,60 +1529,6 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" type="submit">Salvar dispositivo{isEntradaDuploCreate ? 's' : ''}</Button>
-      </FormActions>
-    </form>
-  );
-}
-
-function PumpDeviceForm({ initial, onSubmit, onCancel }) {
-  const [v, setV] = useState(initial || {
-    name: '', type: '', modelo: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '',
-  });
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Bomba principal 01" required /></Field>
-      <Field label="Tipo de equipamento">
-        <input className={inputCls} list="pump-type-list" value={v.type}
-          onChange={(e) => setV({ ...v, type: e.target.value })} placeholder="Ex.: Bomba principal elétrica" />
-        <datalist id="pump-type-list">{PUMP_TYPE_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
-      </Field>
-      <Field label="Modelo do equipamento" hint="Usado para agrupar uma mesma foto entre equipamentos do mesmo modelo.">
-        <input className={inputCls} value={v.modelo || ''} onChange={(e) => setV({ ...v, modelo: e.target.value })} placeholder="Ex.: Grundfos CR32" />
-      </Field>
-      <Field label="Observações / localização"><input className={inputCls} value={v.description}
-        onChange={(e) => setV({ ...v, description: e.target.value })} /></Field>
-      <MaintenanceScheduleFields values={v} setValues={setV} />
-      <FormActions>
-        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit">Salvar dispositivo</Button>
-      </FormActions>
-    </form>
-  );
-}
-
-function GasDetectorForm({ initial, onSubmit, onCancel }) {
-  const [v, setV] = useState(initial || {
-    name: '', gasType: '', modelo: '', location: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '',
-  });
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
-      <Field label="Identificação *"><input autoFocus className={inputCls} value={v.name}
-        onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Detector de gás — Cozinha" required /></Field>
-      <Field label="Gás monitorado">
-        <input className={inputCls} list="gas-type-list" value={v.gasType}
-          onChange={(e) => setV({ ...v, gasType: e.target.value })} placeholder="Ex.: GLP" />
-        <datalist id="gas-type-list">{GAS_TYPE_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
-      </Field>
-      <Field label="Modelo do equipamento" hint="Usado para agrupar uma mesma foto entre detectores do mesmo modelo.">
-        <input className={inputCls} value={v.modelo || ''} onChange={(e) => setV({ ...v, modelo: e.target.value })} placeholder="Ex.: MSA Gas Guard" />
-      </Field>
-      <Field label="Localização"><input className={inputCls} value={v.location}
-        onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Casa de gás, área externa" /></Field>
-      <MaintenanceScheduleFields values={v} setValues={setV} />
-      <FormActions>
-        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit">Salvar detector</Button>
       </FormActions>
     </form>
   );
@@ -2695,26 +2634,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     setConfirmState(null);
   }
 
-  function submitPumpDevice(values) {
-    if (modal.mode === 'create') updateData((prev) => ({ ...prev, pumpDevices: [...prev.pumpDevices, { id: uid(), ...values }] }));
-    else updateData((prev) => ({ ...prev, pumpDevices: prev.pumpDevices.map((p) => (p.id === modal.initial.id ? { ...p, ...values } : p)) }));
-    closeModal();
-  }
-  function deletePumpDevice(id) {
-    updateData((prev) => ({ ...prev, pumpDevices: prev.pumpDevices.filter((p) => p.id !== id) }));
-    setConfirmState(null);
-  }
-
-  function submitGasDetector(values) {
-    if (modal.mode === 'create') updateData((prev) => ({ ...prev, gasDetectors: [...prev.gasDetectors, { id: uid(), ...values }] }));
-    else updateData((prev) => ({ ...prev, gasDetectors: prev.gasDetectors.map((g) => (g.id === modal.initial.id ? { ...g, ...values } : g)) }));
-    closeModal();
-  }
-  function deleteGasDetector(id) {
-    updateData((prev) => ({ ...prev, gasDetectors: prev.gasDetectors.filter((g) => g.id !== id) }));
-    setConfirmState(null);
-  }
-
   function submitIndicador(values) {
     if (modal.mode === 'edit' && modal.initial && modal.initial.origemNovo) {
       const initialId = modal.initial.id;
@@ -2802,33 +2721,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
   function deleteIndicadorAll() {
     updateData((prev) => ({ ...prev, indicador: [] }));
-    setConfirmState(null);
-  }
-
-  function deleteMaintenanceLogEntry(entry) {
-    updateData((prev) => {
-      const origemRvt = entry.origemRvt;
-      return {
-        ...prev,
-        maintenanceLog: (prev.maintenanceLog || []).filter((l) => l.id !== entry.id),
-        rvt: origemRvt ? (prev.rvt || []).filter((r) => r.id !== origemRvt) : prev.rvt,
-        indicador: origemRvt ? (prev.indicador || []).filter((r) => r.origemRvt !== origemRvt) : prev.indicador,
-        inspectionLog: origemRvt ? (prev.inspectionLog || []).filter((l) => l.origemRvt !== origemRvt) : (prev.inspectionLog || []),
-      };
-    });
-    setConfirmState(null);
-  }
-  function deleteInspectionLogEntry(entry) {
-    updateData((prev) => {
-      const origemRvt = entry.origemRvt;
-      return {
-        ...prev,
-        inspectionLog: (prev.inspectionLog || []).filter((l) => l.id !== entry.id),
-        rvt: origemRvt ? (prev.rvt || []).filter((r) => r.id !== origemRvt) : prev.rvt,
-        indicador: origemRvt ? (prev.indicador || []).filter((r) => r.origemRvt !== origemRvt) : prev.indicador,
-        maintenanceLog: origemRvt ? (prev.maintenanceLog || []).filter((l) => l.origemRvt !== origemRvt) : prev.maintenanceLog,
-      };
-    });
     setConfirmState(null);
   }
 
@@ -3103,8 +2995,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           </div>
           <nav className="hidden sm:flex gap-1 mt-4 -mb-3 overflow-x-auto">
             {roleNavItems.map((item) => (
-              <button key={item.key} className="nav-tab" data-active={view === item.key || (item.key === 'panels' && view === 'panelDetail')}
-                onClick={() => { setView(item.key); setPanelId(null); }}>
+              <button key={item.key} className="nav-tab" data-active={item.key === 'sdai' ? SDAI_VIEWS.includes(view) : view === item.key}
+                onClick={() => { setView(item.key === 'sdai' ? 'panels' : item.key); setPanelId(null); }}>
                 <item.icon size={15} /> {item.label}
               </button>
             ))}
@@ -3124,9 +3016,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '10px auto' }} />
             <p className="px-4 pb-2 text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>Mais opções</p>
             {mobileMoreNavItems.map((item) => {
-              const active = view === item.key || (item.key === 'panels' && view === 'panelDetail');
+              const active = item.key === 'sdai' ? SDAI_VIEWS.includes(view) : view === item.key;
               return (
-                <button key={item.key} onClick={() => { setView(item.key); setPanelId(null); setMobileMoreOpen(false); }}
+                <button key={item.key} onClick={() => { setView(item.key === 'sdai' ? 'panels' : item.key); setPanelId(null); setMobileMoreOpen(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-sm text-left"
                   style={{
                     background: active ? 'var(--surface-raised)' : 'transparent',
@@ -3148,9 +3040,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         {mobilePrimaryNavItems.map((item) => {
-          const active = !mobileMoreOpen && (view === item.key || (item.key === 'panels' && view === 'panelDetail'));
+          const active = !mobileMoreOpen && (item.key === 'sdai' ? SDAI_VIEWS.includes(view) : view === item.key);
           return (
-            <button key={item.key} onClick={() => { setView(item.key); setPanelId(null); setMobileMoreOpen(false); }}
+            <button key={item.key} onClick={() => { setView(item.key === 'sdai' ? 'panels' : item.key); setPanelId(null); setMobileMoreOpen(false); }}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2"
               style={{ color: active ? 'var(--accent)' : 'var(--text-secondary)' }}>
               <item.icon size={20} />
@@ -3181,62 +3073,71 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onRefresh={async () => setData(await loadClientData(client.id))} />
         )}
 
-        {view === 'panels' && (
-          <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch} canEdit={canEdit}
-            onOpenPanel={(id) => { setPanelId(id); setPanelTab('loops'); setView('panelDetail'); }}
-            onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })}
-            onImport={role === 'admin' ? () => { setSettingsTab('importar'); setView('settings'); } : undefined}
-            onBulkDeletePanels={(ids) => setConfirmState({ title: 'Excluir painéis selecionados', message: `Excluir ${ids.length} painel(éis) selecionado(s)? Todos os laços, circuitos e dispositivos vinculados também serão removidos. Essa ação não pode ser desfeita.`, onConfirm: () => deletePanelsBulk(ids) })} />
-        )}
+        {SDAI_VIEWS.includes(view) && (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+              <button className="nav-tab" data-active={view === 'panels' || view === 'panelDetail'} onClick={() => setView('panels')}>Painéis</button>
+              <button className="nav-tab" data-active={view === 'complementares'} onClick={() => setView('complementares')}>Dispositivos Complementares</button>
+            </div>
 
-        {view === 'panelDetail' && panelId && (
-          <PanelDetail
-            data={data} panelId={panelId} tab={panelTab} setTab={setPanelTab} canEdit={canEdit}
-            expandedLoops={expandedLoops} setExpandedLoops={setExpandedLoops}
-            onBack={() => setView('panels')}
-            onEditPanel={(p) => setModal({ type: 'panel', mode: 'edit', initial: p })}
-            onDeletePanel={(p) => setConfirmState({ title: 'Excluir painel', message: `Excluir "${p.name}"? Todos os laços, circuitos e dispositivos vinculados também serão removidos.`, onConfirm: () => deletePanelCascade(p.id) })}
-            onCreateLoop={(pid) => {
-              const n = data.loops.filter((l) => l.panelId === pid).length + 1;
-              setModal({ type: 'loop', mode: 'create', initial: { name: `Laço ${n}` }, context: { panelId: pid } });
-            }}
-            onEditLoop={(l) => setModal({ type: 'loop', mode: 'edit', initial: l })}
-            onDeleteLoop={(l) => setConfirmState({ title: 'Excluir laço', message: `Excluir "${l.name}"? Todos os dispositivos deste laço também serão removidos.`, onConfirm: () => deleteLoopCascade(l.id) })}
-            onCreateNac={(pid) => {
-              const n = data.nacs.filter((x) => x.panelId === pid).length + 1;
-              setModal({ type: 'nac', mode: 'create', initial: { name: `NAC ${n}`, description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' }, context: { panelId: pid } });
-            }}
-            onEditNac={(n) => setModal({ type: 'nac', mode: 'edit', initial: n })}
-            onDeleteNac={(n) => setConfirmState({ title: 'Excluir circuito', message: `Excluir "${n.name}"?`, onConfirm: () => deleteNac(n.id) })}
-            onCreateDevice={(loopId) => {
-              const existing = data.devices.filter((d) => d.loopId === loopId).map((d) => parseInt(d.address, 10)).filter((num) => !isNaN(num));
-              const nextAddr = existing.length ? Math.max(...existing) + 1 : 1;
-              setModal({
-                type: 'device', mode: 'create',
-                initial: { address: String(nextAddr).padStart(3, '0'), type: 'fumaca', modelo: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' },
-                context: { loopId },
-              });
-            }}
-            onEditDevice={(d) => setModal({ type: 'device', mode: 'edit', initial: d })}
-            onDeleteDevice={(d) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir dispositivo endereço ${d.address}?`, onConfirm: () => deleteDevice(d.id) })}
-            onMaintainDevice={(d) => openMaintainModal('devices', d, `Dispositivo ${d.address}`)}
-            onInspectDevice={(d) => openInspectModal('devices', d, `Dispositivo ${d.address}`)}
-            onMaintainNac={(n) => openMaintainModal('nacs', n, n.name)}
-            onInspectNac={(n) => openInspectModal('nacs', n, n.name)}
-            onBulkMaintainDevices={(ids) => openBulkMaintainModal('devices', ids)}
-            onBulkInspectDevices={(ids) => openBulkInspectModal('devices', ids)}
-            onBulkDeleteDevices={(ids) => setConfirmState({ title: 'Excluir dispositivos selecionados', message: `Excluir ${ids.length} dispositivo(s) selecionado(s)? Essa ação não pode ser desfeita.`, onConfirm: () => deleteDevicesBulk(ids) })}
-          />
-        )}
+            {view === 'panels' && (
+              <PanelsList data={data} search={panelSearch} setSearch={setPanelSearch} canEdit={canEdit}
+                onOpenPanel={(id) => { setPanelId(id); setPanelTab('loops'); setView('panelDetail'); }}
+                onCreate={() => setModal({ type: 'panel', mode: 'create', initial: null })}
+                onImport={role === 'admin' ? () => { setSettingsTab('importar'); setView('settings'); } : undefined}
+                onBulkDeletePanels={(ids) => setConfirmState({ title: 'Excluir painéis selecionados', message: `Excluir ${ids.length} painel(éis) selecionado(s)? Todos os laços, circuitos e dispositivos vinculados também serão removidos. Essa ação não pode ser desfeita.`, onConfirm: () => deletePanelsBulk(ids) })} />
+            )}
 
-        {view === 'complementares' && (
-          <ComplementaresView data={data} canEdit={canEdit}
-            onSubmitBateriaPainel={submitBateriaPainel}
-            onSubmitFonteAuxiliar={submitFonteAuxiliar}
-            onDeleteFonteAuxiliar={(id) => setConfirmState({ title: 'Excluir fonte auxiliar', message: 'Excluir esta fonte auxiliar? Essa ação não pode ser desfeita.', onConfirm: () => deleteFonteAuxiliar(id) })}
-            onSubmitCalibracao={submitCalibracaoDevice}
-            onSubmitEtiqueta={submitEtiquetaComplementar}
-            onInspectDevice={openInspectModal} />
+            {view === 'panelDetail' && panelId && (
+              <PanelDetail
+                data={data} panelId={panelId} tab={panelTab} setTab={setPanelTab} canEdit={canEdit}
+                expandedLoops={expandedLoops} setExpandedLoops={setExpandedLoops}
+                onBack={() => setView('panels')}
+                onEditPanel={(p) => setModal({ type: 'panel', mode: 'edit', initial: p })}
+                onDeletePanel={(p) => setConfirmState({ title: 'Excluir painel', message: `Excluir "${p.name}"? Todos os laços, circuitos e dispositivos vinculados também serão removidos.`, onConfirm: () => deletePanelCascade(p.id) })}
+                onCreateLoop={(pid) => {
+                  const n = data.loops.filter((l) => l.panelId === pid).length + 1;
+                  setModal({ type: 'loop', mode: 'create', initial: { name: `Laço ${n}` }, context: { panelId: pid } });
+                }}
+                onEditLoop={(l) => setModal({ type: 'loop', mode: 'edit', initial: l })}
+                onDeleteLoop={(l) => setConfirmState({ title: 'Excluir laço', message: `Excluir "${l.name}"? Todos os dispositivos deste laço também serão removidos.`, onConfirm: () => deleteLoopCascade(l.id) })}
+                onCreateNac={(pid) => {
+                  const n = data.nacs.filter((x) => x.panelId === pid).length + 1;
+                  setModal({ type: 'nac', mode: 'create', initial: { name: `NAC ${n}`, description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' }, context: { panelId: pid } });
+                }}
+                onEditNac={(n) => setModal({ type: 'nac', mode: 'edit', initial: n })}
+                onDeleteNac={(n) => setConfirmState({ title: 'Excluir circuito', message: `Excluir "${n.name}"?`, onConfirm: () => deleteNac(n.id) })}
+                onCreateDevice={(loopId) => {
+                  const existing = data.devices.filter((d) => d.loopId === loopId).map((d) => parseInt(d.address, 10)).filter((num) => !isNaN(num));
+                  const nextAddr = existing.length ? Math.max(...existing) + 1 : 1;
+                  setModal({
+                    type: 'device', mode: 'create',
+                    initial: { address: String(nextAddr).padStart(3, '0'), type: 'fumaca', modelo: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' },
+                    context: { loopId },
+                  });
+                }}
+                onEditDevice={(d) => setModal({ type: 'device', mode: 'edit', initial: d })}
+                onDeleteDevice={(d) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir dispositivo endereço ${d.address}?`, onConfirm: () => deleteDevice(d.id) })}
+                onMaintainDevice={(d) => openMaintainModal('devices', d, `Dispositivo ${d.address}`)}
+                onInspectDevice={(d) => openInspectModal('devices', d, `Dispositivo ${d.address}`)}
+                onMaintainNac={(n) => openMaintainModal('nacs', n, n.name)}
+                onInspectNac={(n) => openInspectModal('nacs', n, n.name)}
+                onBulkMaintainDevices={(ids) => openBulkMaintainModal('devices', ids)}
+                onBulkInspectDevices={(ids) => openBulkInspectModal('devices', ids)}
+                onBulkDeleteDevices={(ids) => setConfirmState({ title: 'Excluir dispositivos selecionados', message: `Excluir ${ids.length} dispositivo(s) selecionado(s)? Essa ação não pode ser desfeita.`, onConfirm: () => deleteDevicesBulk(ids) })}
+              />
+            )}
+
+            {view === 'complementares' && (
+              <ComplementaresView data={data} canEdit={canEdit}
+                onSubmitBateriaPainel={submitBateriaPainel}
+                onSubmitFonteAuxiliar={submitFonteAuxiliar}
+                onDeleteFonteAuxiliar={(id) => setConfirmState({ title: 'Excluir fonte auxiliar', message: 'Excluir esta fonte auxiliar? Essa ação não pode ser desfeita.', onConfirm: () => deleteFonteAuxiliar(id) })}
+                onSubmitCalibracao={submitCalibracaoDevice}
+                onSubmitEtiqueta={submitEtiquetaComplementar}
+                onInspectDevice={openInspectModal} />
+            )}
+          </div>
         )}
 
         {view === 'combate' && (
@@ -3303,16 +3204,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       {modal?.type === 'device' && (
         <Modal title={modal.mode === 'create' ? 'Novo dispositivo' : 'Editar dispositivo'} onClose={closeModal} wide>
           <DeviceForm initial={modal.initial} isCreate={modal.mode === 'create'} onSubmit={submitDevice} onCancel={closeModal} />
-        </Modal>
-      )}
-      {modal?.type === 'pump' && (
-        <Modal title={modal.mode === 'create' ? 'Novo dispositivo — Casa de Bombas' : 'Editar dispositivo'} onClose={closeModal} wide>
-          <PumpDeviceForm initial={modal.initial} onSubmit={submitPumpDevice} onCancel={closeModal} />
-        </Modal>
-      )}
-      {modal?.type === 'gas' && (
-        <Modal title={modal.mode === 'create' ? 'Novo detector de gás' : 'Editar detector'} onClose={closeModal} wide>
-          <GasDetectorForm initial={modal.initial} onSubmit={submitGasDetector} onCancel={closeModal} />
         </Modal>
       )}
       {modal?.type === 'indicador' && (
@@ -3509,10 +3400,12 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
     return () => { ativo = false; };
   }, [clientId]);
 
-  if (data.panels.length === 0 && data.pumpDevices.length === 0 && data.gasDetectors.length === 0) {
+  const temAlgumDado = data.panels.length > 0 || data.pumpDevices.length > 0 || data.gasDetectors.length > 0
+    || (data.combateConjuntos || []).length > 0 || (data.combateComponentes || []).length > 0 || (data.combateBaterias || []).length > 0;
+  if (!temAlgumDado) {
     return (
       <EmptyState icon={Cpu} title="Nenhum equipamento cadastrado ainda"
-        description="Comece cadastrando o primeiro painel de detecção e alarme de incêndio. Depois você poderá adicionar laços, circuitos e dispositivos endereçáveis."
+        description="Comece cadastrando o primeiro painel de detecção e alarme de incêndio, ou o primeiro item de Sistemas de Combate."
         actionLabel={canEdit ? 'Cadastrar primeiro painel' : undefined} onAction={canEdit ? onGoPanels : undefined} />
     );
   }
@@ -3564,7 +3457,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-lg font-semibold capitalize" style={{ color: 'var(--text-primary)' }}>Painel Geral</h2>
+        <h2 className="font-display text-lg font-semibold capitalize" style={{ color: 'var(--text-primary)' }}>Dashboard</h2>
         <p className="text-sm capitalize" style={{ color: 'var(--text-secondary)' }}>{todayLabel}</p>
       </div>
 
@@ -3642,7 +3535,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {attentionItems.slice(0, 12).map((it) => {
-                  const actionable = ['devices', 'nacs', 'pumpDevices', 'gasDetectors'].includes(it.category);
+                  const actionable = ['devices', 'nacs', 'gasDetectors'].includes(it.category);
                   return (
                     <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
                       status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }}
@@ -4679,7 +4572,7 @@ function CombateHistoricoView({ clientId }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Histórico de vistorias registradas em Combate a Incêndio — cada linha é 1 registro, mesmo que o item tenha sido vistoriado várias vezes.
+        Histórico de vistorias registradas em Sistemas de Combate — cada linha é 1 registro, mesmo que o item tenha sido vistoriado várias vezes.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
         <input className={inputCls} placeholder="Buscar técnico..." value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} />
@@ -4946,34 +4839,6 @@ function PanelDetail({
               ))}
             </div>
           )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SimpleListView({ title, description, icon, data, category, canEdit, onCreate, onEdit, onDelete, onMaintain, onInspect, renderMeta }) {
-  const list = data[category];
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{description}</p>
-        </div>
-        {canEdit && <Button variant="primary" onClick={onCreate}><Plus size={16} /> Adicionar</Button>}
-      </div>
-      {list.length === 0 ? (
-        <EmptyState icon={icon} title="Nenhum item cadastrado" description="Adicione o primeiro equipamento para começar a acompanhar as manutenções."
-          actionLabel={canEdit ? 'Adicionar' : undefined} onAction={canEdit ? onCreate : undefined} />
-      ) : (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {list.map((item) => (
-            <TrackableCard key={item.id} icon={icon} photo={photoForModelo(data, item.modelo)} address={null} title={item.name} meta={renderMeta(item)}
-              status={{ ...computeStatus(item.nextInspection), lastMaintenance: item.lastMaintenance, lastInspection: item.lastInspection, operationalStatus: item.operationalStatus }}
-              onInspect={canEdit ? () => onInspect(item) : undefined} onMaintain={canEdit ? () => onMaintain(item) : undefined}
-              onEdit={canEdit ? () => onEdit(item) : undefined} onDelete={canEdit ? () => onDelete(item) : undefined} />
-          ))}
         </div>
       )}
     </div>
