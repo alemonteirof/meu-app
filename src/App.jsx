@@ -4,6 +4,7 @@ import {
   FUNCTIONAL_CATEGORIES, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
   COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
+  listCombateHistorico,
 } from './supabaseAdapter';
 import React, { useState, useEffect } from 'react';
 import {
@@ -782,7 +783,7 @@ const GAS_TYPE_SUGGESTIONS = [
   'GLP', 'Gás Natural (GN)', 'Monóxido de carbono (CO)', 'Metano (CH4)', 'Amônia (NH3)',
 ];
 
-const INDICATOR_STATUS_OPTIONS = ['Resolvido', 'Andamento', 'Intermitente', 'Falso Positivo', 'Aguardando'];
+const INDICATOR_STATUS_OPTIONS = ['Resolvido', 'Andamento', 'Aguardando'];
 function indicatorStatusColor(status) {
   if (status === 'Resolvido') return 'var(--status-ok)';
   if (status === 'Andamento' || status === 'Intermitente') return 'var(--status-warn)';
@@ -795,7 +796,7 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
   { key: 'panels', label: 'Painéis', icon: Cpu },
   { key: 'complementares', label: 'Dispositivos Complementares', icon: Zap },
-  { key: 'combate', label: 'Combate a Incêndio', icon: Flame },
+  { key: 'combate', label: 'Sistemas de Combate', icon: Flame },
   { key: 'report', label: 'Relatório', icon: ClipboardList },
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
@@ -1052,17 +1053,6 @@ function allTrackableItems(data) {
       icon: Bell, photo: null,
     });
   });
-  data.pumpDevices.forEach((p) => {
-    items.push({
-      id: p.id, category: 'pumpDevices', panelId: null, title: p.name, address: null, modelo: p.modelo || '',
-      meta: `Casa de Bombas${p.type ? ' · ' + p.type : ''}`,
-      nextMaintenance: p.nextMaintenance, lastMaintenance: p.lastMaintenance,
-      operationalStatus: p.operationalStatus || '', appearance: p.appearance || '',
-      localComm: p.localComm || '', networkComm: p.networkComm || '',
-      lastInspection: p.lastInspection || '', nextInspection: p.nextInspection || '',
-      icon: Droplet, photo: photoForModelo(data, p.modelo),
-    });
-  });
   data.gasDetectors.forEach((g) => {
     items.push({
       id: g.id, category: 'gasDetectors', panelId: null, title: g.name, address: null, modelo: g.modelo || '',
@@ -1072,6 +1062,76 @@ function allTrackableItems(data) {
       localComm: g.localComm || '', networkComm: g.networkComm || '',
       lastInspection: g.lastInspection || '', nextInspection: g.nextInspection || '',
       icon: Wind, photo: photoForModelo(data, g.modelo),
+    });
+  });
+  return items;
+}
+
+/** Baterias de Painel e Fontes Auxiliares (Dispositivos Complementares Tipo 2) — somam no
+    bloco SDAI do Painel Geral, já que são parte do sistema de detecção (baterias dos painéis). */
+function complementaresTrackableItems(data) {
+  const items = [];
+  (data.bateriasPainel || []).forEach((b) => {
+    const panel = data.panels.find((p) => p.id === b.panelId);
+    items.push({
+      id: b.id, category: 'bateriaPainel', panelId: b.panelId || null,
+      title: `Baterias — ${panel ? panel.name : 'Painel'}`, address: null, modelo: '',
+      meta: 'Dispositivos Complementares',
+      nextMaintenance: b.proximaInspecao, lastMaintenance: b.dataInspecao,
+      nextInspection: b.proximaInspecao, lastInspection: b.dataInspecao,
+      icon: Zap, photo: null,
+    });
+  });
+  (data.fontesAuxiliares || []).forEach((f) => {
+    items.push({
+      id: f.id, category: 'fonteAuxiliar', panelId: null,
+      title: f.nome || 'Fonte Auxiliar', address: null, modelo: '',
+      meta: 'Dispositivos Complementares',
+      nextMaintenance: f.proximaInspecao, lastMaintenance: f.dataInspecao,
+      nextInspection: f.proximaInspecao, lastInspection: f.dataInspecao,
+      icon: Zap, photo: null,
+    });
+  });
+  return items;
+}
+
+/** Todo o universo de Combate a Incêndio (SPCI) — bloco separado do SDAI no Painel Geral,
+    mesma lógica de separação já aplicada em formulário/Indicador/Visita. */
+function combateTrackableItems(data) {
+  const items = [];
+  (data.combateSubitens || []).forEach((s) => {
+    const conjunto = (data.combateConjuntos || []).find((c) => c.id === s.conjuntoId);
+    if (!conjunto) return;
+    const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
+    items.push({
+      id: s.id, category: 'combateSubitem', panelId: conjunto.panelId || null,
+      title: `${info?.label || s.categoria} — ${conjunto.etiqueta}`, address: null, modelo: '',
+      meta: COMBATE_CONJUNTO_TIPOS[conjunto.tipo]?.label || conjunto.tipo,
+      nextMaintenance: s.proximaInspecao, lastMaintenance: s.dataInspecao,
+      nextInspection: s.proximaInspecao, lastInspection: s.dataInspecao,
+      icon: Flame, photo: null,
+    });
+  });
+  (data.combateComponentes || []).forEach((c) => {
+    const info = COMBATE_COMPONENTE_TIPO_MAP[c.tipo];
+    items.push({
+      id: c.id, category: 'combateComponente', panelId: null,
+      title: c.etiqueta || info?.label || 'Componente', address: null, modelo: '',
+      meta: info?.label || 'Componente',
+      nextMaintenance: c.proximaInspecao, lastMaintenance: c.dataInspecao,
+      nextInspection: c.proximaInspecao, lastInspection: c.dataInspecao,
+      icon: Flame, photo: null,
+    });
+  });
+  (data.combateCilindros || []).forEach((c) => {
+    const bateria = (data.combateBaterias || []).find((b) => b.id === c.bateriaId);
+    items.push({
+      id: c.id, category: 'combateCilindro', panelId: bateria?.panelId || null,
+      title: `Cilindro ${c.identificacao}${bateria ? ' — ' + bateria.etiqueta : ''}`, address: null, modelo: '',
+      meta: 'Bateria de Cilindros',
+      nextMaintenance: c.proximaInspecao, lastMaintenance: c.dataInspecao,
+      nextInspection: c.proximaInspecao, lastInspection: c.dataInspecao,
+      icon: Flame, photo: null,
     });
   });
   return items;
@@ -2321,6 +2381,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const [panelSearch, setPanelSearch] = useState('');
   const [reportFilters, setReportFilters] = useState({ category: 'all', panelId: 'all', status: 'all', search: '' });
   const [settingsTab, setSettingsTab] = useState('cliente');
+  const [indicadorTab, setIndicadorTab] = useState('sdai');
 
   const [modal, setModal] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
@@ -2987,10 +3048,17 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     );
   }
 
-  const items = allTrackableItems(data);
+  const items = [...allTrackableItems(data), ...complementaresTrackableItems(data)];
   const counts = { overdue: 0, soon: 0, ok: 0, none: 0 };
     items.forEach((it) => { counts[computeStatus(it.nextInspection).key]++; });
   const attentionItems = items
+        .filter((it) => ['overdue', 'soon'].includes(computeStatus(it.nextInspection).key))
+    .sort((a, b) => (a.nextMaintenance || '').localeCompare(b.nextMaintenance || ''));
+
+  const combateItems = combateTrackableItems(data);
+  const combateCounts = { overdue: 0, soon: 0, ok: 0, none: 0 };
+    combateItems.forEach((it) => { combateCounts[computeStatus(it.nextInspection).key]++; });
+  const combateAttentionItems = combateItems
         .filter((it) => ['overdue', 'soon'].includes(computeStatus(it.nextInspection).key))
     .sort((a, b) => (a.nextMaintenance || '').localeCompare(b.nextMaintenance || ''));
 
@@ -3102,7 +3170,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-20">
         {view === 'dashboard' && (
-          <Dashboard data={data} counts={counts} attentionItems={attentionItems} canEdit={canEdit}
+          <Dashboard data={data} counts={counts} attentionItems={attentionItems} clientId={client.id}
+            combateCounts={combateCounts} combateAttentionItems={combateAttentionItems} canEdit={canEdit}
             onMaintain={(it) => openMaintainModal(it.category, it, it.title)}
             onInspect={(it) => openInspectModal(it.category, it, it.title)}
             onGoPanels={() => setView('panels')} />
@@ -3171,7 +3240,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         )}
 
         {view === 'combate' && (
-          <CombateIncendioView data={data} canEdit={canEdit}
+          <CombateIncendioView data={data} canEdit={canEdit} clientId={client.id}
             onSubmitConjunto={submitConjunto}
             onDeleteConjunto={(id) => setConfirmState({ title: 'Excluir', message: 'Excluir este item e todos os sub-itens do checklist dele? Essa ação não pode ser desfeita.', onConfirm: () => deleteConjunto(id) })}
             onSubmitSubitem={submitSubitemInspecao}
@@ -3188,14 +3257,25 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         )}
 
         {view === 'indicador' && (
-          <IndicadorView data={data} canEdit={canEdit} client={client}
-            onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
-            onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
-            onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
-            onImportFile={handleImportIndicador} onLinkDevices={linkIndicadorToDevices}
-            onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
-            onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
-            onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+              <button className="nav-tab" data-active={indicadorTab === 'sdai'} onClick={() => setIndicadorTab('sdai')}>SDAI</button>
+              <button className="nav-tab" data-active={indicadorTab === 'spci'} onClick={() => setIndicadorTab('spci')}>SPCI (Sistemas de Combate)</button>
+            </div>
+            {indicadorTab === 'sdai' && (
+              <IndicadorView data={data} canEdit={canEdit} client={client}
+                onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
+                onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
+                onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
+                onImportFile={handleImportIndicador} onLinkDevices={linkIndicadorToDevices}
+                onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
+                onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
+                onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
+            )}
+            {indicadorTab === 'spci' && (
+              <CombateHistoricoView clientId={client.id} />
+            )}
+          </div>
         )}
 
         {view === 'settings' && (
@@ -3413,12 +3493,21 @@ function countByMonth(list, months = 12) {
   return buckets;
 }
 
-function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspect, onGoPanels }) {
+function Dashboard({ data, counts, attentionItems, combateCounts, combateAttentionItems, canEdit, onMaintain, onInspect, onGoPanels, clientId }) {
+  const [painelTab, setPainelTab] = useState('sdai');
   const [dashFiltroInicio, setDashFiltroInicio] = useState('');
   const [dashFiltroFim, setDashFiltroFim] = useState('');
   const [dashFiltroTipo, setDashFiltroTipo] = useState('all');
   const total = counts.overdue + counts.soon + counts.ok + counts.none;
+  const combateTotal = combateCounts.overdue + combateCounts.soon + combateCounts.ok + combateCounts.none;
   const todayLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
+  const [combateHistorico, setCombateHistorico] = useState([]);
+  useEffect(() => {
+    let ativo = true;
+    listCombateHistorico(clientId).then((rows) => { if (ativo) setCombateHistorico(rows); }).catch((err) => console.error(err));
+    return () => { ativo = false; };
+  }, [clientId]);
 
   if (data.panels.length === 0 && data.pumpDevices.length === 0 && data.gasDetectors.length === 0) {
     return (
@@ -3428,6 +3517,50 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
     );
   }
 
+  const indicador = data.indicador || [];
+  const dentroDoPeriodo = (r) => {
+    const d = r.dataDiagnostico || '';
+    if (dashFiltroInicio && d < dashFiltroInicio) return false;
+    if (dashFiltroFim && d > dashFiltroFim) return false;
+    return true;
+  };
+  const ehCorretivaReal = (r) => r.tipo === 'manutencao' && r.falha && r.falha !== 'Realizado sem apontamentos';
+  const filtrado = indicador.filter(dentroDoPeriodo).filter((r) => {
+    if (dashFiltroTipo === 'all') return true;
+    if (dashFiltroTipo === 'corretiva') return ehCorretivaReal(r);
+    if (dashFiltroTipo === 'preventiva') return r.tipo === 'manutencao' && !ehCorretivaReal(r);
+    if (dashFiltroTipo === 'inspecao') return r.tipo === 'inspecao';
+    return true;
+  });
+  const corretivas = filtrado.filter(ehCorretivaReal);
+  const corretivaCounts = { Aguardando: 0, Andamento: 0, Resolvido: 0 };
+  corretivas.forEach((r) => { if (corretivaCounts[r.status] !== undefined) corretivaCounts[r.status] += 1; });
+  const inspecaoAguardando = counts.overdue;
+
+  const corretivaStatusData = [
+    { label: 'Aguardando', value: corretivaCounts.Aguardando, color: 'var(--status-danger)' },
+    { label: 'Andamento', value: corretivaCounts.Andamento, color: 'var(--status-warn)' },
+    { label: 'Resolvido', value: corretivaCounts.Resolvido, color: 'var(--status-ok)' },
+  ].filter((d) => d.value > 0);
+
+  const areaData = sortDesc(countBy(filtrado, (r) => r.area, 'Sem área')).slice(0, 10);
+  const falhaData = sortDesc(countBy(corretivas, (r) => r.falha, 'Sem falha')).slice(0, 10);
+
+  const combateFiltrado = combateHistorico.filter((r) => {
+    const d = r.data_inspecao || '';
+    if (dashFiltroInicio && d < dashFiltroInicio) return false;
+    if (dashFiltroFim && d > dashFiltroFim) return false;
+    return true;
+  });
+  const combateReprovados = combateFiltrado.filter((r) => r.resultado === 'Reprovado');
+  const combateAprovados = combateFiltrado.filter((r) => r.resultado === 'Aprovado');
+  const combateResultadoData = [
+    { label: 'Aprovado', value: combateAprovados.length, color: 'var(--status-ok)' },
+    { label: 'Reprovado', value: combateReprovados.length, color: 'var(--status-danger)' },
+    { label: 'Não avaliado', value: combateFiltrado.length - combateAprovados.length - combateReprovados.length, color: 'var(--status-none)' },
+  ].filter((d) => d.value > 0);
+  const combateCategoriaData = sortDesc(countBy(combateFiltrado, (r) => r.categoria_label, 'Sem categoria')).slice(0, 10);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -3435,116 +3568,160 @@ function Dashboard({ data, counts, attentionItems, canEdit, onMaintain, onInspec
         <p className="text-sm capitalize" style={{ color: 'var(--text-secondary)' }}>{todayLabel}</p>
       </div>
 
-      {(() => {
-        const indicador = data.indicador || [];
-        const dentroDoPeriodo = (r) => {
-          const d = r.dataDiagnostico || '';
-          if (dashFiltroInicio && d < dashFiltroInicio) return false;
-          if (dashFiltroFim && d > dashFiltroFim) return false;
-          return true;
-        };
-        const ehCorretivaReal = (r) => r.tipo === 'manutencao' && r.falha && r.falha !== 'Realizado sem apontamentos';
-        const filtrado = indicador.filter(dentroDoPeriodo).filter((r) => {
-          if (dashFiltroTipo === 'all') return true;
-          if (dashFiltroTipo === 'corretiva') return ehCorretivaReal(r);
-          if (dashFiltroTipo === 'preventiva') return r.tipo === 'manutencao' && !ehCorretivaReal(r);
-          if (dashFiltroTipo === 'inspecao') return r.tipo === 'inspecao';
-          return true;
-        });
-        const corretivas = filtrado.filter(ehCorretivaReal);
-        const corretivaCounts = { Aguardando: 0, Andamento: 0, Resolvido: 0 };
-        corretivas.forEach((r) => { if (corretivaCounts[r.status] !== undefined) corretivaCounts[r.status] += 1; });
-        const inspecaoAguardando = counts.overdue;
-
-        const corretivaStatusData = [
-          { label: 'Aguardando', value: corretivaCounts.Aguardando, color: 'var(--status-danger)' },
-          { label: 'Andamento', value: corretivaCounts.Andamento, color: 'var(--status-warn)' },
-          { label: 'Resolvido', value: corretivaCounts.Resolvido, color: 'var(--status-ok)' },
-        ].filter((d) => d.value > 0);
-
-        const areaData = sortDesc(countBy(filtrado, (r) => r.area, 'Sem área')).slice(0, 10);
-        const falhaData = sortDesc(countBy(corretivas, (r) => r.falha, 'Sem falha')).slice(0, 10);
-
-        return (
-          <div className="flex flex-col gap-6">
-            <div>
-              <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção dos dispositivos</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard label="Vencidos" value={counts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
-                <StatCard label="A vencer (30 dias)" value={counts.soon} color="var(--status-warn)" icon={Clock} />
-                <StatCard label="Em dia" value={counts.ok} color="var(--status-ok)" icon={CheckCircle2} />
-                <StatCard label="Total monitorado" value={total} color="var(--text-secondary)" icon={LayoutDashboard} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-                <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Falhas e inspeções (Indicador)</h3>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div>
-                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>De</label>
-                    <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-                      value={dashFiltroInicio} onChange={(e) => setDashFiltroInicio(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Até</label>
-                    <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-                      value={dashFiltroFim} onChange={(e) => setDashFiltroFim(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Tipo</label>
-                    <select className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-                      value={dashFiltroTipo} onChange={(e) => setDashFiltroTipo(e.target.value)}>
-                      <option value="all">Todos</option>
-                      <option value="corretiva">Corretiva</option>
-                      <option value="preventiva">Preventiva</option>
-                      <option value="inspecao">Inspeção</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <StatCard label="Corretivas — Aguardando" value={corretivaCounts.Aguardando} color="var(--status-danger)" icon={AlertTriangle} />
-                <StatCard label="Corretivas — Andamento" value={corretivaCounts.Andamento} color="var(--status-warn)" icon={Clock} />
-                <StatCard label="Corretivas — Resolvido" value={corretivaCounts.Resolvido} color="var(--status-ok)" icon={CheckCircle2} />
-                <StatCard label="Inspeção — Aguardando" value={inspecaoAguardando} color="var(--status-danger)" icon={Activity} />
-              </div>
-
-              {filtrado.length === 0 ? (
-                <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no período/filtro selecionado.</p>
-                </div>
-              ) : (
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <ChartCard title="Status das corretivas"><SimplePieChart data={corretivaStatusData} /></ChartCard>
-                  <ChartCard title="Registros por área" subtitle="Onde mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
-                  <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
-      <div>
-        <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenção</h3>
-        {attentionItems.length === 0 ? (
-          <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <CheckCircle2 size={20} style={{ color: 'var(--status-ok)' }} />
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum item vencido ou próximo do vencimento. Tudo em dia.</p>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
-            {attentionItems.slice(0, 12).map((it) => (
-              <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
-                status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }}
-                warning={(it.type === 'entrada' || it.type === 'entrada_duplo') && !it.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
-                onMaintain={canEdit ? () => onMaintain(it) : undefined} onInspect={canEdit ? () => onInspect(it) : undefined} />
-            ))}
-          </div>
-        )}
+      <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+        <button className="nav-tab" data-active={painelTab === 'sdai'} onClick={() => setPainelTab('sdai')}>SDAI</button>
+        <button className="nav-tab" data-active={painelTab === 'spci'} onClick={() => setPainelTab('spci')}>SPCI (Sistemas de Combate)</button>
       </div>
+
+      {painelTab === 'sdai' && (
+        <div className="flex flex-col gap-6">
+          <div>
+            <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard label="Vencidos" value={counts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
+              <StatCard label="A vencer (30 dias)" value={counts.soon} color="var(--status-warn)" icon={Clock} />
+              <StatCard label="Em dia" value={counts.ok} color="var(--status-ok)" icon={CheckCircle2} />
+              <StatCard label="Total monitorado" value={total} color="var(--text-secondary)" icon={LayoutDashboard} />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Falhas e inspeções (Indicador)</h3>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div>
+                  <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>De</label>
+                  <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    value={dashFiltroInicio} onChange={(e) => setDashFiltroInicio(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Até</label>
+                  <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    value={dashFiltroFim} onChange={(e) => setDashFiltroFim(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Tipo</label>
+                  <select className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    value={dashFiltroTipo} onChange={(e) => setDashFiltroTipo(e.target.value)}>
+                    <option value="all">Todos</option>
+                    <option value="corretiva">Corretiva</option>
+                    <option value="preventiva">Preventiva</option>
+                    <option value="inspecao">Inspeção</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <StatCard label="Corretivas — Aguardando" value={corretivaCounts.Aguardando} color="var(--status-danger)" icon={AlertTriangle} />
+              <StatCard label="Corretivas — Andamento" value={corretivaCounts.Andamento} color="var(--status-warn)" icon={Clock} />
+              <StatCard label="Corretivas — Resolvido" value={corretivaCounts.Resolvido} color="var(--status-ok)" icon={CheckCircle2} />
+              <StatCard label="Inspeção — Aguardando" value={inspecaoAguardando} color="var(--status-danger)" icon={Activity} />
+            </div>
+
+            {filtrado.length === 0 ? (
+              <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no período/filtro selecionado.</p>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <ChartCard title="Status das corretivas"><SimplePieChart data={corretivaStatusData} /></ChartCard>
+                <ChartCard title="Registros por área" subtitle="Onde mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
+                <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenção</h3>
+            {attentionItems.length === 0 ? (
+              <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <CheckCircle2 size={20} style={{ color: 'var(--status-ok)' }} />
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum item vencido ou próximo do vencimento. Tudo em dia.</p>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {attentionItems.slice(0, 12).map((it) => {
+                  const actionable = ['devices', 'nacs', 'pumpDevices', 'gasDetectors'].includes(it.category);
+                  return (
+                    <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
+                      status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }}
+                      warning={(it.type === 'entrada' || it.type === 'entrada_duplo') && !it.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
+                      onMaintain={canEdit && actionable ? () => onMaintain(it) : undefined} onInspect={canEdit && actionable ? () => onInspect(it) : undefined} />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {painelTab === 'spci' && (
+        <div className="flex flex-col gap-6">
+          <div>
+            <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <StatCard label="Vencidos" value={combateCounts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
+              <StatCard label="A vencer (30 dias)" value={combateCounts.soon} color="var(--status-warn)" icon={Clock} />
+              <StatCard label="Em dia" value={combateCounts.ok} color="var(--status-ok)" icon={CheckCircle2} />
+              <StatCard label="Total monitorado" value={combateTotal} color="var(--text-secondary)" icon={Flame} />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Falhas e inspeções (Indicador)</h3>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div>
+                  <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>De</label>
+                  <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    value={dashFiltroInicio} onChange={(e) => setDashFiltroInicio(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Até</label>
+                  <input type="date" className="block rounded-lg px-2 py-1 text-sm" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    value={dashFiltroFim} onChange={(e) => setDashFiltroFim(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <StatCard label="Registros no período" value={combateFiltrado.length} color="var(--text-secondary)" icon={Activity} />
+              <StatCard label="Aprovados" value={combateAprovados.length} color="var(--status-ok)" icon={CheckCircle2} />
+              <StatCard label="Reprovados" value={combateReprovados.length} color="var(--status-danger)" icon={AlertTriangle} />
+              <StatCard label="Vencidos (prazo)" value={combateCounts.overdue} color="var(--status-danger)" icon={Clock} />
+            </div>
+
+            {combateFiltrado.length === 0 ? (
+              <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no período selecionado.</p>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <ChartCard title="Resultado das vistorias"><SimplePieChart data={combateResultadoData} /></ChartCard>
+                <ChartCard title="Registros por categoria" subtitle="Onde mais aparecem"><SimpleBarChart data={combateCategoriaData} /></ChartCard>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenção</h3>
+            {combateAttentionItems.length === 0 ? (
+              <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <CheckCircle2 size={20} style={{ color: 'var(--status-ok)' }} />
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum item vencido ou próximo do vencimento. Tudo em dia.</p>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {combateAttentionItems.slice(0, 12).map((it) => (
+                  <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
+                    status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4474,8 +4651,72 @@ function BateriasCilindrosList({ data, canEdit, agente, onSubmitBateria, onDelet
   );
 }
 
+function CombateHistoricoView({ clientId }) {
+  const [historico, setHistorico] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filtroTecnico, setFiltroTecnico] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroDataDe, setFiltroDataDe] = useState('');
+  const [filtroDataAte, setFiltroDataAte] = useState('');
+
+  useEffect(() => {
+    let ativo = true;
+    setLoading(true);
+    listCombateHistorico(clientId).then((rows) => { if (ativo) { setHistorico(rows); setLoading(false); } })
+      .catch((err) => { console.error(err); if (ativo) setLoading(false); });
+    return () => { ativo = false; };
+  }, [clientId]);
+
+  const tipoLabels = { subitem: 'Conjunto', componente: 'Componente', cilindro: 'Cilindro' };
+  const filtrado = historico.filter((r) => {
+    if (filtroTecnico && !(r.tecnico || '').toLowerCase().includes(filtroTecnico.toLowerCase())) return false;
+    if (filtroTipo && r.tipo_item !== filtroTipo) return false;
+    if (filtroDataDe && r.data_inspecao < filtroDataDe) return false;
+    if (filtroDataAte && r.data_inspecao > filtroDataAte) return false;
+    return true;
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+        Histórico de vistorias registradas em Combate a Incêndio — cada linha é 1 registro, mesmo que o item tenha sido vistoriado várias vezes.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+        <input className={inputCls} placeholder="Buscar técnico..." value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} />
+        <select className={inputCls} value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
+          <option value="">Todos os tipos</option>
+          <option value="subitem">Conjunto</option>
+          <option value="componente">Componente</option>
+          <option value="cilindro">Cilindro</option>
+        </select>
+        <input type="date" className={inputCls} value={filtroDataDe} onChange={(e) => setFiltroDataDe(e.target.value)} />
+        <input type="date" className={inputCls} value={filtroDataAte} onChange={(e) => setFiltroDataAte(e.target.value)} />
+      </div>
+      {loading && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Carregando...</p>}
+      {!loading && filtrado.length === 0 && (
+        <EmptyState icon={Activity} title="Nenhum registro no histórico" description="Vistorias registradas pela sub-aba 'Visita (Sistemas de Combate)' em Atendimentos aparecem aqui." />
+      )}
+      <div className="flex flex-col gap-2">
+        {filtrado.map((r) => (
+          <div key={r.id} className="rounded-lg p-3 flex flex-col gap-1" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{r.categoria_label}{r.contexto_label ? ` — ${r.contexto_label}` : ''}</span>
+              <span className="text-xs px-2 py-0.5 rounded-md" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{tipoLabels[r.tipo_item] || r.tipo_item}</span>
+            </div>
+            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {formatDateBR(r.data_inspecao)} · {r.tecnico || 'sem técnico'} · <strong style={{ color: r.resultado === 'Reprovado' ? 'var(--status-danger)' : 'var(--text-primary)' }}>{r.resultado || 'Não avaliado'}</strong>
+            </div>
+            {r.falha && <div className="text-xs" style={{ color: 'var(--status-danger)' }}>Falha: {r.falha}</div>}
+            {r.observacoes && <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{r.observacoes}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CombateIncendioView({
-  data, canEdit, onSubmitConjunto, onDeleteConjunto, onSubmitSubitem, onSubmitComponente, onDeleteComponente,
+  data, canEdit, clientId, onSubmitConjunto, onDeleteConjunto, onSubmitSubitem, onSubmitComponente, onDeleteComponente,
   onSubmitBateria, onDeleteBateria, onSubmitCilindro, onDeleteCilindro,
 }) {
   const [grupo, setGrupo] = useState('agua');
@@ -4485,7 +4726,7 @@ function CombateIncendioView({
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Combate a Incêndio</h2>
+        <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Sistemas de Combate</h2>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Conjuntos (checklist fixo, item a item) e Componentes (fluxostatos, pressostatos, solenoides — cadastro livre, linkáveis a um módulo do painel).
         </p>
@@ -6381,8 +6622,10 @@ function PageStyles() {
       }
       .btn-icon:hover { background: var(--surface-raised); color: var(--text-primary); }
       .btn-icon-danger:hover { background: rgba(240,71,61,0.12); color: var(--status-danger); }
+      .grid-2-mobile-safe { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
       @media (max-width: 640px) {
         .btn-icon { width: 44px; height: 44px; }
+        .grid-2-mobile-safe { grid-template-columns: 1fr; }
       }
       .nav-tab {
         font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px 8px 0 0;

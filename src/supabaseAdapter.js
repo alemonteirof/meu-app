@@ -754,6 +754,63 @@ export async function updateOutroItem(rvtItemId, descricao) {
   if (error) throw error;
 }
 
+// ---- Combate a Incêndio: registro de vistoria em massa + histórico (Indicador de Combate) ----
+
+export async function updateCombateSubitem(id, patch) {
+  const dbPatch = {};
+  if (patch.tecnico !== undefined) dbPatch.tecnico = patch.tecnico || null;
+  if (patch.dataInspecao !== undefined) dbPatch.data_inspecao = patch.dataInspecao || null;
+  if (patch.resultadoTeste !== undefined) dbPatch.resultado_teste = patch.resultadoTeste || null;
+  if (patch.falha !== undefined) dbPatch.falha = patch.falha || null;
+  if (patch.observacoes !== undefined) dbPatch.observacoes = patch.observacoes || null;
+  if (patch.proximaInspecao !== undefined) dbPatch.proxima_inspecao = patch.proximaInspecao || null;
+  const { error } = await supabase.from('combate_subitens').update(dbPatch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateCombateComponente(id, patch) {
+  const dbPatch = {};
+  if (patch.tecnico !== undefined) dbPatch.tecnico = patch.tecnico || null;
+  if (patch.dataInspecao !== undefined) dbPatch.data_inspecao = patch.dataInspecao || null;
+  if (patch.resultadoTeste !== undefined) dbPatch.resultado_teste = patch.resultadoTeste || null;
+  if (patch.falha !== undefined) dbPatch.falha = patch.falha || null;
+  if (patch.observacoes !== undefined) dbPatch.observacoes = patch.observacoes || null;
+  if (patch.proximaInspecao !== undefined) dbPatch.proxima_inspecao = patch.proximaInspecao || null;
+  const { error } = await supabase.from('combate_componentes').update(dbPatch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateCombateCilindro(id, patch) {
+  const dbPatch = {};
+  if (patch.tecnico !== undefined) dbPatch.tecnico = patch.tecnico || null;
+  if (patch.dataInspecao !== undefined) dbPatch.data_inspecao = patch.dataInspecao || null;
+  if (patch.resultadoValvula !== undefined) dbPatch.resultado_valvula = patch.resultadoValvula || null;
+  if (patch.resultadoManometro !== undefined) dbPatch.resultado_manometro = patch.resultadoManometro || null;
+  if (patch.resultadoCorpo !== undefined) dbPatch.resultado_corpo = patch.resultadoCorpo || null;
+  if (patch.resultadoEtiqueta !== undefined) dbPatch.resultado_etiqueta = patch.resultadoEtiqueta || null;
+  if (patch.falha !== undefined) dbPatch.falha = patch.falha || null;
+  if (patch.observacoes !== undefined) dbPatch.observacoes = patch.observacoes || null;
+  if (patch.proximaInspecao !== undefined) dbPatch.proxima_inspecao = patch.proximaInspecao || null;
+  const { error } = await supabase.from('combate_cilindros').update(dbPatch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function createCombateHistorico({ clienteId, tipoItem, itemId, categoriaLabel, contextoLabel, tecnico, dataInspecao, resultado, falha, observacoes }) {
+  const { error } = await supabase.from('combate_historico').insert({
+    cliente_id: clienteId, tipo_item: tipoItem, item_id: itemId,
+    categoria_label: categoriaLabel || null, contexto_label: contextoLabel || null,
+    tecnico: tecnico || null, data_inspecao: dataInspecao || null,
+    resultado: resultado || null, falha: falha || null, observacoes: observacoes || null,
+  });
+  if (error) throw error;
+}
+
+export async function listCombateHistorico(clienteId) {
+  const { data, error } = await supabase.from('combate_historico').select('*').eq('cliente_id', clienteId).order('data_inspecao', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteVisita(rvtId) {
   const { data: itens } = await supabase.from('rvt_itens').select('atendimento_id, inspecao_id').eq('rvt_id', rvtId);
   const atendimentoIds = (itens || []).map((i) => i.atendimento_id).filter(Boolean);

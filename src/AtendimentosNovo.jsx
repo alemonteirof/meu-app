@@ -4,6 +4,8 @@ import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, DEVICE_TYPE_LABELS,
+  COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
+  updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico,
 } from './supabaseAdapter';
 
 const inputStyle = {
@@ -107,6 +109,41 @@ function buildDeviceOptions(data) {
   return options;
 }
 
+/** Lista unificada de itens de Combate a Incêndio pra vistoria em massa: sub-itens dos
+    Conjuntos (Casa de Bombas/Hidrante/VGA/LGE/Sistema), Componentes (fluxostato etc.) e
+    Cilindros — cada um carrega o rótulo de categoria e o "grupo" (pra marcar por tipo). */
+function buildCombateOptions(data) {
+  const options = [];
+  (data.combateSubitens || []).forEach((s) => {
+    const conjunto = (data.combateConjuntos || []).find((c) => c.id === s.conjuntoId);
+    if (!conjunto) return;
+    const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
+    const tipoLabel = COMBATE_CONJUNTO_TIPOS[conjunto.tipo]?.label || conjunto.tipo;
+    options.push({
+      id: s.id, kind: 'subitem', grupo: tipoLabel,
+      label: `${info?.label || s.categoria} — ${conjunto.etiqueta} (${tipoLabel})`,
+      categoriaLabel: info?.label || s.categoria, contextoLabel: conjunto.etiqueta,
+    });
+  });
+  (data.combateComponentes || []).forEach((c) => {
+    const info = COMBATE_COMPONENTE_TIPO_MAP[c.tipo];
+    options.push({
+      id: c.id, kind: 'componente', grupo: info?.label || c.tipo,
+      label: `${c.etiqueta || info?.label} (${info?.label})`,
+      categoriaLabel: info?.label || c.tipo, contextoLabel: c.etiqueta,
+    });
+  });
+  (data.combateCilindros || []).forEach((c) => {
+    const bateria = (data.combateBaterias || []).find((b) => b.id === c.bateriaId);
+    options.push({
+      id: c.id, kind: 'cilindro', grupo: 'Cilindro',
+      label: `Cilindro ${c.identificacao}${bateria ? ' — ' + bateria.etiqueta : ''}`,
+      categoriaLabel: 'Cilindro (checklist completo)', contextoLabel: bateria?.etiqueta || '',
+    });
+  });
+  return options;
+}
+
 function ItemResumo({ item }) {
   const nFotos = (item.fotos || []).length;
   if (item.tipo === 'outro') {
@@ -178,6 +215,61 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
       <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
         {filtered.length === 0 && (
           <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhum dispositivo encontrado.</div>
+        )}
+        {filtered.map((o) => (
+          <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggle(o.id)} />
+            <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{o.label}</span>
+          </label>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+/** Mesmo padrão do DeviceMultiSelect, só que pra itens de Combate a Incêndio — agrupa
+    por "grupo" (Casa de Bombas, Hidrante, Fluxostato, Cilindro etc.) já calculado. */
+function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  const gruposPresentes = [...new Set(filtered.map((o) => o.grupo))];
+
+  function addIds(ids) {
+    setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
+  }
+  function toggle(id) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function clearFilteredSelection() {
+    const filteredIds = new Set(filtered.map((o) => o.id));
+    setSelectedIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+  }
+
+  return (
+    <Field label={`Item(ns) de Combate — ${selectedIds.length} selecionado(s)`}>
+      <input style={inputStyle} placeholder="Buscar por etiqueta, categoria, conjunto..." value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, margin: '8px 0' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Marcar todos:</span>
+        <button type="button" onClick={() => addIds(filtered.map((o) => o.id))}
+          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #8B2F2F', color: '#8B2F2F', background: 'transparent', fontSize: 12, cursor: 'pointer' }}>
+          Todos ({filtered.length})
+        </button>
+        {gruposPresentes.map((grupo) => {
+          const idsDoGrupo = filtered.filter((o) => o.grupo === grupo).map((o) => o.id);
+          return (
+            <button key={grupo || 'sem-grupo'} type="button" onClick={() => addIds(idsDoGrupo)} style={smallBtnStyle}>
+              {grupo} ({idsDoGrupo.length})
+            </button>
+          );
+        })}
+        {selectedIds.length > 0 && (
+          <button type="button" onClick={clearFilteredSelection} style={smallBtnStyle}>Limpar seleção</button>
+        )}
+      </div>
+      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhum item encontrado.</div>
         )}
         {filtered.map((o) => (
           <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
@@ -395,7 +487,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
   // inspecao
   return (
     <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <div className="grid-2-mobile-safe">
         <Field label="Funcionamento (resultado do teste)">
           <select style={inputStyle} value={editForm.resultadoTeste} onChange={(e) => setEditForm({ ...editForm, resultadoTeste: e.target.value })}>
             <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
@@ -491,6 +583,112 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
   );
 }
 
+/** Vistoria em massa dos itens de Combate a Incêndio — mesmo padrão de busca + seleção
+    múltipla, só que sem "visita" formal como container (cada envio já grava direto:
+    atualiza o item + registra 1 linha no histórico de combate). */
+function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
+  const options = buildCombateOptions(data);
+  const [tecnico, setTecnico] = useState('');
+  const [dataVistoria, setDataVistoria] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [resultado, setResultado] = useState('Aprovado');
+  const [falha, setFalha] = useState('');
+  const [observacoes, setObservacoes] = useState('');
+  const [proximaInspecao, setProximaInspecao] = useState('');
+  const [msg, setMsg] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const temCilindroSelecionado = selectedIds.some((id) => options.find((o) => o.id === id)?.kind === 'cilindro');
+
+  async function submitVistoria(e) {
+    e.preventDefault();
+    if (selectedIds.length === 0) { setMsg('Selecione ao menos um item.'); return; }
+    setSaving(true);
+    try {
+      let count = 0;
+      for (const id of selectedIds) {
+        const opt = options.find((o) => o.id === id);
+        if (!opt) continue;
+        const patchBase = { tecnico, dataInspecao: dataVistoria, falha, observacoes, proximaInspecao };
+        if (opt.kind === 'subitem') {
+          await updateCombateSubitem(id, { ...patchBase, resultadoTeste: resultado });
+        } else if (opt.kind === 'componente') {
+          await updateCombateComponente(id, { ...patchBase, resultadoTeste: resultado });
+        } else if (opt.kind === 'cilindro') {
+          await updateCombateCilindro(id, {
+            ...patchBase, resultadoValvula: resultado, resultadoManometro: resultado, resultadoCorpo: resultado, resultadoEtiqueta: resultado,
+          });
+        }
+        await createCombateHistorico({
+          clienteId: clientId, tipoItem: opt.kind, itemId: id,
+          categoriaLabel: opt.categoriaLabel, contextoLabel: opt.contextoLabel,
+          tecnico, dataInspecao: dataVistoria, resultado, falha, observacoes,
+        });
+        count += 1;
+      }
+      setSelectedIds([]);
+      setFalha('');
+      setObservacoes('');
+      setProximaInspecao('');
+      if (onRefresh) onRefresh();
+      setMsg(`${count} item(ns) registrado(s) no histórico de Combate.`);
+    } catch (err) {
+      console.error(err);
+      setMsg('Erro ao registrar vistoria.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas (Sistemas de Combate)</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Vistoria em massa dos itens de Combate a Incêndio — Conjuntos, Componentes e Cilindros. Cada envio já grava no histórico (Indicador de Combate).
+        </p>
+      </div>
+      {msg && (
+        <div style={{ marginBottom: 16, padding: 10, borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13 }}>
+          {msg}
+        </div>
+      )}
+      <form onSubmit={submitVistoria} style={cardStyle}>
+        <div className="grid-2-mobile-safe">
+          <Field label="Técnico"><input style={inputStyle} value={tecnico} onChange={(e) => setTecnico(e.target.value)} /></Field>
+          <Field label="Data"><input type="date" style={inputStyle} value={dataVistoria} onChange={(e) => setDataVistoria(e.target.value)} /></Field>
+        </div>
+        <CombateMultiSelect options={options} selectedIds={selectedIds} setSelectedIds={setSelectedIds} />
+        {temCilindroSelecionado && (
+          <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Cilindro selecionado: o resultado abaixo marca os 4 itens do checklist dele de uma vez (Válvula, Manômetro, Corpo, Etiqueta).
+            Pra registrar cada item do cilindro separado, edita ele direto em Combate a Incêndio.
+          </div>
+        )}
+        <div className="grid-2-mobile-safe">
+          <Field label="Resultado">
+            <select style={inputStyle} value={resultado} onChange={(e) => setResultado(e.target.value)}>
+              <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
+            </select>
+          </Field>
+          <Field label="Próxima inspeção">
+            <input type="date" style={inputStyle} value={proximaInspecao} onChange={(e) => setProximaInspecao(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Falha (se reprovado)">
+          <textarea style={{ ...inputStyle, minHeight: 50 }} value={falha} onChange={(e) => setFalha(e.target.value)} />
+        </Field>
+        <Field label="Observações">
+          <textarea style={{ ...inputStyle, minHeight: 50 }} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+        </Field>
+        <button type="submit" disabled={!canEdit || saving} style={btnStyle}>
+          {saving ? 'Salvando...' : `Registrar vistoria${selectedIds.length > 1 ? ` (${selectedIds.length} itens)` : ''}`}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function AtendimentosNovo({ data, client, clientId, canEdit, onRefresh }) {
   const deviceOptions = buildDeviceOptions(data);
   const panelOptions = data.panels || [];
@@ -498,6 +696,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   const [visita, setVisita] = useState(null);
   const [itensVisita, setItensVisita] = useState([]);
   const [aba, setAba] = useState('manutencao');
+  const [subAba, setSubAba] = useState('dispositivos');
   const [msg, setMsg] = useState('');
 
   const [startForm, setStartForm] = useState({ painelId: '', tecnico: '', data: new Date().toISOString().slice(0, 10) });
@@ -736,6 +935,15 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
   return (
     <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button onClick={() => setSubAba('dispositivos')} style={tabBtnStyle(subAba === 'dispositivos')}>Visitas (SDAI)</button>
+        <button onClick={() => setSubAba('combate')} style={tabBtnStyle(subAba === 'combate')}>Visitas (Sistemas de Combate)</button>
+      </div>
+      {subAba === 'combate' && (
+        <VisitaCombateView data={data} clientId={clientId} canEdit={canEdit} onRefresh={onRefresh} />
+      )}
+      {subAba === 'dispositivos' && (
+    <div>
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas técnicas</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -819,7 +1027,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                   {inspMetodosUnicos.length > 1 && <div style={{ color: 'var(--status-warning, #d97706)' }}>Atenção: a seleção mistura categorias com métodos diferentes.</div>}
                 </div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div className="grid-2-mobile-safe">
                 <Field label="Funcionamento (resultado do teste)">
                   <select style={inputStyle} value={inspForm.resultadoTeste} onChange={(e) => setInspForm({ ...inspForm, resultadoTeste: e.target.value })}>
                     <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
@@ -831,7 +1039,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                   </select>
                 </Field>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div className="grid-2-mobile-safe">
                 <Field label="Comunicação local">
                   <select style={inputStyle} value={inspForm.comunicacaoLocal} onChange={(e) => setInspForm({ ...inspForm, comunicacaoLocal: e.target.value })}>
                     <option>Conforme</option><option>Não conforme</option>
@@ -943,6 +1151,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
           {!loadingVisitas && diasVisitas.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhuma visita encontrada.</p>}
         </div>
       </div>
+    </div>
+      )}
     </div>
   );
 }
