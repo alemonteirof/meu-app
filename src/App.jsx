@@ -3750,6 +3750,31 @@ function complementarGroupFor(categoriaFuncional) {
   return null;
 }
 
+function pairKeyComplementar(d) {
+  return `${d.loopId}::${(d.address || '').split('.')[0]}`;
+}
+
+function buildComplementarGroups(devices) {
+  const map = new Map();
+  devices.forEach((d) => {
+    const key = pairKeyComplementar(d);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(d);
+  });
+  return [...map.values()].map((itens) => ({
+    key: pairKeyComplementar(itens[0]),
+    etiqueta: itens[0].etiquetaComplementar || itens[0].description || '',
+    baseAddress: (itens[0].address || '').split('.')[0],
+    itens: [...itens].sort((a, b) => (a.papelSinal || '').localeCompare(b.papelSinal || '')),
+  }));
+}
+
+function papelSinalLabel(papel) {
+  if (papel === 'falha') return 'Falha';
+  if (papel === 'alarme') return 'Alarme';
+  return papel || 'Sinal';
+}
+
 function ComplementaresView({
   data, canEdit, onSubmitBateriaPainel, onSubmitFonteAuxiliar, onDeleteFonteAuxiliar,
   onSubmitCalibracao, onSubmitEtiqueta, onInspectDevice,
@@ -3786,7 +3811,7 @@ function ComplementaresView({
 }
 
 function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInspectDevice, onSubmitCalibracao, onSubmitEtiqueta }) {
-  const [editingId, setEditingId] = useState(null);
+  const [editingKey, setEditingKey] = useState(null);
   const [etiquetaDraft, setEtiquetaDraft] = useState('');
   const [calibForm, setCalibForm] = useState(null);
 
@@ -3795,64 +3820,83 @@ function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInsp
       description="Defina a categoria funcional no cadastro do módulo de entrada (aba Painéis) pra ele aparecer aqui." />;
   }
 
+  const grupos = buildComplementarGroups(devices);
+
   return (
     <div className="grid sm:grid-cols-2 gap-3">
-      {devices.map((d) => {
-        const loop = data.loops.find((l) => l.id === d.loopId);
+      {grupos.map((grupo) => {
+        const primeiro = grupo.itens[0];
+        const loop = data.loops.find((l) => l.id === primeiro.loopId);
         const panel = loop && data.panels.find((p) => p.id === loop.panelId);
-        const overdueCalib = showCalibracao && d.proximaCalibracao && d.proximaCalibracao < todayISO();
         return (
-          <div key={d.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div key={grupo.key} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="mono-chip">{d.address}</span>
+              <span className="mono-chip">{grupo.baseAddress}</span>
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[loop?.name, panel?.name].filter(Boolean).join(' · ')}</span>
             </div>
-            {editingId === d.id ? (
+            {editingKey === grupo.key ? (
               <div className="flex gap-2 flex-wrap">
                 <input className={inputCls} value={etiquetaDraft} onChange={(e) => setEtiquetaDraft(e.target.value)}
                   placeholder="Etiqueta / localização" autoFocus />
-                <Button variant="primary" onClick={() => { onSubmitEtiqueta(d.id, etiquetaDraft); setEditingId(null); }}>Salvar</Button>
-                <Button variant="secondary" onClick={() => setEditingId(null)}>Cancelar</Button>
+                <Button variant="primary" onClick={() => {
+                  grupo.itens.forEach((d) => onSubmitEtiqueta(d.id, etiquetaDraft));
+                  setEditingKey(null);
+                }}>Salvar</Button>
+                <Button variant="secondary" onClick={() => setEditingKey(null)}>Cancelar</Button>
               </div>
             ) : (
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{d.etiquetaComplementar || d.description || 'Sem etiqueta'}</span>
-                {canEdit && <IconButton title="Editar etiqueta" onClick={() => { setEditingId(d.id); setEtiquetaDraft(d.etiquetaComplementar || d.description || ''); }}><Pencil size={14} /></IconButton>}
+                <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{grupo.etiqueta || 'Sem etiqueta'}</span>
+                {canEdit && <IconButton title="Editar etiqueta" onClick={() => { setEditingKey(grupo.key); setEtiquetaDraft(grupo.etiqueta); }}><Pencil size={14} /></IconButton>}
               </div>
             )}
-            {showCalibracao && (
-              calibForm?.deviceId === d.id ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Field label="Data de calibração"><input type="date" className={inputCls} value={calibForm.dataCalibracao}
-                    onChange={(e) => setCalibForm({ ...calibForm, dataCalibracao: e.target.value })} /></Field>
-                  <Field label="Próxima calibração"><input type="date" className={inputCls} value={calibForm.proximaCalibracao}
-                    onChange={(e) => setCalibForm({ ...calibForm, proximaCalibracao: e.target.value })} /></Field>
-                  <div className="col-span-2 flex gap-2">
-                    <Button variant="primary" onClick={() => { onSubmitCalibracao(d.id, { dataCalibracao: calibForm.dataCalibracao, proximaCalibracao: calibForm.proximaCalibracao }); setCalibForm(null); }}>
-                      Salvar calibração
-                    </Button>
-                    <Button variant="secondary" onClick={() => setCalibForm(null)}>Cancelar</Button>
+            <div className="flex flex-col gap-2 mt-1">
+              {grupo.itens.map((d) => {
+                const overdueCalib = showCalibracao && d.proximaCalibracao && d.proximaCalibracao < todayISO();
+                return (
+                  <div key={d.id} className="rounded-md p-2 flex flex-col gap-1.5" style={{ border: '1px solid var(--border)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {papelSinalLabel(d.papelSinal)} <span className="mono-chip" style={{ marginLeft: 4 }}>{d.address}</span>
+                      </span>
+                    </div>
+                    {showCalibracao && (
+                      calibForm?.deviceId === d.id ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <Field label="Data de calibração"><input type="date" className={inputCls} value={calibForm.dataCalibracao}
+                            onChange={(e) => setCalibForm({ ...calibForm, dataCalibracao: e.target.value })} /></Field>
+                          <Field label="Próxima calibração"><input type="date" className={inputCls} value={calibForm.proximaCalibracao}
+                            onChange={(e) => setCalibForm({ ...calibForm, proximaCalibracao: e.target.value })} /></Field>
+                          <div className="col-span-2 flex gap-2">
+                            <Button variant="primary" onClick={() => { onSubmitCalibracao(d.id, { dataCalibracao: calibForm.dataCalibracao, proximaCalibracao: calibForm.proximaCalibracao }); setCalibForm(null); }}>
+                              Salvar calibração
+                            </Button>
+                            <Button variant="secondary" onClick={() => setCalibForm(null)}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs flex items-center justify-between gap-2" style={{ color: overdueCalib ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
+                          <span>
+                            {d.dataCalibracao ? `Calibrado em ${formatDateBR(d.dataCalibracao)}` : 'Sem calibração registrada'}
+                            {d.proximaCalibracao && ` · Próxima: ${formatDateBR(d.proximaCalibracao)}`}
+                            {overdueCalib && ' · VENCIDA'}
+                          </span>
+                          {canEdit && <button type="button" className="text-xs underline flex-shrink-0"
+                            onClick={() => setCalibForm({ deviceId: d.id, dataCalibracao: d.dataCalibracao || '', proximaCalibracao: d.proximaCalibracao || '' })}>
+                            editar
+                          </button>}
+                        </div>
+                      )
+                    )}
+                    {canEdit && (
+                      <Button variant="secondary" onClick={() => onInspectDevice('devices', d, `${grupo.etiqueta || grupo.baseAddress} — ${papelSinalLabel(d.papelSinal)}`)}>
+                        <ClipboardCheck size={15} /> Registrar inspeção
+                      </Button>
+                    )}
                   </div>
-                </div>
-              ) : (
-                <div className="text-xs flex items-center justify-between gap-2" style={{ color: overdueCalib ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
-                  <span>
-                    {d.dataCalibracao ? `Calibrado em ${formatDateBR(d.dataCalibracao)}` : 'Sem calibração registrada'}
-                    {d.proximaCalibracao && ` · Próxima: ${formatDateBR(d.proximaCalibracao)}`}
-                    {overdueCalib && ' · VENCIDA'}
-                  </span>
-                  {canEdit && <button type="button" className="text-xs underline flex-shrink-0"
-                    onClick={() => setCalibForm({ deviceId: d.id, dataCalibracao: d.dataCalibracao || '', proximaCalibracao: d.proximaCalibracao || '' })}>
-                    editar
-                  </button>}
-                </div>
-              )
-            )}
-            {canEdit && (
-              <Button variant="secondary" onClick={() => onInspectDevice('devices', d, d.etiquetaComplementar || d.address)}>
-                <ClipboardCheck size={15} /> Registrar inspeção
-              </Button>
-            )}
+                );
+              })}
+            </div>
           </div>
         );
       })}
