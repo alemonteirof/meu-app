@@ -89,22 +89,52 @@ function FotosField({ fotos, setFotos }) {
   );
 }
 
+function complementarTipoLabel(categoriaFuncional) {
+  if (categoriaFuncional === 'detector_linear') return 'Detector Linear (Beam)';
+  if (categoriaFuncional === 'detector_chama') return 'Detector de Chama';
+  if (['detector_gas_hc', 'detector_gas_co2', 'detector_gas_outro'].includes(categoriaFuncional)) return 'Detector de Gás';
+  if (categoriaFuncional === 'termovelocimetrico') return 'Termovelocimétrico';
+  return null;
+}
+function papelSinalLabelAt(papel) {
+  if (papel === 'falha') return 'Falha';
+  if (papel === 'alarme') return 'Alarme';
+  return papel || 'Sinal';
+}
+
 function buildDeviceOptions(data) {
   const options = [];
   (data.devices || []).forEach((d) => {
     const loop = (data.loops || []).find((l) => l.id === d.loopId);
     const panel = loop && (data.panels || []).find((p) => p.id === loop.panelId);
+    const complementarTipo = complementarTipoLabel(d.categoriaFuncional);
+    if (complementarTipo) {
+      options.push({
+        id: d.id,
+        label: `${complementarTipo} — ${d.etiquetaComplementar || d.description || 'Sem etiqueta'} — ${papelSinalLabelAt(d.papelSinal)} (${d.address})`,
+        type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
+        panelId: null, panelName: 'Dispositivos Complementares',
+      });
+      return;
+    }
     options.push({
       id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
       type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
+      panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
     });
   });
   (data.nacs || []).forEach((n) => {
     const panel = (data.panels || []).find((p) => p.id === n.panelId);
-    options.push({ id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 'saida' });
+    options.push({
+      id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 'saida',
+      panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
+    });
   });
   (data.gasDetectors || []).forEach((g) => {
-    options.push({ id: g.id, label: `${g.name} (Detector de gás)`, type: 'gasDetector' });
+    options.push({
+      id: g.id, label: `${g.name} (Detector de gás)`, type: 'gasDetector',
+      panelId: null, panelName: 'Sem painel',
+    });
   });
   return options;
 }
@@ -172,9 +202,25 @@ function ItemResumo({ item }) {
     dos tipos realmente presentes na lista filtrada (então Entrada Duplo, por ex., já entra sozinho). */
 function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
   const [query, setQuery] = useState('');
+  const [expandedPanels, setExpandedPanels] = useState(() => {
+    const allPanelNames = [...new Set(options.map((o) => o.panelName))];
+    const initial = {};
+    allPanelNames.forEach((p) => { initial[p] = allPanelNames.length === 1; });
+    return initial;
+  });
   const q = query.trim().toLowerCase();
   const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
   const tiposPresentes = [...new Set(filtered.map((o) => o.type))];
+    const panelNamesRaw = [...new Set(filtered.map((o) => o.panelName))];
+  const panelNames = [
+    ...panelNamesRaw.filter((p) => p !== 'Dispositivos Complementares' && p !== 'Sem painel'),
+    ...panelNamesRaw.filter((p) => p === 'Sem painel'),
+    ...panelNamesRaw.filter((p) => p === 'Dispositivos Complementares'),
+  ];
+  const grupos = panelNames.map((panelName) => ({
+    panelName,
+    itens: filtered.filter((o) => o.panelName === panelName),
+  }));
 
   function tipoLabel(tipo) {
     if (tipo === 'gasDetector') return 'Detector de gás';
@@ -183,12 +229,19 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
   function addIds(ids) {
     setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
   }
+  function removeIds(ids) {
+    const idsSet = new Set(ids);
+    setSelectedIds((prev) => prev.filter((id) => !idsSet.has(id)));
+  }
   function toggle(id) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
   function clearFilteredSelection() {
     const filteredIds = new Set(filtered.map((o) => o.id));
     setSelectedIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+  }
+  function togglePanel(panelName) {
+    setExpandedPanels((prev) => ({ ...prev, [panelName]: !prev[panelName] }));
   }
 
   return (
@@ -212,16 +265,44 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
           <button type="button" onClick={clearFilteredSelection} style={smallBtnStyle}>Limpar seleção</button>
         )}
       </div>
-      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+      <div style={{ maxHeight: 400, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
         {filtered.length === 0 && (
           <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhum dispositivo encontrado.</div>
         )}
-        {filtered.map((o) => (
-          <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggle(o.id)} />
-            <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{o.label}</span>
-          </label>
-        ))}
+        {grupos.map((grupo) => {
+          const idsDoGrupo = grupo.itens.map((o) => o.id);
+          const selecionadosNoGrupo = idsDoGrupo.filter((id) => selectedIds.includes(id));
+          const todosSelecionados = idsDoGrupo.length > 0 && selecionadosNoGrupo.length === idsDoGrupo.length;
+          const algunsSelecionados = selecionadosNoGrupo.length > 0 && !todosSelecionados;
+          const aberto = !!expandedPanels[grupo.panelName];
+          return (
+            <div key={grupo.panelName}>
+              <div
+                onClick={() => togglePanel(grupo.panelName)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={todosSelecionados}
+                  ref={(el) => { if (el) el.indeterminate = algunsSelecionados; }}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => (todosSelecionados ? removeIds(idsDoGrupo) : addIds(idsDoGrupo))}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+                  {grupo.panelName} — {idsDoGrupo.length} dispositivo(s)
+                  {selecionadosNoGrupo.length > 0 ? ` (${selecionadosNoGrupo.length} selecionado(s))` : ''}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{aberto ? '▲' : '▼'}</span>
+              </div>
+              {aberto && grupo.itens.map((o) => (
+                <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px 7px 30px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggle(o.id)} />
+                  <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{o.label}</span>
+                </label>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </Field>
   );
