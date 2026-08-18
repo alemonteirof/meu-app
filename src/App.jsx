@@ -2337,6 +2337,25 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       }
     })();
   }, [client.id]);
+  
+    useEffect(() => {
+    const titulos = {
+      atendimentos: "Atendimentos",
+      dashboard: "Dashboard",
+      panels: "Sistemas de Detecção e Alarme",
+      panelDetail: "Sistemas de Detecção e Alarme",
+      complementares: "Dispositivos Complementares",
+      combate: "Sistemas de Combate",
+      report: "Inspeções",
+      indicador: "Indicador",
+      settings: "Configurações",
+    };
+
+    const nomeBase = "Centro de Controle de Manutenção";
+    const nomeTela = titulos[view] || "";
+
+    document.title = nomeTela ? `${nomeTela} - ${nomeBase}` : nomeBase;
+  }, [view]);
 
   async function persist(next) {
     try {
@@ -6883,6 +6902,7 @@ function Root() {
       setLoaded(true);
     })();
   }, []);
+  
 
   // Um usuário que não é dono da plataforma só enxerga os clientes aos quais foi vinculado (memberships)
   const visibleClients = React.useMemo(() => {
