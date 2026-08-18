@@ -234,7 +234,11 @@ export async function createInspecao({
   }
 
   await supabase.from('dispositivos')
-    .update({ ultima_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null })
+    .update({
+      ultima_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null,
+      resultado_teste: resultadoTeste || null, aparencia: aparencia || null,
+      comunicacao_local: comunicacaoLocal || null, comunicacao_rede: comunicacaoRede || null,
+    })
     .eq('id', dispositivoId);
 
   return { inspecao, atendimento };
@@ -372,16 +376,25 @@ export async function loadClientData(clienteId) {
     categoriaFuncional: d.categoria_funcional || '', papelSinal: d.papel_sinal || '', subEndereco: d.sub_endereco || '',
     etiquetaComplementar: d.etiqueta_complementar || '', dataCalibracao: d.data_calibracao || '', proximaCalibracao: d.proxima_calibracao || '',
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
+    operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
+    localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
+    lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
   }));
 
   const nacs = dispositivos.filter((d) => !d.laco_id && d.painel_id).map((d) => ({
     id: d.id, panelId: d.painel_id, name: d.etiqueta || '', description: d.descricao || '',
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
+    operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
+    localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
+    lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
   }));
 
   const gasDetectors = dispositivos.filter((d) => !d.laco_id && !d.painel_id).map((d) => ({
     id: d.id, name: d.etiqueta || '', modelo: d.modelo || '', location: d.descricao || '',
     type: d.categoria_funcional || '', nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
+    operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
+    localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
+    lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
   }));
 
   function categoriaFor(dispositivoId) {

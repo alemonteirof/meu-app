@@ -758,19 +758,19 @@ const INTERVAL_OPTIONS = [
 ];
 
 const OPERATIONAL_STATUS_OPTIONS = [
-  { value: 'operante', label: 'Operante' },
-  { value: 'nao_operante', label: 'Não operante' },
-  { value: 'em_manutencao', label: 'Em manutenção' },
+  { value: 'Aprovado', label: 'Aprovado' },
+  { value: 'Reprovado', label: 'Reprovado' },
+  { value: 'Não avaliado', label: 'Não avaliado' },
 ];
 const APPEARANCE_OPTIONS = [
-  { value: 'otimo', label: 'Ótimo' },
-  { value: 'bom', label: 'Bom' },
-  { value: 'aceitavel', label: 'Aceitável' },
-  { value: 'necessita_troca', label: 'Necessita troca' },
+  { value: 'Ótimo', label: 'Ótimo' },
+  { value: 'Bom', label: 'Bom' },
+  { value: 'Regular', label: 'Regular' },
+  { value: 'Precisa Trocar', label: 'Precisa Trocar' },
 ];
 const COMM_OPTIONS = [
-  { value: 'operante', label: 'Operante' },
-  { value: 'nao_operante', label: 'Não operante' },
+  { value: 'Conforme', label: 'Conforme' },
+  { value: 'Não conforme', label: 'Não conforme' },
 ];
 
 const INDICATOR_STATUS_OPTIONS = ['Resolvido', 'Andamento', 'Aguardando'];
@@ -786,7 +786,7 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'sdai', label: 'Sistemas de Detecção e Alarme', icon: Cpu },
   { key: 'combate', label: 'Sistemas de Combate', icon: Flame },
-  { key: 'report', label: 'Relatório', icon: ClipboardList },
+  { key: 'report', label: 'Inspeções', icon: ClipboardList },
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
@@ -883,20 +883,20 @@ function labelFor(options, value) {
 }
 
 function operStatusColor(v) {
-  if (v === 'operante') return 'var(--status-ok)';
-  if (v === 'em_manutencao') return 'var(--status-warn)';
-  if (v === 'nao_operante') return 'var(--status-danger)';
+  if (v === 'Aprovado') return 'var(--status-ok)';
+  if (v === 'Não avaliado') return 'var(--status-warn)';
+  if (v === 'Reprovado') return 'var(--status-danger)';
   return 'var(--status-none)';
 }
 function appearanceColor(v) {
-  if (v === 'otimo' || v === 'bom') return 'var(--status-ok)';
-  if (v === 'aceitavel') return 'var(--status-warn)';
-  if (v === 'necessita_troca') return 'var(--status-danger)';
+  if (v === 'Ótimo' || v === 'Bom') return 'var(--status-ok)';
+  if (v === 'Regular') return 'var(--status-warn)';
+  if (v === 'Precisa Trocar') return 'var(--status-danger)';
   return 'var(--status-none)';
 }
 function commColor(v) {
-  if (v === 'operante') return 'var(--status-ok)';
-  if (v === 'nao_operante') return 'var(--status-danger)';
+  if (v === 'Conforme') return 'var(--status-ok)';
+  if (v === 'Não conforme') return 'var(--status-danger)';
   return 'var(--status-none)';
 }
 
@@ -1322,7 +1322,7 @@ function TrackableCard({ icon: Icon, photo, address, title, meta, status, onInsp
               <Activity size={11} /> {indicadorCount} registro{indicadorCount === 1 ? '' : 's'} no Indicador
             </div>
           )}
-          {status && status.operationalStatus === 'nao_operante' && (
+          {status && status.operationalStatus === 'Reprovado' && (
             <div className="text-xs mt-1 font-medium flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
               <AlertTriangle size={11} /> Não operante
             </div>
@@ -2318,7 +2318,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   const [panelTab, setPanelTab] = useState('loops');
   const [expandedLoops, setExpandedLoops] = useState({});
   const [panelSearch, setPanelSearch] = useState('');
-  const [reportFilters, setReportFilters] = useState({ category: 'all', panelId: 'all', status: 'all', search: '' });
+  const [reportFilters, setReportFilters] = useState({ search: '', panelId: 'all' });
   const [settingsTab, setSettingsTab] = useState('cliente');
   const [indicadorTab, setIndicadorTab] = useState('sdai');
 
@@ -5671,60 +5671,356 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
 }
 
 
-function ReportView({ data, client, filters, setFilters }) {
-  const items = allTrackableItems(data);
-  const panelOptions = data.panels.map((p) => ({ value: p.id, label: p.name }));
-
-  const filtered = items.filter((it) => {
-    if (filters.category !== 'all' && it.category !== filters.category) return false;
-    if (filters.panelId !== 'all' && it.panelId !== filters.panelId) return false;
-    if (filters.status !== 'all' && it.operationalStatus !== filters.status) return false;
-    if (filters.search && !(`${it.title} ${it.meta} ${it.modelo || ''}`.toLowerCase().includes(filters.search.toLowerCase()))) return false;
-    return true;
+function buildSDAIReportItems(data) {
+  const enderecaveis = (data.devices || []).map((d) => {
+    const loop = data.loops.find((l) => l.id === d.loopId);
+    const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+    return {
+      id: d.id, address: d.address, tipo: DEVICE_TYPE_MAP[d.type]?.label || d.type,
+      localizacao: [panel?.name, loop?.name, d.description].filter(Boolean).join(' · ') || '—',
+      panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+      extra: [
+        { label: 'Status', value: d.operationalStatus, color: operStatusColor(d.operationalStatus) },
+        { label: 'Aparência', value: d.appearance, color: appearanceColor(d.appearance) },
+        { label: 'Com. local', value: d.localComm, color: commColor(d.localComm) },
+        { label: 'Com. rede', value: d.networkComm, color: commColor(d.networkComm) },
+        { label: 'Última insp.', value: formatDateBR(d.lastInspection) },
+        { label: 'Próxima insp.', value: formatDateBR(d.nextInspection) },
+      ],
+      search: `${d.address} ${DEVICE_TYPE_MAP[d.type]?.label || ''} ${d.description || ''} ${panel?.name || ''} ${loop?.name || ''}`.toLowerCase(),
+    };
   });
 
-  const summary = {
-    naoOperante: items.filter((i) => i.operationalStatus === 'nao_operante').length,
-    necessitaTroca: items.filter((i) => i.appearance === 'necessita_troca').length,
-    total: items.length,
+  const nacs = (data.nacs || []).map((n) => {
+    const panel = data.panels.find((p) => p.id === n.panelId);
+    return {
+      id: n.id, address: null, tipo: 'Circuito NAC',
+      localizacao: [panel?.name, n.name, n.description].filter(Boolean).join(' · ') || '—',
+      panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+      extra: [
+        { label: 'Status', value: n.operationalStatus, color: operStatusColor(n.operationalStatus) },
+        { label: 'Aparência', value: n.appearance, color: appearanceColor(n.appearance) },
+        { label: 'Com. local', value: n.localComm, color: commColor(n.localComm) },
+        { label: 'Com. rede', value: n.networkComm, color: commColor(n.networkComm) },
+        { label: 'Última insp.', value: formatDateBR(n.lastInspection) },
+        { label: 'Próxima insp.', value: formatDateBR(n.nextInspection) },
+      ],
+      search: `${n.name} ${n.description || ''} ${panel?.name || ''}`.toLowerCase(),
+    };
+  });
+
+  const complementaresTipo1 = (data.devices || []).filter((d) => complementarGroupFor(d.categoriaFuncional)).map((d) => {
+    const loop = data.loops.find((l) => l.id === d.loopId);
+    const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+    const catLabel = FUNCTIONAL_CATEGORY_MAP[d.categoriaFuncional] || d.categoriaFuncional;
+    return {
+      id: `${d.id}-comp`, address: d.address, tipo: catLabel,
+      localizacao: [panel?.name, loop?.name, d.etiquetaComplementar || d.description].filter(Boolean).join(' · ') || '—',
+      panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+      extra: [
+        { label: 'Status', value: d.operationalStatus, color: operStatusColor(d.operationalStatus) },
+        { label: 'Aparência', value: d.appearance, color: appearanceColor(d.appearance) },
+        { label: 'Com. local', value: d.localComm, color: commColor(d.localComm) },
+        { label: 'Com. rede', value: d.networkComm, color: commColor(d.networkComm) },
+        { label: 'Última insp.', value: formatDateBR(d.lastInspection) },
+        { label: 'Próxima insp.', value: formatDateBR(d.nextInspection) },
+      ],
+      search: `${d.address} ${catLabel} ${d.etiquetaComplementar || ''} ${panel?.name || ''}`.toLowerCase(),
+    };
+  });
+  const baterias = (data.bateriasPainel || []).map((b) => {
+    const panel = data.panels.find((p) => p.id === b.panelId);
+    return {
+      id: b.id, address: null, tipo: 'Bateria de Painel', localizacao: panel?.name || '—',
+      panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+      extra: [
+        { label: 'Status', value: b.dataInspecao ? 'Registrado' : '', color: b.dataInspecao ? 'var(--status-ok)' : 'var(--status-none)' },
+        { label: 'Aparência', value: '' }, { label: 'Com. local', value: '' }, { label: 'Com. rede', value: '' },
+        { label: 'Última insp.', value: formatDateBR(b.dataInspecao) },
+        { label: 'Próxima insp.', value: formatDateBR(b.proximaInspecao) },
+      ],
+      search: `bateria painel ${panel?.name || ''}`.toLowerCase(),
+    };
+  });
+  const fontes = (data.fontesAuxiliares || []).map((f) => ({
+    id: f.id, address: null, tipo: 'Fonte Auxiliar', localizacao: f.nome || '—',
+    panelId: null, groupLabel: 'Sem painel',
+    extra: [
+      { label: 'Status', value: f.dataInspecao ? 'Registrado' : '', color: f.dataInspecao ? 'var(--status-ok)' : 'var(--status-none)' },
+      { label: 'Aparência', value: '' }, { label: 'Com. local', value: '' }, { label: 'Com. rede', value: '' },
+      { label: 'Última insp.', value: formatDateBR(f.dataInspecao) },
+      { label: 'Próxima insp.', value: formatDateBR(f.proximaInspecao) },
+    ],
+    search: `fonte auxiliar ${f.nome || ''}`.toLowerCase(),
+  }));
+
+  return { enderecaveis, nacs, complementares: [...complementaresTipo1, ...baterias, ...fontes] };
+}
+
+function buildSPCIReportItems(data) {
+  const subitensPorConjunto = (tipos) => (data.combateSubitens || []).filter((s) => {
+    const conjunto = (data.combateConjuntos || []).find((c) => c.id === s.conjuntoId);
+    return conjunto && tipos.includes(conjunto.tipo);
+  }).map((s) => {
+    const conjunto = (data.combateConjuntos || []).find((c) => c.id === s.conjuntoId);
+    const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
+    const agenteLabel = conjunto.tipo === 'sistema_gas' ? (COMBATE_GAS_AGENTES.find((a) => a.value === conjunto.agente)?.label || '') : '';
+    const groupLabel = conjunto.tipo === 'sistema_gas' ? 'Sistema' : (COMBATE_CONJUNTO_TIPOS[conjunto.tipo]?.label || conjunto.tipo);
+    return {
+      id: s.id, address: null, tipo: info?.label || s.categoria,
+      localizacao: [agenteLabel, conjunto.etiqueta].filter(Boolean).join(' · '),
+      groupLabel,
+      extra: [
+        { label: 'Resultado', value: s.resultadoTeste, color: operStatusColor(s.resultadoTeste) },
+        { label: 'Última', value: formatDateBR(s.dataInspecao) },
+        { label: 'Próxima', value: formatDateBR(s.proximaInspecao) },
+      ],
+      search: `${info?.label || ''} ${conjunto.etiqueta} ${agenteLabel}`.toLowerCase(),
+    };
+  });
+
+  const agua = subitensPorConjunto(COMBATE_AGUA_TIPOS);
+  const gasSistema = subitensPorConjunto(['sistema_gas']);
+  const cilindros = (data.combateCilindros || []).map((c) => {
+    const bateria = (data.combateBaterias || []).find((b) => b.id === c.bateriaId);
+    const agenteLabel = COMBATE_GAS_AGENTES.find((a) => a.value === bateria?.agente)?.label || '';
+    const resultados = [c.resultadoValvula, c.resultadoManometro, c.resultadoCorpo, c.resultadoEtiqueta];
+    const resultado = resultados.includes('Reprovado') ? 'Reprovado' : (resultados.every((r) => r === 'Aprovado') ? 'Aprovado' : 'Não avaliado');
+    return {
+      id: c.id, address: null, tipo: 'Cilindro', localizacao: [agenteLabel, bateria?.etiqueta].filter(Boolean).join(' · '),
+      groupLabel: 'Bateria de Cilindros',
+      extra: [
+        { label: 'Resultado', value: resultado, color: operStatusColor(resultado) },
+        { label: 'Última', value: formatDateBR(c.dataInspecao) },
+        { label: 'Próxima', value: formatDateBR(c.proximaInspecao) },
+      ],
+      search: `cilindro ${c.identificacao || ''} ${agenteLabel} ${bateria?.etiqueta || ''}`.toLowerCase(),
+    };
+  });
+
+  const componentes = (data.combateComponentes || []).map((c) => {
+    const info = COMBATE_COMPONENTE_TIPO_MAP[c.tipo];
+    return {
+      id: c.id, address: null, tipo: info?.label || c.tipo, localizacao: c.etiqueta || '—',
+      groupLabel: info?.label || c.tipo,
+      extra: [
+        { label: 'Resultado', value: c.resultadoTeste, color: operStatusColor(c.resultadoTeste) },
+        { label: 'Última', value: formatDateBR(c.dataInspecao) },
+        { label: 'Próxima', value: formatDateBR(c.proximaInspecao) },
+      ],
+      search: `${info?.label || ''} ${c.etiqueta || ''}`.toLowerCase(),
+    };
+  });
+
+  return { agua, gas: [...gasSistema, ...cilindros], componentes };
+}
+
+function ItemsTableAndCards({ columnHeaders, items }) {
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  function toggle(id) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  return (
+    <>
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <th className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--text-secondary)' }}>Identificação</th>
+              <th className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--text-secondary)' }}>Localização</th>
+              {columnHeaders.map((h) => <th key={h} className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--text-secondary)' }}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td className="py-2 pr-3">
+                  <div className="flex items-center gap-2">
+                    {it.address && <span className="mono-chip">{it.address}</span>}
+                    <span style={{ color: 'var(--text-primary)' }}>{it.tipo}</span>
+                  </div>
+                </td>
+                <td className="py-2 pr-3" style={{ color: 'var(--text-secondary)' }}>{it.localizacao}</td>
+                {it.extra.map((ex, i) => (
+                  <td key={i} className="py-2 pr-3" style={{ color: ex.color || 'var(--text-secondary)' }}>{ex.value || '—'}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="sm:hidden flex flex-col gap-2">
+        {items.map((it) => {
+          const expanded = expandedIds.has(it.id);
+          const mainExtra = it.extra[0];
+          return (
+            <div key={it.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface-raised)' }}>
+              <button type="button" onClick={() => toggle(it.id)} className="w-full flex items-center justify-between gap-2 p-2.5" style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span style={{ color: 'var(--text-secondary)', flexShrink: 0, fontSize: 12 }}>{expanded ? '▾' : '▸'}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{it.address ? `${it.address} · ` : ''}{it.tipo}</div>
+                    <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{it.localizacao}</div>
+                  </div>
+                </div>
+                {mainExtra && (
+                  <span className="text-xs px-2 py-0.5 rounded-md flex-shrink-0" style={{ border: `1px solid ${mainExtra.color || 'var(--border)'}`, color: mainExtra.color || 'var(--text-secondary)' }}>
+                    {mainExtra.value || '—'}
+                  </span>
+                )}
+              </button>
+              {expanded && (
+                <div className="px-2.5 pb-2.5 grid grid-cols-2 gap-1 text-xs" style={{ borderTop: '1px solid var(--border)', paddingTop: 8, color: 'var(--text-secondary)' }}>
+                  {it.extra.slice(1).map((ex, i) => <div key={i}>{ex.label}: <strong style={{ color: 'var(--text-primary)' }}>{ex.value || '—'}</strong></div>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** Grupo colapsável (por painel no SDAI, por tipo no SPCI) — some da tela quando
+    fechado, mas sempre aparece na impressão (via CSS, não deixa de renderizar). */
+function ReportGroup({ groupLabel, items, columnHeaders, defaultOpen }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 p-2.5 no-print"
+        style={{ background: 'var(--surface-raised)', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+        <span className="text-xs font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <span style={{ color: 'var(--text-secondary)' }}>{open ? '▾' : '▸'}</span> {groupLabel}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{items.length} item(ns)</span>
+      </button>
+      <p className="hidden text-xs font-medium p-2.5" style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+        {groupLabel} — {items.length} item(ns)
+      </p>
+      <div className={`report-group-body p-2.5 ${open ? '' : 'collapsed'}`}>
+        <ItemsTableAndCards columnHeaders={columnHeaders} items={items} />
+      </div>
+    </div>
+  );
+}
+
+function ReportSection({ title, columnHeaders, items, groupBy }) {
+  if (items.length === 0) return null;
+
+  if (!groupBy) {
+    return (
+      <div className="mb-7">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{title}</p>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{items.length} item(ns)</p>
+        </div>
+        <ItemsTableAndCards columnHeaders={columnHeaders} items={items} />
+      </div>
+    );
+  }
+
+  const groups = new Map();
+  items.forEach((it) => {
+    const key = it.groupLabel || 'Outros';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  });
+  const soUmGrupo = groups.size <= 1;
+
+  return (
+    <div className="mb-7">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{title}</p>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{items.length} item(ns)</p>
+      </div>
+      {[...groups.entries()].map(([groupLabel, groupItems]) => (
+        <ReportGroup key={groupLabel} groupLabel={groupLabel} items={groupItems} columnHeaders={columnHeaders} defaultOpen={soUmGrupo} />
+      ))}
+    </div>
+  );
+}
+
+function ReportView({ data, client, filters, setFilters }) {
+  const [reportTab, setReportTab] = useState('sdai');
+  const sdaiSets = buildSDAIReportItems(data);
+  const spciSets = buildSPCIReportItems(data);
+  const q = (filters.search || '').trim().toLowerCase();
+  const applySearch = (items) => (q ? items.filter((it) => it.search.includes(q)) : items);
+  const applyPanel = (items) => (filters.panelId !== 'all' ? items.filter((it) => it.panelId === filters.panelId) : items);
+
+  const sdaiFiltered = {
+    enderecaveis: applyPanel(applySearch(sdaiSets.enderecaveis)),
+    nacs: applyPanel(applySearch(sdaiSets.nacs)),
+    complementares: applyPanel(applySearch(sdaiSets.complementares)),
   };
+  const spciFiltered = {
+    agua: applySearch(spciSets.agua), gas: applySearch(spciSets.gas), componentes: applySearch(spciSets.componentes),
+  };
+
+  const sdaiTotal = sdaiSets.enderecaveis.length + sdaiSets.nacs.length + sdaiSets.complementares.length;
+  const sdaiTodos = [...sdaiSets.enderecaveis, ...sdaiSets.nacs, ...sdaiSets.complementares];
+  const sdaiNaoOperante = sdaiTodos.filter((it) => it.extra[0]?.value === 'Reprovado').length;
+  const sdaiNecessitaTroca = sdaiTodos.filter((it) => it.extra[1]?.value === 'Precisa Trocar').length;
+  const corretivasPendentesIds = new Set(
+    (data.indicador || [])
+      .filter((r) => r.tipo === 'manutencao' && r.falha && r.falha !== 'Realizado sem apontamentos' && r.status !== 'Resolvido')
+      .map((r) => r.deviceId).filter(Boolean)
+  );
+
+  const spciTotal = spciSets.agua.length + spciSets.gas.length + spciSets.componentes.length;
+  const spciTodos = [...spciSets.agua, ...spciSets.gas, ...spciSets.componentes];
+  const spciReprovados = spciTodos.filter((it) => it.extra[0]?.value === 'Reprovado').length;
+  const spciSemInspecao = spciTodos.filter((it) => !it.extra[0]?.value).length;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
         <div>
-          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Relatório de Manutenções Preventivas</h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Status de verificação de todos os dispositivos, circuitos e equipamentos.</p>
+          <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Relatório de Inspeções</h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Status de Inspeções de todos dispositivos auditáveis.</p>
         </div>
         <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / Salvar PDF</Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
-        <StatCard label="Total monitorado" value={summary.total} color="var(--text-secondary)" icon={ClipboardList} />
-        <StatCard label="Não operantes" value={summary.naoOperante} color="var(--status-danger)" icon={AlertTriangle} />
-        <StatCard label="Necessitam troca" value={summary.necessitaTroca} color="var(--status-warn)" icon={AlertTriangle} />
-        <StatCard label="Itens exibidos" value={filtered.length} color="var(--text-secondary)" icon={Search} />
+      <div className="flex gap-1 border-b overflow-x-auto no-print" style={{ borderColor: 'var(--border)' }}>
+        <button className="nav-tab" data-active={reportTab === 'sdai'} onClick={() => setReportTab('sdai')}>SDAI</button>
+        <button className="nav-tab" data-active={reportTab === 'spci'} onClick={() => setReportTab('spci')}>SPCI (Sistemas de Combate)</button>
       </div>
 
-      <div className="flex flex-wrap gap-2 no-print">
-        <select className={inputCls} style={{ width: 'auto' }} value={filters.category} onChange={(e) => setFilters({ ...filters, category: e.target.value })}>
-          <option value="all">Todas as categorias</option>
-          <option value="devices">Dispositivos endereçáveis</option>
-          <option value="nacs">Circuitos (NAC)</option>
-          <option value="pumpDevices">Casa de Bombas</option>
-          <option value="gasDetectors">Detectores de gás</option>
-        </select>
-        {data.panels.length > 0 && (
+      {reportTab === 'sdai' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
+          <StatCard label="Total monitorado" value={sdaiTotal} color="var(--text-secondary)" icon={ClipboardList} />
+          <StatCard label="Não operantes" value={sdaiNaoOperante} color="var(--status-danger)" icon={AlertTriangle} />
+          <StatCard label="Necessitam troca" value={sdaiNecessitaTroca} color="var(--status-warn)" icon={AlertTriangle} />
+          <StatCard label="Com corretiva pendente" value={corretivasPendentesIds.size} color="var(--text-secondary)" icon={Activity} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
+          <StatCard label="Total monitorado" value={spciTotal} color="var(--text-secondary)" icon={ClipboardList} />
+          <StatCard label="Reprovados" value={spciReprovados} color="var(--status-danger)" icon={AlertTriangle} />
+          <StatCard label="Sem inspeção registrada" value={spciSemInspecao} color="var(--status-warn)" icon={Clock} />
+          <StatCard label="Itens exibidos" value={reportTab === 'sdai' ? sdaiTotal : spciTodos.length} color="var(--text-secondary)" icon={Search} />
+        </div>
+      )}
+
+      <div className="flex gap-2 flex-wrap no-print">
+        <div className="relative flex-1" style={{ minWidth: 220 }}>
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+          <input className={`${inputCls} pl-9`} placeholder="Buscar por identificação, localização ou tipo..."
+            value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+        </div>
+        {reportTab === 'sdai' && data.panels.length > 0 && (
           <select className={inputCls} style={{ width: 'auto' }} value={filters.panelId} onChange={(e) => setFilters({ ...filters, panelId: e.target.value })}>
             <option value="all">Todos os painéis</option>
-            {panelOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         )}
-        <select className={inputCls} style={{ width: 'auto' }} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-          <option value="all">Todos os status</option>
-          {OPERATIONAL_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <input className={inputCls} style={{ width: 'auto', flex: '1 1 200px' }} placeholder="Buscar..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
       </div>
 
       <div className="print-area rounded-xl p-4 sm:p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -5739,45 +6035,31 @@ function ReportView({ data, client, filters, setFilters }) {
             </div>
           </div>
           <div className="text-right">
-            <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Relatório de Manutenções Preventivas</p>
+            <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Relatório de Inspeções — {reportTab === 'sdai' ? 'SDAI' : 'SPCI (Sistemas de Combate)'}</p>
             <p className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>Gerado em {formatDateBR(todayISO())}</p>
           </div>
         </div>
 
-        {filtered.length === 0 ? (
-          <p className="text-sm py-8 text-center" style={{ color: 'var(--text-secondary)' }}>Nenhum item corresponde aos filtros selecionados.</p>
+        {reportTab === 'sdai' ? (
+          sdaiTotal === 0 ? (
+            <p className="text-sm py-8 text-center" style={{ color: 'var(--text-secondary)' }}>Nenhum item cadastrado ainda.</p>
+          ) : (
+            <>
+              <ReportSection title="Dispositivos Endereçáveis" groupBy columnHeaders={['Status', 'Aparência', 'Com. local', 'Com. rede', 'Última insp.', 'Próxima insp.']} items={sdaiFiltered.enderecaveis} />
+              <ReportSection title="Circuitos de Saída (NAC)" groupBy columnHeaders={['Status', 'Aparência', 'Com. local', 'Com. rede', 'Última insp.', 'Próxima insp.']} items={sdaiFiltered.nacs} />
+              <ReportSection title="Dispositivos Complementares" groupBy columnHeaders={['Status', 'Aparência', 'Com. local', 'Com. rede', 'Última insp.', 'Próxima insp.']} items={sdaiFiltered.complementares} />
+            </>
+          )
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Identificação', 'Localização', 'Status', 'Aparência', 'Com. local', 'Com. rede', 'Última insp.', 'Próxima insp.'].map((h) => (
-                    <th key={h} className="text-left py-2 pr-3 font-medium" style={{ color: 'var(--text-secondary)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((it) => (
-                  <tr key={`${it.category}-${it.id}`} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        {it.photo && <img src={it.photo} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />}
-                        {it.address && <span className="mono-chip">{it.address}</span>}
-                        <span style={{ color: 'var(--text-primary)' }}>{it.title}{it.modelo ? ` · ${it.modelo}` : ''}</span>
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3" style={{ color: 'var(--text-secondary)' }}>{it.meta}</td>
-                    <td className="py-2 pr-3" style={{ color: operStatusColor(it.operationalStatus) }}>{labelFor(OPERATIONAL_STATUS_OPTIONS, it.operationalStatus)}</td>
-                    <td className="py-2 pr-3" style={{ color: appearanceColor(it.appearance) }}>{labelFor(APPEARANCE_OPTIONS, it.appearance)}</td>
-                    <td className="py-2 pr-3" style={{ color: commColor(it.localComm) }}>{labelFor(COMM_OPTIONS, it.localComm)}</td>
-                    <td className="py-2 pr-3" style={{ color: commColor(it.networkComm) }}>{labelFor(COMM_OPTIONS, it.networkComm)}</td>
-                    <td className="py-2 pr-3 mono" style={{ color: 'var(--text-secondary)' }}>{formatDateBR(it.lastInspection)}</td>
-                    <td className="py-2 pr-3 mono" style={{ color: 'var(--text-secondary)' }}>{formatDateBR(it.nextInspection)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          spciTotal === 0 ? (
+            <p className="text-sm py-8 text-center" style={{ color: 'var(--text-secondary)' }}>Nenhum item cadastrado ainda.</p>
+          ) : (
+            <>
+              <ReportSection title="Água" groupBy columnHeaders={['Resultado', 'Última', 'Próxima']} items={spciFiltered.agua} />
+              <ReportSection title="Agentes Gasosos" groupBy columnHeaders={['Resultado', 'Última', 'Próxima']} items={spciFiltered.gas} />
+              <ReportSection title="Componentes" groupBy columnHeaders={['Resultado', 'Última', 'Próxima']} items={spciFiltered.componentes} />
+            </>
+          )
         )}
       </div>
     </div>
@@ -6492,6 +6774,7 @@ function PageStyles() {
         .btn-icon { width: 44px; height: 44px; }
         .grid-2-mobile-safe { grid-template-columns: 1fr; }
       }
+      .report-group-body.collapsed { display: none; }
       .nav-tab {
         font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 8px 8px 0 0;
         color: var(--text-secondary); white-space: nowrap; display: inline-flex; align-items: center;
@@ -6572,6 +6855,7 @@ function PageStyles() {
         .rvt-item-card { break-inside: avoid; page-break-inside: avoid; }
         .rvt-footer-band { break-inside: avoid; page-break-inside: avoid; break-before: avoid; }
         .no-print { display: none !important; }
+        .report-group-body.collapsed { display: block !important; }
       }
     `}</style>
   );
