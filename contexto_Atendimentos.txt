@@ -1,0 +1,355 @@
+﻿
+  src\AtendimentosNovo.jsx:140:}
+  src\AtendimentosNovo.jsx:141:
+  src\AtendimentosNovo.jsx:142:/** Lista unificada de itens de Combate a Incêndio pra vistoria em massa: sub-itens dos
+  src\AtendimentosNovo.jsx:143:    Conjuntos (Casa de Bombas/Hidrante/VGA/LGE/Sistema), Componentes (fluxostato etc.) e
+  src\AtendimentosNovo.jsx:144:    Cilindros — cada um carrega o rótulo de categoria e o "grupo" (pra marcar por 
+tipo). */
+  src\AtendimentosNovo.jsx:145:function buildCombateOptions(data) {
+  src\AtendimentosNovo.jsx:146:  const options = [];
+  src\AtendimentosNovo.jsx:147:  (data.combateSubitens || []).forEach((s) => {
+  src\AtendimentosNovo.jsx:148:    const conjunto = (data.combateConjuntos || []).find((c) => c.id === s.conjuntoId);
+  src\AtendimentosNovo.jsx:149:    if (!conjunto) return;
+  src\AtendimentosNovo.jsx:150:    const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
+  src\AtendimentosNovo.jsx:151:    const tipoLabel = COMBATE_CONJUNTO_TIPOS[conjunto.tipo]?.label || conjunto.tipo;
+  src\AtendimentosNovo.jsx:152:    options.push({
+  src\AtendimentosNovo.jsx:153:      id: s.id, kind: 'subitem', grupo: tipoLabel,
+  src\AtendimentosNovo.jsx:154:      label: `${info?.label || s.categoria} — ${conjunto.etiqueta} (${tipoLabel})`,
+  src\AtendimentosNovo.jsx:155:      categoriaLabel: info?.label || s.categoria, contextoLabel: conjunto.etiqueta,
+  src\AtendimentosNovo.jsx:156:    });
+  src\AtendimentosNovo.jsx:157:  });
+  src\AtendimentosNovo.jsx:158:  (data.combateComponentes || []).forEach((c) => {
+  src\AtendimentosNovo.jsx:159:    const info = COMBATE_COMPONENTE_TIPO_MAP[c.tipo];
+  src\AtendimentosNovo.jsx:160:    options.push({
+  src\AtendimentosNovo.jsx:161:      id: c.id, kind: 'componente', grupo: info?.label || c.tipo,
+  src\AtendimentosNovo.jsx:162:      label: `${c.etiqueta || info?.label} (${info?.label})`,
+  src\AtendimentosNovo.jsx:163:      categoriaLabel: info?.label || c.tipo, contextoLabel: c.etiqueta,
+  src\AtendimentosNovo.jsx:164:    });
+  src\AtendimentosNovo.jsx:165:  });
+  src\AtendimentosNovo.jsx:166:  (data.combateCilindros || []).forEach((c) => {
+  src\AtendimentosNovo.jsx:167:    const bateria = (data.combateBaterias || []).find((b) => b.id === c.bateriaId);
+  src\AtendimentosNovo.jsx:168:    options.push({
+  src\AtendimentosNovo.jsx:169:      id: c.id, kind: 'cilindro', grupo: 'Cilindro',
+  src\AtendimentosNovo.jsx:170:      label: `Cilindro ${c.identificacao}${bateria ? ' — ' + bateria.etiqueta : ''}`,
+  src\AtendimentosNovo.jsx:171:      categoriaLabel: 'Cilindro (checklist completo)', contextoLabel: bateria?.etiqueta 
+|| '',
+  src\AtendimentosNovo.jsx:172:    });
+  src\AtendimentosNovo.jsx:173:  });
+  src\AtendimentosNovo.jsx:174:  return options;
+  src\AtendimentosNovo.jsx:175:}
+  src\AtendimentosNovo.jsx:176:
+  src\AtendimentosNovo.jsx:177:function ItemResumo({ item }) {
+  src\AtendimentosNovo.jsx:178:  const nFotos = (item.fotos || []).length;
+  src\AtendimentosNovo.jsx:179:  if (item.tipo === 'outro') {
+  src\AtendimentosNovo.jsx:180:    return <div style={{ fontSize: 13 }}><strong>Outro</strong> · 
+{item.descricao}</div>;
+  src\AtendimentosNovo.jsx:181:  }
+  src\AtendimentosNovo.jsx:182:  if (item.tipo === 'atendimento') {
+  src\AtendimentosNovo.jsx:183:    return (
+  src\AtendimentosNovo.jsx:184:      <div style={{ fontSize: 13 }}>
+  src\AtendimentosNovo.jsx:185:        <strong style={{ color: item.falha ? 'var(--status-danger)' : 
+'var(--status-ok)' }}>
+  src\AtendimentosNovo.jsx:186:          {item.falha ? 'Corretiva' : 'Preventiva'}
+  src\AtendimentosNovo.jsx:187:        </strong> · {item.status} · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} 
+foto(s)`}
+  src\AtendimentosNovo.jsx:188:        {item.falha && <div style={{ color: 'var(--text-secondary)' 
+}}>{item.falha}</div>}
+  src\AtendimentosNovo.jsx:189:      </div>
+  src\AtendimentosNovo.jsx:190:    );
+  src\AtendimentosNovo.jsx:191:  }
+  src\AtendimentosNovo.jsx:192:  return (
+  src\AtendimentosNovo.jsx:193:    <div style={{ fontSize: 13 }}>
+  src\AtendimentosNovo.jsx:194:      <strong>Inspeção</strong> · {item.resultado} · {item.dispositivoLabel}{nFotos > 0 
+&& ` · ${nFotos} foto(s)`}
+  src\AtendimentosNovo.jsx:195:      {item.criouCorretiva && <div style={{ color: 'var(--status-danger)' }}>↳ gerou 
+corretiva automática</div>}
+  src\AtendimentosNovo.jsx:196:    </div>
+  src\AtendimentosNovo.jsx:197:  );
+  src\AtendimentosNovo.jsx:198:}
+  src\AtendimentosNovo.jsx:199:
+> src\AtendimentosNovo.jsx:200:/** Buscador + seleção múltipla de dispositivos — mesmo padrão de "Marcar todos" por 
+tipo
+  src\AtendimentosNovo.jsx:201:    já usado na tela de Painéis (Laço inteiro / por tipo), calculado dinamicamente a 
+partir
+  src\AtendimentosNovo.jsx:202:    dos tipos realmente presentes na lista filtrada (então Entrada Duplo, por ex., já 
+entra sozinho). */
+  src\AtendimentosNovo.jsx:203:function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
+  src\AtendimentosNovo.jsx:204:  const [query, setQuery] = useState('');
+  src\AtendimentosNovo.jsx:205:  const [expandedPanels, setExpandedPanels] = useState(() => {
+  src\AtendimentosNovo.jsx:206:    const allPanelNames = [...new Set(options.map((o) => o.panelName))];
+  src\AtendimentosNovo.jsx:207:    const initial = {};
+  src\AtendimentosNovo.jsx:208:    allPanelNames.forEach((p) => { initial[p] = allPanelNames.length === 1; });
+  src\AtendimentosNovo.jsx:209:    return initial;
+  src\AtendimentosNovo.jsx:210:  });
+  src\AtendimentosNovo.jsx:211:  const q = query.trim().toLowerCase();
+  src\AtendimentosNovo.jsx:212:  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : 
+options;
+  src\AtendimentosNovo.jsx:213:  const tiposPresentes = [...new Set(filtered.map((o) => o.type))];
+  src\AtendimentosNovo.jsx:214:    const panelNamesRaw = [...new Set(filtered.map((o) => o.panelName))];
+  src\AtendimentosNovo.jsx:215:  const panelNames = [
+  src\AtendimentosNovo.jsx:216:    ...panelNamesRaw.filter((p) => p !== 'Dispositivos Complementares' && p !== 'Sem 
+painel'),
+  src\AtendimentosNovo.jsx:217:    ...panelNamesRaw.filter((p) => p === 'Sem painel'),
+  src\AtendimentosNovo.jsx:218:    ...panelNamesRaw.filter((p) => p === 'Dispositivos Complementares'),
+  src\AtendimentosNovo.jsx:219:  ];
+  src\AtendimentosNovo.jsx:220:  const grupos = panelNames.map((panelName) => ({
+  src\AtendimentosNovo.jsx:221:    panelName,
+  src\AtendimentosNovo.jsx:222:    itens: filtered.filter((o) => o.panelName === panelName),
+  src\AtendimentosNovo.jsx:223:  }));
+  src\AtendimentosNovo.jsx:224:
+  src\AtendimentosNovo.jsx:225:  function tipoLabel(tipo) {
+  src\AtendimentosNovo.jsx:226:    if (tipo === 'gasDetector') return 'Detector de gás';
+  src\AtendimentosNovo.jsx:227:    return DEVICE_TYPE_LABELS[tipo] || tipo;
+  src\AtendimentosNovo.jsx:228:  }
+  src\AtendimentosNovo.jsx:229:  function addIds(ids) {
+  src\AtendimentosNovo.jsx:230:    setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
+  src\AtendimentosNovo.jsx:231:  }
+  src\AtendimentosNovo.jsx:232:  function removeIds(ids) {
+  src\AtendimentosNovo.jsx:233:    const idsSet = new Set(ids);
+  src\AtendimentosNovo.jsx:234:    setSelectedIds((prev) => prev.filter((id) => !idsSet.has(id)));
+  src\AtendimentosNovo.jsx:235:  }
+  src\AtendimentosNovo.jsx:236:  function toggle(id) {
+  src\AtendimentosNovo.jsx:237:    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : 
+[...prev, id]));
+  src\AtendimentosNovo.jsx:238:  }
+  src\AtendimentosNovo.jsx:239:  function clearFilteredSelection() {
+  src\AtendimentosNovo.jsx:240:    const filteredIds = new Set(filtered.map((o) => o.id));
+  src\AtendimentosNovo.jsx:241:    setSelectedIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+  src\AtendimentosNovo.jsx:242:  }
+  src\AtendimentosNovo.jsx:243:  function togglePanel(panelName) {
+  src\AtendimentosNovo.jsx:244:    setExpandedPanels((prev) => ({ ...prev, [panelName]: !prev[panelName] }));
+  src\AtendimentosNovo.jsx:245:  }
+  src\AtendimentosNovo.jsx:246:
+  src\AtendimentosNovo.jsx:247:  return (
+  src\AtendimentosNovo.jsx:248:    <Field label={`Dispositivo(s) — ${selectedIds.length} selecionado(s)`}>
+  src\AtendimentosNovo.jsx:249:      <input style={inputStyle} placeholder="Buscar por etiqueta, endereço, painel..." 
+value={query} onChange={(e) => setQuery(e.target.value)} />
+  src\AtendimentosNovo.jsx:250:      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, 
+margin: '8px 0' }}>
+> src\AtendimentosNovo.jsx:251:        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Marcar 
+todos:</span>
+  src\AtendimentosNovo.jsx:252:        <button type="button" onClick={() => addIds(filtered.map((o) => o.id))}
+  src\AtendimentosNovo.jsx:253:          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #8B2F2F', 
+color: '#8B2F2F', background: 'transparent', fontSize: 12, cursor: 'pointer' }}>
+  src\AtendimentosNovo.jsx:254:          Todos ({filtered.length})
+  src\AtendimentosNovo.jsx:255:        </button>
+  src\AtendimentosNovo.jsx:256:        {tiposPresentes.map((tipo) => {
+  src\AtendimentosNovo.jsx:257:          const idsDoTipo = filtered.filter((o) => o.type === tipo).map((o) => o.id);
+  src\AtendimentosNovo.jsx:258:          return (
+  src\AtendimentosNovo.jsx:259:            <button key={tipo || 'sem-tipo'} type="button" onClick={() => 
+addIds(idsDoTipo)} style={smallBtnStyle}>
+  src\AtendimentosNovo.jsx:260:              {tipoLabel(tipo)} ({idsDoTipo.length})
+  src\AtendimentosNovo.jsx:261:            </button>
+  src\AtendimentosNovo.jsx:262:          );
+  src\AtendimentosNovo.jsx:263:        })}
+  src\AtendimentosNovo.jsx:264:        {selectedIds.length > 0 && (
+  src\AtendimentosNovo.jsx:265:          <button type="button" onClick={clearFilteredSelection} 
+style={smallBtnStyle}>Limpar seleção</button>
+  src\AtendimentosNovo.jsx:266:        )}
+  src\AtendimentosNovo.jsx:267:      </div>
+  src\AtendimentosNovo.jsx:268:      <div style={{ maxHeight: 400, overflowY: 'auto', border: '1px solid 
+var(--border)', borderRadius: 8 }}>
+  src\AtendimentosNovo.jsx:269:        {filtered.length === 0 && (
+  src\AtendimentosNovo.jsx:270:          <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' 
+}}>Nenhum dispositivo encontrado.</div>
+  src\AtendimentosNovo.jsx:271:        )}
+  src\AtendimentosNovo.jsx:272:        {grupos.map((grupo) => {
+  src\AtendimentosNovo.jsx:273:          const idsDoGrupo = grupo.itens.map((o) => o.id);
+  src\AtendimentosNovo.jsx:274:          const selecionadosNoGrupo = idsDoGrupo.filter((id) => 
+selectedIds.includes(id));
+  src\AtendimentosNovo.jsx:275:          const todosSelecionados = idsDoGrupo.length > 0 && selecionadosNoGrupo.length 
+=== idsDoGrupo.length;
+  src\AtendimentosNovo.jsx:276:          const algunsSelecionados = selecionadosNoGrupo.length > 0 && 
+!todosSelecionados;
+  src\AtendimentosNovo.jsx:277:          const aberto = !!expandedPanels[grupo.panelName];
+  src\AtendimentosNovo.jsx:278:          return (
+  src\AtendimentosNovo.jsx:279:            <div key={grupo.panelName}>
+  src\AtendimentosNovo.jsx:280:              <div
+  src\AtendimentosNovo.jsx:281:                onClick={() => togglePanel(grupo.panelName)}
+  src\AtendimentosNovo.jsx:282:                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 
+10px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+  src\AtendimentosNovo.jsx:283:              >
+  src\AtendimentosNovo.jsx:284:                <input
+  src\AtendimentosNovo.jsx:285:                  type="checkbox"
+  src\AtendimentosNovo.jsx:286:                  checked={todosSelecionados}
+  src\AtendimentosNovo.jsx:287:                  ref={(el) => { if (el) el.indeterminate = algunsSelecionados; }}
+  src\AtendimentosNovo.jsx:288:                  onClick={(e) => e.stopPropagation()}
+  src\AtendimentosNovo.jsx:289:                  onChange={() => (todosSelecionados ? removeIds(idsDoGrupo) : 
+addIds(idsDoGrupo))}
+  src\AtendimentosNovo.jsx:290:                />
+  src\AtendimentosNovo.jsx:291:                <span style={{ fontSize: 13, fontWeight: 600, color: 
+'var(--text-primary)', flex: 1 }}>
+  src\AtendimentosNovo.jsx:292:                  {grupo.panelName} — {idsDoGrupo.length} dispositivo(s)
+  src\AtendimentosNovo.jsx:293:                  {selecionadosNoGrupo.length > 0 ? ` (${selecionadosNoGrupo.length} 
+selecionado(s))` : ''}
+  src\AtendimentosNovo.jsx:294:                </span>
+  src\AtendimentosNovo.jsx:295:                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{aberto 
+? '▲' : '▼'}</span>
+  src\AtendimentosNovo.jsx:296:              </div>
+  src\AtendimentosNovo.jsx:297:              {aberto && grupo.itens.map((o) => (
+  src\AtendimentosNovo.jsx:298:                <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 
+8, padding: '7px 10px 7px 30px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+  src\AtendimentosNovo.jsx:299:                  <input type="checkbox" checked={selectedIds.includes(o.id)} 
+onChange={() => toggle(o.id)} />
+  src\AtendimentosNovo.jsx:300:                  <span style={{ fontSize: 13, color: 'var(--text-primary)' 
+}}>{o.label}</span>
+  src\AtendimentosNovo.jsx:301:                </label>
+  src\AtendimentosNovo.jsx:302:              ))}
+  src\AtendimentosNovo.jsx:303:            </div>
+  src\AtendimentosNovo.jsx:304:          );
+  src\AtendimentosNovo.jsx:305:        })}
+  src\AtendimentosNovo.jsx:306:      </div>
+  src\AtendimentosNovo.jsx:307:    </Field>
+  src\AtendimentosNovo.jsx:308:  );
+  src\AtendimentosNovo.jsx:309:}
+  src\AtendimentosNovo.jsx:310:
+  src\AtendimentosNovo.jsx:311:/** Mesmo padrão do DeviceMultiSelect, só que pra itens de Combate a Incêndio — agrupa
+  src\AtendimentosNovo.jsx:312:    por "grupo" (Casa de Bombas, Hidrante, Fluxostato, Cilindro etc.) já calculado. */
+  src\AtendimentosNovo.jsx:313:function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
+  src\AtendimentosNovo.jsx:314:  const [query, setQuery] = useState('');
+  src\AtendimentosNovo.jsx:315:  const q = query.trim().toLowerCase();
+  src\AtendimentosNovo.jsx:316:  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : 
+options;
+  src\AtendimentosNovo.jsx:317:  const gruposPresentes = [...new Set(filtered.map((o) => o.grupo))];
+  src\AtendimentosNovo.jsx:318:
+  src\AtendimentosNovo.jsx:319:  function addIds(ids) {
+  src\AtendimentosNovo.jsx:320:    setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
+  src\AtendimentosNovo.jsx:321:  }
+  src\AtendimentosNovo.jsx:322:  function toggle(id) {
+  src\AtendimentosNovo.jsx:323:    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : 
+[...prev, id]));
+  src\AtendimentosNovo.jsx:324:  }
+  src\AtendimentosNovo.jsx:325:  function clearFilteredSelection() {
+  src\AtendimentosNovo.jsx:326:    const filteredIds = new Set(filtered.map((o) => o.id));
+  src\AtendimentosNovo.jsx:327:    setSelectedIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+  src\AtendimentosNovo.jsx:328:  }
+  src\AtendimentosNovo.jsx:329:
+  src\AtendimentosNovo.jsx:330:  return (
+  src\AtendimentosNovo.jsx:331:    <Field label={`Item(ns) de Combate — ${selectedIds.length} selecionado(s)`}>
+  src\AtendimentosNovo.jsx:332:      <input style={inputStyle} placeholder="Buscar por etiqueta, categoria, 
+conjunto..." value={query} onChange={(e) => setQuery(e.target.value)} />
+  src\AtendimentosNovo.jsx:333:      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, 
+margin: '8px 0' }}>
+> src\AtendimentosNovo.jsx:334:        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Marcar 
+todos:</span>
+  src\AtendimentosNovo.jsx:335:        <button type="button" onClick={() => addIds(filtered.map((o) => o.id))}
+  src\AtendimentosNovo.jsx:336:          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #8B2F2F', 
+color: '#8B2F2F', background: 'transparent', fontSize: 12, cursor: 'pointer' }}>
+  src\AtendimentosNovo.jsx:337:          Todos ({filtered.length})
+  src\AtendimentosNovo.jsx:338:        </button>
+  src\AtendimentosNovo.jsx:339:        {gruposPresentes.map((grupo) => {
+  src\AtendimentosNovo.jsx:340:          const idsDoGrupo = filtered.filter((o) => o.grupo === grupo).map((o) => o.id);
+  src\AtendimentosNovo.jsx:341:          return (
+  src\AtendimentosNovo.jsx:342:            <button key={grupo || 'sem-grupo'} type="button" onClick={() => 
+addIds(idsDoGrupo)} style={smallBtnStyle}>
+  src\AtendimentosNovo.jsx:343:              {grupo} ({idsDoGrupo.length})
+  src\AtendimentosNovo.jsx:344:            </button>
+  src\AtendimentosNovo.jsx:345:          );
+  src\AtendimentosNovo.jsx:346:        })}
+  src\AtendimentosNovo.jsx:347:        {selectedIds.length > 0 && (
+  src\AtendimentosNovo.jsx:348:          <button type="button" onClick={clearFilteredSelection} 
+style={smallBtnStyle}>Limpar seleção</button>
+  src\AtendimentosNovo.jsx:349:        )}
+  src\AtendimentosNovo.jsx:350:      </div>
+  src\AtendimentosNovo.jsx:351:      <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid 
+var(--border)', borderRadius: 8 }}>
+  src\AtendimentosNovo.jsx:352:        {filtered.length === 0 && (
+  src\AtendimentosNovo.jsx:353:          <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' 
+}}>Nenhum item encontrado.</div>
+  src\AtendimentosNovo.jsx:354:        )}
+  src\AtendimentosNovo.jsx:355:        {filtered.map((o) => (
+  src\AtendimentosNovo.jsx:356:          <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, 
+padding: '7px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+  src\AtendimentosNovo.jsx:357:            <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => 
+toggle(o.id)} />
+  src\AtendimentosNovo.jsx:358:            <span style={{ fontSize: 13, color: 'var(--text-primary)' 
+}}>{o.label}</span>
+  src\AtendimentosNovo.jsx:359:          </label>
+  src\AtendimentosNovo.jsx:360:        ))}
+  src\AtendimentosNovo.jsx:361:      </div>
+  src\AtendimentosNovo.jsx:362:    </Field>
+  src\AtendimentosNovo.jsx:363:  );
+  src\AtendimentosNovo.jsx:364:}
+  src\AtendimentosNovo.jsx:365:
+  src\AtendimentosNovo.jsx:366:/** Achata os rvt_itens de uma visita (formato bruto vindo do listVisitas) num array
+  src\AtendimentosNovo.jsx:367:    de itens de exibição — usado tanto no resumo colapsado quanto na impressão. */
+  src\AtendimentosNovo.jsx:368:function itemsFromVisita(v) {
+  src\AtendimentosNovo.jsx:369:  return (v.rvt_itens || []).map((it) => {
+  src\AtendimentosNovo.jsx:370:    if (it.outro_descricao !== null && it.outro_descricao !== undefined) {
+  src\AtendimentosNovo.jsx:371:      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido', 
+descritivo: it.outro_descricao, fotos: [] };
+  src\AtendimentosNovo.jsx:372:    }
+  src\AtendimentosNovo.jsx:373:    if (it.atendimentos) {
+  src\AtendimentosNovo.jsx:374:      const a = it.atendimentos;
+  src\AtendimentosNovo.jsx:375:      return {
+  src\AtendimentosNovo.jsx:376:        id: it.id, tipo: 'atendimento',
+  src\AtendimentosNovo.jsx:377:        etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
+  src\AtendimentosNovo.jsx:378:        endereco: a.dispositivos?.endereco || '',
+  src\AtendimentosNovo.jsx:379:        falha: a.falha || '', descritivo: a.descritivo || '',
+  src\AtendimentosNovo.jsx:380:        status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : '',
+  src\AtendimentosNovo.jsx:381:        fotos: a.fotos || [],
+  src\AtendimentosNovo.jsx:382:      };
+  src\AtendimentosNovo.jsx:383:    }
+  src\AtendimentosNovo.jsx:384:    if (it.inspecoes) {
+  src\AtendimentosNovo.jsx:385:      const i = it.inspecoes;
+  src\AtendimentosNovo.jsx:386:      return {
+  src\AtendimentosNovo.jsx:387:        id: it.id, tipo: 'inspecao',
+  src\AtendimentosNovo.jsx:388:        etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || 'Dispositivo',
+  src\AtendimentosNovo.jsx:389:        endereco: i.dispositivos?.endereco || '',
+  src\AtendimentosNovo.jsx:390:        falha: i.falha || '',
+  src\AtendimentosNovo.jsx:391:        descritivo: [i.resultado_teste, i.metodo].filter(Boolean).join(' · '),
+  src\AtendimentosNovo.jsx:392:        status: 'Resolvido', fotos: i.fotos || [],
+  src\AtendimentosNovo.jsx:393:      };
+  src\AtendimentosNovo.jsx:394:    }
+  src\AtendimentosNovo.jsx:395:    return null;
+  src\AtendimentosNovo.jsx:396:  }).filter(Boolean);
+  src\AtendimentosNovo.jsx:397:}
+  src\AtendimentosNovo.jsx:398:
+  src\AtendimentosNovo.jsx:399:function RvtFieldLabelLocal({ children }) {
+  src\AtendimentosNovo.jsx:400:  return <p style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 600, 
+marginBottom: 2, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
+  src\AtendimentosNovo.jsx:401:}
+  src\AtendimentosNovo.jsx:402:
+  src\AtendimentosNovo.jsx:403:/** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, 
+print-area
+  src\AtendimentosNovo.jsx:404:    etc.) que o RVT antigo usava, então imprime/exporta exatamente igual. Aceita 1 
+visita (impressão
+  src\AtendimentosNovo.jsx:405:    individual) ou várias (impressão de período, agrupadas por dia dentro do mesmo 
+documento). */
+  src\AtendimentosNovo.jsx:406:function VisitaPrintView({ visitas, client, onBack }) {
+  src\AtendimentosNovo.jsx:407:  const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
+  src\AtendimentosNovo.jsx:408:  const isPeriodo = dias.length > 1;
+  src\AtendimentosNovo.jsx:409:  const todosItens = visitas.flatMap((v) => itemsFromVisita(v));
+  src\AtendimentosNovo.jsx:410:  const totalResolvidos = todosItens.filter((it) => it.status === 'Resolvido').length;
+  src\AtendimentosNovo.jsx:411:  const tecnicos = [...new Set(visitas.map((v) => v.tecnico).filter(Boolean))];
+  src\AtendimentosNovo.jsx:412:  const periodoLabel = isPeriodo ? `${formatDateBR(dias[0])} a 
+${formatDateBR(dias[dias.length - 1])}` : formatDateBR(dias[0]);
+  src\AtendimentosNovo.jsx:413:
+  src\AtendimentosNovo.jsx:414:  return (
+  src\AtendimentosNovo.jsx:415:    <div className="flex flex-col gap-4">
+  src\AtendimentosNovo.jsx:416:      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
+  src\AtendimentosNovo.jsx:417:        <button type="button" onClick={onBack} style={{ ...btnStyle, background: 
+'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+  src\AtendimentosNovo.jsx:418:          ← Voltar
+  src\AtendimentosNovo.jsx:419:        </button>
+  src\AtendimentosNovo.jsx:420:        <button type="button" onClick={() => window.print()} style={btnStyle}>Imprimir 
+/ Salvar PDF</button>
+  src\AtendimentosNovo.jsx:421:      </div>
+  src\AtendimentosNovo.jsx:422:
+  src\AtendimentosNovo.jsx:423:      <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ 
+background: 'var(--surface)', border: '1px solid var(--border)' }}>
+  src\AtendimentosNovo.jsx:424:        <div className="rvt-brand-band">
+  src\AtendimentosNovo.jsx:425:          <div className="flex items-center gap-3 flex-wrap" style={{ position: 
+'relative', zIndex: 1 }}>
+  src\AtendimentosNovo.jsx:426:            <div className="rvt-wordmark">
+  src\AtendimentosNovo.jsx:427:              <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: 
+'#fff' }} /></div>
+  src\AtendimentosNovo.jsx:428:              <div className="rvt-wordmark-text">
+  src\AtendimentosNovo.jsx:429:                <div className="maj">M.A.J</div>
+  src\AtendimentosNovo.jsx:430:                <div className="sol">Soluções</div>
+  src\AtendimentosNovo.jsx:431:              </div>
+  src\AtendimentosNovo.jsx:432:            </div>
+  src\AtendimentosNovo.jsx:433:            <div className="rvt-divider-v" />
+  src\AtendimentosNovo.jsx:434:            <div className="flex items-center gap-3">
+
+

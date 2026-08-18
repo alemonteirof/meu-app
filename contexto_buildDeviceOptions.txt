@@ -1,0 +1,74 @@
+﻿
+  src\AtendimentosNovo.jsx:100:  if (papel === 'falha') return 'Falha';
+  src\AtendimentosNovo.jsx:101:  if (papel === 'alarme') return 'Alarme';
+  src\AtendimentosNovo.jsx:102:  return papel || 'Sinal';
+  src\AtendimentosNovo.jsx:103:}
+  src\AtendimentosNovo.jsx:104:
+> src\AtendimentosNovo.jsx:105:function buildDeviceOptions(data) {
+  src\AtendimentosNovo.jsx:106:  const options = [];
+  src\AtendimentosNovo.jsx:107:  (data.devices || []).forEach((d) => {
+  src\AtendimentosNovo.jsx:108:    const loop = (data.loops || []).find((l) => l.id === d.loopId);
+  src\AtendimentosNovo.jsx:109:    const panel = loop && (data.panels || []).find((p) => p.id === loop.panelId);
+  src\AtendimentosNovo.jsx:110:    const complementarTipo = complementarTipoLabel(d.categoriaFuncional);
+  src\AtendimentosNovo.jsx:111:    if (complementarTipo) {
+  src\AtendimentosNovo.jsx:112:      options.push({
+  src\AtendimentosNovo.jsx:113:        id: d.id,
+  src\AtendimentosNovo.jsx:114:        label: `${complementarTipo} — ${d.etiquetaComplementar || d.description || 'Sem 
+etiqueta'} — ${papelSinalLabelAt(d.papelSinal)} (${d.address})`,
+  src\AtendimentosNovo.jsx:115:        type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: 
+d.papelSinal,
+  src\AtendimentosNovo.jsx:116:        panelId: null, panelName: 'Dispositivos Complementares',
+  src\AtendimentosNovo.jsx:117:      });
+  src\AtendimentosNovo.jsx:118:      return;
+  src\AtendimentosNovo.jsx:119:    }
+  src\AtendimentosNovo.jsx:120:    options.push({
+  src\AtendimentosNovo.jsx:121:      id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} 
+— End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
+  src\AtendimentosNovo.jsx:122:      type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
+  src\AtendimentosNovo.jsx:123:      panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
+  src\AtendimentosNovo.jsx:124:    });
+  src\AtendimentosNovo.jsx:125:  });
+  src\AtendimentosNovo.jsx:126:  (data.nacs || []).forEach((n) => {
+  src\AtendimentosNovo.jsx:127:    const panel = (data.panels || []).find((p) => p.id === n.panelId);
+  src\AtendimentosNovo.jsx:128:    options.push({
+  src\AtendimentosNovo.jsx:129:      id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 
+'saida',
+  src\AtendimentosNovo.jsx:130:      panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
+  src\AtendimentosNovo.jsx:131:    });
+  src\AtendimentosNovo.jsx:132:  });
+  src\AtendimentosNovo.jsx:133:  (data.gasDetectors || []).forEach((g) => {
+  src\AtendimentosNovo.jsx:134:    options.push({
+  src\AtendimentosNovo.jsx:135:      id: g.id, label: `${g.name} (Detector de gás)`, type: 'gasDetector',
+  src\AtendimentosNovo.jsx:136:      panelId: null, panelName: 'Sem painel',
+  src\AtendimentosNovo.jsx:137:    });
+  src\AtendimentosNovo.jsx:138:  });
+  src\AtendimentosNovo.jsx:139:  return options;
+  src\AtendimentosNovo.jsx:140:}
+  src\AtendimentosNovo.jsx:141:
+  src\AtendimentosNovo.jsx:142:/** Lista unificada de itens de Combate a Incêndio pra vistoria em massa: sub-itens dos
+  src\AtendimentosNovo.jsx:143:    Conjuntos (Casa de Bombas/Hidrante/VGA/LGE/Sistema), Componentes (fluxostato etc.) e
+  src\AtendimentosNovo.jsx:144:    Cilindros — cada um carrega o rótulo de categoria e o "grupo" (pra marcar por 
+tipo). */
+  src\AtendimentosNovo.jsx:145:function buildCombateOptions(data) {
+  src\AtendimentosNovo.jsx:146:  const options = [];
+  src\AtendimentosNovo.jsx:147:  (data.combateSubitens || []).forEach((s) => {
+  src\AtendimentosNovo.jsx:148:    const conjunto = (data.combateConjuntos || []).find((c) => c.id === s.conjuntoId);
+  src\AtendimentosNovo.jsx:149:    if (!conjunto) return;
+  src\AtendimentosNovo.jsx:150:    const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
+  src\AtendimentosNovo.jsx:151:    const tipoLabel = COMBATE_CONJUNTO_TIPOS[conjunto.tipo]?.label || conjunto.tipo;
+  src\AtendimentosNovo.jsx:152:    options.push({
+  src\AtendimentosNovo.jsx:153:      id: s.id, kind: 'subitem', grupo: tipoLabel,
+  src\AtendimentosNovo.jsx:154:      label: `${info?.label || s.categoria} — ${conjunto.etiqueta} (${tipoLabel})`,
+  src\AtendimentosNovo.jsx:155:      categoriaLabel: info?.label || s.categoria, contextoLabel: conjunto.etiqueta,
+  src\AtendimentosNovo.jsx:156:    });
+  src\AtendimentosNovo.jsx:157:  });
+  src\AtendimentosNovo.jsx:158:  (data.combateComponentes || []).forEach((c) => {
+  src\AtendimentosNovo.jsx:159:    const info = COMBATE_COMPONENTE_TIPO_MAP[c.tipo];
+  src\AtendimentosNovo.jsx:160:    options.push({
+  src\AtendimentosNovo.jsx:161:      id: c.id, kind: 'componente', grupo: info?.label || c.tipo,
+  src\AtendimentosNovo.jsx:162:      label: `${c.etiqueta || info?.label} (${info?.label})`,
+  src\AtendimentosNovo.jsx:163:      categoriaLabel: info?.label || c.tipo, contextoLabel: c.etiqueta,
+  src\AtendimentosNovo.jsx:164:    });
+  src\AtendimentosNovo.jsx:165:  });
+
+

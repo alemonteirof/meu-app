@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+﻿import { useEffect, useState, useCallback, useRef } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, listVisitas, deleteVisita,
@@ -114,7 +114,6 @@ function buildDeviceOptions(data) {
         label: `${complementarTipo} — ${d.etiquetaComplementar || d.description || 'Sem etiqueta'} — ${papelSinalLabelAt(d.papelSinal)} (${d.address})`,
         type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
         panelId: null, panelName: 'Dispositivos Complementares',
-        loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
       });
       return;
     }
@@ -122,7 +121,6 @@ function buildDeviceOptions(data) {
       id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
       type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
-      loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
     });
   });
   (data.nacs || []).forEach((n) => {
@@ -130,14 +128,12 @@ function buildDeviceOptions(data) {
     options.push({
       id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 'saida',
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
-      loopId: null, loopName: null,
     });
   });
   (data.gasDetectors || []).forEach((g) => {
     options.push({
       id: g.id, label: `${g.name} (Detector de gás)`, type: 'gasDetector',
       panelId: null, panelName: 'Sem painel',
-      loopId: null, loopName: null,
     });
   });
   return options;
@@ -204,31 +200,6 @@ function ItemResumo({ item }) {
 /** Buscador + seleção múltipla de dispositivos — mesmo padrão de "Marcar todos" por tipo
     já usado na tela de Painéis (Laço inteiro / por tipo), calculado dinamicamente a partir
     dos tipos realmente presentes na lista filtrada (então Entrada Duplo, por ex., já entra sozinho). */
-function CategoryButtons({ items, allLabel, onSelect, tipoLabel }) {
-  const tiposPresentes = [...new Set(items.map((o) => o.type))];
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Marcar:</span>
-      <button type="button" onClick={() => onSelect(items.map((o) => o.id))}
-        style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #8B2F2F', color: '#8B2F2F', background: 'transparent', fontSize: 11, cursor: 'pointer' }}>
-        {allLabel} ({items.length})
-      </button>
-      {tiposPresentes.map((tipo) => {
-        const idsDoTipo = items.filter((o) => o.type === tipo).map((o) => o.id);
-        return (
-          <button key={tipo || 'sem-tipo'} type="button" onClick={() => onSelect(idsDoTipo)}
-            style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer' }}>
-            {tipoLabel(tipo)} ({idsDoTipo.length})
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Buscador + seleção múltipla de dispositivos — agrupado Painel → Laço, com
-    botões de "Marcar todos" por categoria em cada um dos dois níveis, além do
-    geral no topo. */
 function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
   const [query, setQuery] = useState('');
   const [expandedPanels, setExpandedPanels] = useState(() => {
@@ -237,25 +208,19 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
     allPanelNames.forEach((p) => { initial[p] = allPanelNames.length === 1; });
     return initial;
   });
-  const [expandedLoops, setExpandedLoops] = useState({});
   const q = query.trim().toLowerCase();
   const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
   const tiposPresentes = [...new Set(filtered.map((o) => o.type))];
-  const panelNamesRaw = [...new Set(filtered.map((o) => o.panelName))];
+    const panelNamesRaw = [...new Set(filtered.map((o) => o.panelName))];
   const panelNames = [
     ...panelNamesRaw.filter((p) => p !== 'Dispositivos Complementares' && p !== 'Sem painel'),
     ...panelNamesRaw.filter((p) => p === 'Sem painel'),
     ...panelNamesRaw.filter((p) => p === 'Dispositivos Complementares'),
   ];
-  const grupos = panelNames.map((panelName) => {
-    const itensDoPainel = filtered.filter((o) => o.panelName === panelName);
-    const loopNamesRaw = [...new Set(itensDoPainel.map((o) => o.loopName || 'Sem laço'))];
-    const subgrupos = loopNamesRaw.map((loopName) => ({
-      loopName,
-      itens: itensDoPainel.filter((o) => (o.loopName || 'Sem laço') === loopName),
-    }));
-    return { panelName, itens: itensDoPainel, subgrupos };
-  });
+  const grupos = panelNames.map((panelName) => ({
+    panelName,
+    itens: filtered.filter((o) => o.panelName === panelName),
+  }));
 
   function tipoLabel(tipo) {
     if (tipo === 'gasDetector') return 'Detector de gás';
@@ -277,9 +242,6 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
   }
   function togglePanel(panelName) {
     setExpandedPanels((prev) => ({ ...prev, [panelName]: !prev[panelName] }));
-  }
-  function toggleLoop(key) {
-    setExpandedLoops((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   return (
@@ -313,7 +275,6 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
           const todosSelecionados = idsDoGrupo.length > 0 && selecionadosNoGrupo.length === idsDoGrupo.length;
           const algunsSelecionados = selecionadosNoGrupo.length > 0 && !todosSelecionados;
           const aberto = !!expandedPanels[grupo.panelName];
-          const temMultiplosLacos = grupo.subgrupos.length > 1;
           return (
             <div key={grupo.panelName}>
               <div
@@ -333,53 +294,12 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{aberto ? '▲' : '▼'}</span>
               </div>
-              {aberto && (
-                <div style={{ padding: '6px 10px 6px 20px', borderBottom: '1px solid var(--border)' }}>
-                  <CategoryButtons items={grupo.itens} allLabel="Painel inteiro" onSelect={addIds} tipoLabel={tipoLabel} />
-                </div>
-              )}
-              {aberto && grupo.subgrupos.map((subgrupo) => {
-                const chaveLaco = `${grupo.panelName}::${subgrupo.loopName}`;
-                const idsDoLaco = subgrupo.itens.map((o) => o.id);
-                const selecionadosNoLaco = idsDoLaco.filter((id) => selectedIds.includes(id));
-                const todosNoLaco = idsDoLaco.length > 0 && selecionadosNoLaco.length === idsDoLaco.length;
-                const algunsNoLaco = selecionadosNoLaco.length > 0 && !todosNoLaco;
-                const lacoAberto = !temMultiplosLacos || !!expandedLoops[chaveLaco];
-                return (
-                  <div key={chaveLaco}>
-                    {temMultiplosLacos && (
-                      <div
-                        onClick={() => toggleLoop(chaveLaco)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px 6px 20px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={todosNoLaco}
-                          ref={(el) => { if (el) el.indeterminate = algunsNoLaco; }}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => (todosNoLaco ? removeIds(idsDoLaco) : addIds(idsDoLaco))}
-                        />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
-                          {subgrupo.loopName} — {idsDoLaco.length} dispositivo(s)
-                          {selecionadosNoLaco.length > 0 ? ` (${selecionadosNoLaco.length} selecionado(s))` : ''}
-                        </span>
-                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{lacoAberto ? '▲' : '▼'}</span>
-                      </div>
-                    )}
-                    {lacoAberto && temMultiplosLacos && (
-                      <div style={{ padding: '6px 10px 6px 30px', borderBottom: '1px solid var(--border)' }}>
-                        <CategoryButtons items={subgrupo.itens} allLabel="Laço inteiro" onSelect={addIds} tipoLabel={tipoLabel} />
-                      </div>
-                    )}
-                    {lacoAberto && subgrupo.itens.map((o) => (
-                      <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px 7px 30px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggle(o.id)} />
-                        <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{o.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                );
-              })}
+              {aberto && grupo.itens.map((o) => (
+                <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px 7px 30px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggle(o.id)} />
+                  <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{o.label}</span>
+                </label>
+              ))}
             </div>
           );
         })}

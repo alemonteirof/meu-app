@@ -1,0 +1,160 @@
+﻿
+  src\App.jsx:4807:            <>
+  src\App.jsx:4808:              {loops.some((l) => data.devices.some((d) => d.loopId === l.id)) && (
+  src\App.jsx:4809:                <div className="relative">
+  src\App.jsx:4810:                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ 
+color: 'var(--text-secondary)' }} />
+  src\App.jsx:4811:                  <input className={`${inputCls} pl-9`} placeholder="Buscar dispositivo por 
+endereço, modelo ou local..."
+  src\App.jsx:4812:                    value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} />
+  src\App.jsx:4813:                </div>
+  src\App.jsx:4814:              )}
+  src\App.jsx:4815:              {loops.map((loop) => {
+  src\App.jsx:4816:                const q = deviceSearch.trim().toLowerCase();
+  src\App.jsx:4817:                const allDevices = data.devices.filter((d) => d.loopId === loop.id).sort((a, b) => 
+a.address.localeCompare(b.address, undefined, { numeric: true }));
+  src\App.jsx:4818:                const devices = q
+  src\App.jsx:4819:                  ? allDevices.filter((d) => `${d.address} ${d.modelo || ''} ${d.description || 
+''}`.toLowerCase().includes(q))
+  src\App.jsx:4820:                  : allDevices;
+  src\App.jsx:4821:                if (q && devices.length === 0) return null;
+  src\App.jsx:4822:                                const status = worstStatus(allDevices.map((d) => 
+computeStatus(d.nextInspection)));
+  src\App.jsx:4823:                const expanded = (q || selectMode) ? true : !!expandedLoops[loop.id];
+  src\App.jsx:4824:                return (
+  src\App.jsx:4825:                  <div key={loop.id} className="rounded-xl" style={{ background: 'var(--surface)', 
+border: '1px solid var(--border)' }}>
+  src\App.jsx:4826:                    <div className="flex items-center gap-2 p-3.5">
+  src\App.jsx:4827:                      <button className="flex items-center gap-2 flex-1 min-w-0 text-left" 
+onClick={() => setExpandedLoops((prev) => ({ ...prev, [loop.id]: !prev[loop.id] }))}>
+  src\App.jsx:4828:                        {expanded ? <ChevronDown size={16} style={{ color: 'var(--text-secondary)' 
+}} /> : <ChevronRight size={16} style={{ color: 'var(--text-secondary)' }} />}
+  src\App.jsx:4829:                        <Led color={status.color} pulse={status.key === 'overdue'} />
+  src\App.jsx:4830:                        <span className="font-medium text-sm truncate" style={{ color: 
+'var(--text-primary)' }}>{loop.name}</span>
+  src\App.jsx:4831:                        <span className="text-xs mono" style={{ color: 'var(--text-secondary)' }}>
+  src\App.jsx:4832:                          {q ? `${devices.length} de ${allDevices.length}` : allDevices.length} 
+dispositivo{allDevices.length === 1 ? '' : 's'}
+  src\App.jsx:4833:                        </span>
+  src\App.jsx:4834:                      </button>
+  src\App.jsx:4835:                      {canEdit && (
+  src\App.jsx:4836:                        <>
+  src\App.jsx:4837:                          <IconButton title="Novo dispositivo" onClick={() => 
+onCreateDevice(loop.id)}><Plus size={15} /></IconButton>
+  src\App.jsx:4838:                          <IconButton title="Editar laço" onClick={() => onEditLoop(loop)}><Pencil 
+size={15} /></IconButton>
+  src\App.jsx:4839:                          <IconButton title="Excluir laço" danger onClick={() => 
+onDeleteLoop(loop)}><Trash2 size={15} /></IconButton>
+  src\App.jsx:4840:                        </>
+  src\App.jsx:4841:                      )}
+  src\App.jsx:4842:                    </div>
+  src\App.jsx:4843:                    {expanded && (
+  src\App.jsx:4844:                      <div className="px-3.5 pb-3.5 flex flex-col gap-2">
+  src\App.jsx:4845:                        {selectMode && devices.length > 0 && (
+  src\App.jsx:4846:                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+> src\App.jsx:4847:                            <span className="text-xs" style={{ color: 'var(--text-secondary)' 
+}}>Marcar todos:</span>
+  src\App.jsx:4848:                            <button type="button" onClick={() => selectByType(devices.map((d) => 
+d.id))}
+  src\App.jsx:4849:                              className="text-xs px-2 py-1 rounded-md" style={{ border: '1px solid 
+var(--accent)', color: 'var(--accent)' }}>
+  src\App.jsx:4850:                              Laço inteiro ({devices.length})
+  src\App.jsx:4851:                            </button>
+  src\App.jsx:4852:                            {[...new Set(devices.map((d) => d.type))].map((tipo) => {
+  src\App.jsx:4853:                              const idsDoTipo = devices.filter((d) => d.type === tipo).map((d) => 
+d.id);
+  src\App.jsx:4854:                              return (
+  src\App.jsx:4855:                                <button key={tipo} type="button" onClick={() => 
+selectByType(idsDoTipo)}
+  src\App.jsx:4856:                                  className="text-xs px-2 py-1 rounded-md" style={{ border: '1px 
+solid var(--border)', color: 'var(--text-secondary)' }}>
+  src\App.jsx:4857:                                  {DEVICE_TYPE_MAP[tipo]?.label || tipo} ({idsDoTipo.length})
+  src\App.jsx:4858:                                </button>
+  src\App.jsx:4859:                              );
+  src\App.jsx:4860:                            })}
+  src\App.jsx:4861:                          </div>
+  src\App.jsx:4862:                        )}
+  src\App.jsx:4863:                        {devices.length === 0 ? (
+  src\App.jsx:4864:                          <p className="text-xs py-3 text-center" style={{ color: 
+'var(--text-secondary)' }}>
+  src\App.jsx:4865:                            {q ? 'Nenhum dispositivo corresponde à busca.' : 'Nenhum dispositivo 
+neste laço ainda.'}
+  src\App.jsx:4866:                          </p>
+  src\App.jsx:4867:                        ) : devices.map((d) => (
+  src\App.jsx:4868:                          <TrackableCard key={d.id} icon={DEVICE_TYPE_MAP[d.type]?.icon} 
+photo={photoForModelo(data, d.modelo)} address={d.address}
+  src\App.jsx:4869:                            title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? 
+` · ${d.modelo}` : '')} meta={d.description}
+  src\App.jsx:4870:                            status={{ ...computeStatus(d.nextInspection), lastMaintenance: 
+d.lastMaintenance, lastInspection: d.lastInspection, operationalStatus: d.operationalStatus }}
+  src\App.jsx:4871:                            indicadorCount={(data.indicador || []).filter((r) => r.deviceId === 
+d.id).length}
+  src\App.jsx:4872:                            warning={(d.type === 'entrada' || d.type === 'entrada_duplo') && 
+!d.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
+  src\App.jsx:4873:                            selectable={canEdit && selectMode} 
+selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
+  src\App.jsx:4874:                            onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit 
+? () => onDeleteDevice(d) : undefined} />
+  src\App.jsx:4875:                        ))}
+  src\App.jsx:4876:                      </div>
+  src\App.jsx:4877:                    )}
+  src\App.jsx:4878:                  </div>
+  src\App.jsx:4879:                );
+  src\App.jsx:4880:              })}
+  src\App.jsx:4881:            </>
+  src\App.jsx:4882:          )}
+  src\App.jsx:4883:        </div>
+  src\App.jsx:4884:      )}
+  src\App.jsx:4885:
+  src\App.jsx:4886:      {tab === 'nacs' && (
+  src\App.jsx:4887:        <div className="flex flex-col gap-3">
+  src\App.jsx:4888:          {canEdit && (
+  src\App.jsx:4889:            <div className="flex justify-end">
+  src\App.jsx:4890:              <Button variant="primary" onClick={() => onCreateNac(panelId)}><Plus size={15} /> 
+Novo circuito</Button>
+  src\App.jsx:4891:            </div>
+  src\App.jsx:4892:          )}
+  src\App.jsx:4893:          {nacs.length === 0 ? (
+  src\App.jsx:4894:            <EmptyState icon={Bell} title="Nenhum circuito de saída cadastrado" 
+description="Cadastre os circuitos (NACs) que alimentam sirenes, strobos e demais dispositivos de notificação."
+  src\App.jsx:4895:              actionLabel={canEdit ? 'Adicionar circuito' : undefined} onAction={canEdit ? () => 
+onCreateNac(panelId) : undefined} />
+  src\App.jsx:4896:          ) : (
+  src\App.jsx:4897:            <div className="grid sm:grid-cols-2 gap-3">
+  src\App.jsx:4898:              {nacs.map((n) => (
+  src\App.jsx:4899:                <TrackableCard key={n.id} icon={Bell} address={null} title={n.name} 
+meta={n.description}
+  src\App.jsx:4900:                  status={{ ...computeStatus(n.nextInspection), lastMaintenance: n.lastMaintenance, 
+lastInspection: n.lastInspection, operationalStatus: n.operationalStatus }}
+  src\App.jsx:4901:                  onEdit={canEdit ? () => onEditNac(n) : undefined} onDelete={canEdit ? () => 
+onDeleteNac(n) : undefined} />
+  src\App.jsx:4902:              ))}
+  src\App.jsx:4903:            </div>
+  src\App.jsx:4904:          )}
+  src\App.jsx:4905:        </div>
+  src\App.jsx:4906:      )}
+  src\App.jsx:4907:    </div>
+  src\App.jsx:4908:  );
+  src\App.jsx:4909:}
+  src\App.jsx:4910:
+  src\App.jsx:4911:
+  src\App.jsx:4912:function RvtFieldLabel({ children }) {
+  src\App.jsx:4913:  return <p className="text-[9px] uppercase font-semibold mb-0.5" style={{ color: 
+'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
+  src\App.jsx:4914:}
+  src\App.jsx:4915:
+  src\App.jsx:4916:function IndicadorPrintView({ entries, client, onBack }) {
+  src\App.jsx:4917:  const countFalha = entries.filter((r) => (r.tipo || 'falha') === 'falha').length;
+  src\App.jsx:4918:  const countManutencao = entries.filter((r) => r.tipo === 'manutencao').length;
+  src\App.jsx:4919:  const countInspecao = entries.filter((r) => r.tipo === 'inspecao').length;
+  src\App.jsx:4920:
+  src\App.jsx:4921:  return (
+  src\App.jsx:4922:    <div className="flex flex-col gap-4">
+  src\App.jsx:4923:      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
+  src\App.jsx:4924:        <Button variant="secondary" onClick={onBack}><ArrowLeft size={15} /> Voltar</Button>
+  src\App.jsx:4925:        <Button variant="primary" onClick={() => window.print()}><Printer size={16} /> Imprimir / 
+Salvar PDF</Button>
+  src\App.jsx:4926:      </div>
+  src\App.jsx:4927:
+
+
