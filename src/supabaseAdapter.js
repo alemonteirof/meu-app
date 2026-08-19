@@ -179,17 +179,18 @@ export async function createVisita({ clienteId, painelId, tecnico, dataVisita })
   return data;
 }
 
-async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao }) {
+async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao, outroFotos }) {
   if (!rvtId) return;
   const { error } = await supabase.from('rvt_itens').insert({
     rvt_id: rvtId, atendimento_id: atendimentoId || null,
     inspecao_id: inspecaoId || null, outro_descricao: outroDescricao || null,
+    outro_fotos: outroFotos || [],
   });
   if (error) throw error;
 }
 
-export async function addOutroToVisita(rvtId, descricao) {
-  return addItemToVisita(rvtId, { outroDescricao: descricao });
+export async function addOutroToVisita(rvtId, descricao, fotos) {
+  return addItemToVisita(rvtId, { outroDescricao: descricao, outroFotos: fotos });
 }
 
 export async function createAtendimento({ dispositivoId, falha, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos }) {
@@ -270,7 +271,7 @@ export async function listVisitas(clienteId) {
     .select(`
       id, data_visita, tecnico, painel_id,
       rvt_itens (
-        id, outro_descricao,
+                id, outro_descricao, outro_fotos,
         atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) ),
         inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) )
       )

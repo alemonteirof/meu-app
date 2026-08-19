@@ -180,8 +180,8 @@ function buildCombateOptions(data) {
 
 function ItemResumo({ item }) {
   const nFotos = (item.fotos || []).length;
-  if (item.tipo === 'outro') {
-    return <div style={{ fontSize: 13 }}><strong>Outro</strong> · {item.descricao}</div>;
+    if (item.tipo === 'outro') {
+    return <div style={{ fontSize: 13 }}><strong>Outro</strong> · {item.descricao}{nFotos > 0 && ` · ${nFotos} foto(s)`}</div>;
   }
   if (item.tipo === 'atendimento') {
     return (
@@ -447,8 +447,8 @@ function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
     de itens de exibição — usado tanto no resumo colapsado quanto na impressão. */
 function itemsFromVisita(v) {
   return (v.rvt_itens || []).map((it) => {
-    if (it.outro_descricao !== null && it.outro_descricao !== undefined) {
-      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido', descritivo: it.outro_descricao, fotos: [] };
+        if (it.outro_descricao !== null && it.outro_descricao !== undefined) {
+      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido', descritivo: it.outro_descricao, fotos: it.outro_fotos || [] };
     }
     if (it.atendimentos) {
       const a = it.atendimentos;
@@ -1047,14 +1047,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     }
   }
 
-  const [outroTexto, setOutroTexto] = useState('');
-  async function submitOutro(e) {
+    const [outroTexto, setOutroTexto] = useState('');
+  const [outroFotos, setOutroFotos] = useState([]);
+    async function submitOutro(e) {
     e.preventDefault();
     if (!outroTexto.trim()) return;
     try {
-      await addOutroToVisita(visita.id, outroTexto.trim());
-      setItensVisita((prev) => [...prev, { tipo: 'outro', descricao: outroTexto.trim() }]);
+      await addOutroToVisita(visita.id, outroTexto.trim(), outroFotos);
+      setItensVisita((prev) => [...prev, { tipo: 'outro', descricao: outroTexto.trim(), fotos: outroFotos }]);
       setOutroTexto('');
+      setOutroFotos([]);
       if (onRefresh) onRefresh();
       setMsg('Item adicionado à visita.');
     } catch (err) {
@@ -1350,11 +1352,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
             </form>
           )}
 
-          {aba === 'outro' && (
+                    {aba === 'outro' && (
             <form onSubmit={submitOutro} style={{ ...cardStyle, marginBottom: 16 }}>
               <Field label="Descrição (reunião, ajuste de documento, etc.)">
                 <textarea style={{ ...inputStyle, minHeight: 70 }} value={outroTexto} onChange={(e) => setOutroTexto(e.target.value)} />
               </Field>
+              <FotosField fotos={outroFotos} setFotos={setOutroFotos} />
               <button type="submit" disabled={!canEdit} style={btnStyle}>Adicionar à visita</button>
             </form>
           )}
