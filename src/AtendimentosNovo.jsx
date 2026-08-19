@@ -491,6 +491,17 @@ function VisitaPrintView({ visitas, client, onBack }) {
   const tecnicos = [...new Set(visitas.map((v) => v.tecnico).filter(Boolean))];
   const periodoLabel = isPeriodo ? `${formatDateBR(dias[0])} a ${formatDateBR(dias[dias.length - 1])}` : formatDateBR(dias[0]);
 
+  // Nome sugerido pelo navegador ao Imprimir/Salvar PDF (ex: "RVT - NAL - 21-07-2026").
+  // Usa "-" em vez de "/" na data porque "/" não é um caractere válido em nome de arquivo.
+  useEffect(() => {
+    const tituloAnterior = document.title;
+    const dataArquivo = (d) => formatDateBR(d).replace(/\//g, '-');
+    const rotuloData = isPeriodo ? `${dataArquivo(dias[0])}_a_${dataArquivo(dias[dias.length - 1])}` : dataArquivo(dias[0]);
+    const nomeCliente = (client?.name || '').replace(/[\\/:*?"<>|]/g, '-').trim();
+    document.title = `RVT${nomeCliente ? ' - ' + nomeCliente : ''} - ${rotuloData}`;
+    return () => { document.title = tituloAnterior; };
+  }, [dias.join(','), client?.name, isPeriodo]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap no-print">
