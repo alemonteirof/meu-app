@@ -5733,6 +5733,15 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   );
 }
 
+function compareAddress(a, b) {
+  const pa = (a || '').split(/[^\d]+/).filter(Boolean).map(Number);
+  const pb = (b || '').split(/[^\d]+/).filter(Boolean).map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
 
 function buildSDAIReportItems(data) {
   const enderecaveis = (data.devices || []).map((d) => {
@@ -5741,7 +5750,8 @@ function buildSDAIReportItems(data) {
     return {
       id: d.id, address: d.address, tipo: DEVICE_TYPE_MAP[d.type]?.label || d.type,
       localizacao: [panel?.name, loop?.name, d.description].filter(Boolean).join(' · ') || '—',
-      panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+            panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+      loopId: loop?.id || null, loopName: loop?.name || null,
       extra: [
         { label: 'Status', value: d.operationalStatus, color: operStatusColor(d.operationalStatus) },
         { label: 'Aparência', value: d.appearance, color: appearanceColor(d.appearance) },
@@ -5779,7 +5789,8 @@ function buildSDAIReportItems(data) {
     return {
       id: `${d.id}-comp`, address: d.address, tipo: catLabel,
       localizacao: [panel?.name, loop?.name, d.etiquetaComplementar || d.description].filter(Boolean).join(' · ') || '—',
-      panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+            panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
+      loopId: loop?.id || null, loopName: loop?.name || null,
       extra: [
         { label: 'Status', value: d.operationalStatus, color: operStatusColor(d.operationalStatus) },
         { label: 'Aparência', value: d.appearance, color: appearanceColor(d.appearance) },
@@ -5954,6 +5965,29 @@ function ItemsTableAndCards({ columnHeaders, items }) {
     fechado, mas sempre aparece na impressão (via CSS, não deixa de renderizar). */
 function ReportGroup({ groupLabel, items, columnHeaders, defaultOpen }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  const temLaco = items.some((it) => it.loopName);
+  let conteudo;
+  if (!temLaco) {
+    const ordenados = [...items].sort((a, b) => compareAddress(a.address, b.address));
+    conteudo = <ItemsTableAndCards columnHeaders={columnHeaders} items={ordenados} />;
+  } else {
+    const loopMap = new Map();
+    items.forEach((it) => {
+      const key = it.loopName || 'Sem laço';
+      if (!loopMap.has(key)) loopMap.set(key, []);
+      loopMap.get(key).push(it);
+    });
+    const loopNames = [...loopMap.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+    conteudo = loopNames.map((loopName) => {
+      const loopItems = [...loopMap.get(loopName)].sort((a, b) => compareAddress(a.address, b.address));
+      return (
+        <div key={loopName} className="mb-2">
+          <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>{loopName} — {loopItems.length} item(ns)</p>
+          <ItemsTableAndCards columnHeaders={columnHeaders} items={loopItems} />
+        </div>
+      );
+    });
+  }
   return (
     <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 p-2.5 no-print"
@@ -5967,7 +6001,7 @@ function ReportGroup({ groupLabel, items, columnHeaders, defaultOpen }) {
         {groupLabel} — {items.length} item(ns)
       </p>
       <div className={`report-group-body p-2.5 ${open ? '' : 'collapsed'}`}>
-        <ItemsTableAndCards columnHeaders={columnHeaders} items={items} />
+        {conteudo}
       </div>
     </div>
   );
@@ -6016,14 +6050,15 @@ function ReportView({ data, client, filters, setFilters }) {
   const q = (filters.search || '').trim().toLowerCase();
   const applySearch = (items) => (q ? items.filter((it) => it.search.includes(q)) : items);
   const applyPanel = (items) => (filters.panelId !== 'all' ? items.filter((it) => it.panelId === filters.panelId) : items);
+    const applyTipo = (items) => (filters.tipo && filters.tipo !== 'all' ? items.filter((it) => it.tipo === filters.tipo) : items);
 
-  const sdaiFiltered = {
-    enderecaveis: applyPanel(applySearch(sdaiSets.enderecaveis)),
-    nacs: applyPanel(applySearch(sdaiSets.nacs)),
-    complementares: applyPanel(applySearch(sdaiSets.complementares)),
+    const sdaiFiltered = {
+    enderecaveis: applyTipo(applyPanel(applySearch(sdaiSets.enderecaveis))),
+    nacs: applyTipo(applyPanel(applySearch(sdaiSets.nacs))),
+    complementares: applyTipo(applyPanel(applySearch(sdaiSets.complementares))),
   };
   const spciFiltered = {
-    agua: applySearch(spciSets.agua), gas: applySearch(spciSets.gas), componentes: applySearch(spciSets.componentes),
+    agua: applyTipo(applySearch(spciSets.agua)), gas: applyTipo(applySearch(spciSets.gas)), componentes: applyTipo(applySearch(spciSets.componentes)),
   };
 
   const sdaiTotal = sdaiSets.enderecaveis.length + sdaiSets.nacs.length + sdaiSets.complementares.length;
@@ -6084,6 +6119,19 @@ function ReportView({ data, client, filters, setFilters }) {
             {data.panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         )}
+                {(() => {
+          const todos = reportTab === 'sdai'
+            ? [...sdaiSets.enderecaveis, ...sdaiSets.nacs, ...sdaiSets.complementares]
+            : [...spciSets.agua, ...spciSets.gas, ...spciSets.componentes];
+          const tipos = [...new Set(todos.map((it) => it.tipo))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+          if (tipos.length === 0) return null;
+          return (
+            <select className={inputCls} style={{ width: 'auto' }} value={filters.tipo || 'all'} onChange={(e) => setFilters({ ...filters, tipo: e.target.value })}>
+              <option value="all">Todos os tipos</option>
+              {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          );
+        })()}
       </div>
 
       <div className="print-area rounded-xl p-4 sm:p-5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
