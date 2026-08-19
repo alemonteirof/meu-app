@@ -899,6 +899,21 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     refreshVisitas();
   }
 
+  async function cancelarVisita() {
+  if (!window.confirm('Cancelar esta visita? Tudo que foi salvo automaticamente até agora será apagado, e essa ação não pode ser desfeita.')) return;
+  try {
+    await deleteVisita(visita.id);
+    setVisita(null);
+    setItensVisita([]);
+    setMsg('');
+    refreshVisitas();
+    if (onRefresh) onRefresh();
+  } catch (err) {
+    console.error(err);
+    setMsg('Erro ao cancelar visita.');
+  }
+}
+
   const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
   const [atFotos, setAtFotos] = useState([]);
   async function submitAtendimento(e) {
@@ -1157,9 +1172,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               Visita em andamento — {visita.tecnico || 'sem técnico'} · {visita.data_visita}
               {panelOptions.find((p) => p.id === visita.painel_id) && ` · ${panelOptions.find((p) => p.id === visita.painel_id).name}`}
             </div>
-            <button onClick={finalizarVisita} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
-              Finalizar visita
-            </button>
+                        <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={cancelarVisita} style={{ ...btnStyle, background: 'transparent', color: '#c0392b', border: '1px solid #c0392b' }}>
+                Cancelar visita
+              </button>
+              <button onClick={finalizarVisita} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+                Finalizar visita
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
