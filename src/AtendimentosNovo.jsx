@@ -561,7 +561,7 @@ function VisitaPrintView({ visitas, client, onBack }) {
                     <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: '#8B2F2F', color: '#fff' }}>{i + 1}</span>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
                       </div>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, flexShrink: 0, fontWeight: 600, color: statusColor(it.status), border: `1px solid ${statusColor(it.status)}` }}>
                         {it.status || 'Sem status'}
@@ -570,23 +570,27 @@ function VisitaPrintView({ visitas, client, onBack }) {
                     {it.falha && (
                       <div style={{ marginBottom: 6 }}>
                         <RvtFieldLabelLocal>Falha</RvtFieldLabelLocal>
-                        <p style={{ fontSize: 12, color: 'var(--text-primary)' }}>{it.falha}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{it.falha}</p>
                       </div>
                     )}
-                    {it.descritivo && (
-                      <div style={{ marginBottom: 6 }}>
-                        <RvtFieldLabelLocal>{it.tipo === 'inspecao' ? 'Resultado / Método' : 'Descritivo'}</RvtFieldLabelLocal>
-                        <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{it.descritivo}</p>
-                      </div>
-                    )}
-                    {it.fotos && it.fotos.length > 0 && (
-                      <div style={{ marginTop: 8 }}>
-                        <RvtFieldLabelLocal>Registro fotográfico</RvtFieldLabelLocal>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 4 }}>
-                          {it.fotos.map((f, fi) => <img key={fi} src={f} alt="" style={{ width: '100%', aspectRatio: '1', borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />)}
+                    <div className="rvt-item-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+                      {it.descritivo && (
+                        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                          <RvtFieldLabelLocal>{it.tipo === 'inspecao' ? 'Resultado / Método' : 'Descritivo'}</RvtFieldLabelLocal>
+                          <p style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{it.descritivo}</p>
                         </div>
-                      </div>
-                    )}
+                      )}
+                      {it.fotos && it.fotos.length > 0 && (
+                        <div style={{ flex: '0 0 auto' }}>
+                          <RvtFieldLabelLocal>Registro fotográfico</RvtFieldLabelLocal>
+                          <div className="rvt-photo-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, maxWidth: 306 }}>
+                            {it.fotos.map((f, fi) => (
+                              <img key={fi} src={f} alt="" style={{ width: 96, height: 96, flexShrink: 0, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
