@@ -1,0 +1,34 @@
+// fix-print-layout.cjs
+// Ajusta o layout de impressao dos Atendimentos (VisitaPrintView) em src/AtendimentosNovo.jsx
+// Uso: coloque este arquivo na raiz do projeto (C:\Users\Raker\meu-app) e rode: node fix-print-layout.cjs
+const fs = require('fs');
+const path = require('path');
+
+const filePath = path.join(__dirname, 'src', 'AtendimentosNovo.jsx');
+
+if (!fs.existsSync(filePath)) {
+  console.error('ERRO: nao encontrei ' + filePath + '. Rode este script na raiz do projeto (onde fica a pasta src).');
+  process.exit(1);
+}
+
+const raw = fs.readFileSync(filePath, 'utf8');
+const hasCRLF = raw.includes('\r\n');
+let content = raw.replace(/\r\n/g, '\n');
+
+const oldBlock = "                {itensDoDia.map((it, i) => (\n                  <div key={it.id} className=\"rvt-item-card rounded-lg p-4\" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>\n                    <div className=\"flex items-start justify-between gap-3 flex-wrap mb-2\">\n                      <div className=\"flex items-center gap-2.5 min-w-0\">\n                        <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: '#8B2F2F', color: '#fff' }}>{i + 1}</span>\n                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{it.etiqueta}{it.endereco ? ` \u00b7 END ${it.endereco}` : ''}</p>\n                      </div>\n                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, flexShrink: 0, fontWeight: 600, color: statusColor(it.status), border: `1px solid ${statusColor(it.status)}` }}>\n                        {it.status || 'Sem status'}\n                      </span>\n                    </div>\n                    {it.falha && (\n                      <div style={{ marginBottom: 6 }}>\n                        <RvtFieldLabelLocal>Falha</RvtFieldLabelLocal>\n                        <p style={{ fontSize: 12, color: 'var(--text-primary)' }}>{it.falha}</p>\n                      </div>\n                    )}\n                    {it.descritivo && (\n                      <div style={{ marginBottom: 6 }}>\n                        <RvtFieldLabelLocal>{it.tipo === 'inspecao' ? 'Resultado / M\u00e9todo' : 'Descritivo'}</RvtFieldLabelLocal>\n                        <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{it.descritivo}</p>\n                      </div>\n                    )}\n                    {it.fotos && it.fotos.length > 0 && (\n                      <div style={{ marginTop: 8 }}>\n                        <RvtFieldLabelLocal>Registro fotogr\u00e1fico</RvtFieldLabelLocal>\n                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 4 }}>\n                          {it.fotos.map((f, fi) => <img key={fi} src={f} alt=\"\" style={{ width: '100%', aspectRatio: '1', borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />)}\n                        </div>\n                      </div>\n                    )}\n                  </div>\n                ))}";
+const newBlock = "                {itensDoDia.map((it, i) => (\n                  <div key={it.id} className=\"rvt-item-card rounded-lg p-4\" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>\n                    <div className=\"flex items-start justify-between gap-3 flex-wrap mb-2\">\n                      <div className=\"flex items-center gap-2.5 min-w-0\">\n                        <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: '#8B2F2F', color: '#fff' }}>{i + 1}</span>\n                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{it.etiqueta}{it.endereco ? ` \u00b7 END ${it.endereco}` : ''}</p>\n                      </div>\n                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, flexShrink: 0, fontWeight: 600, color: statusColor(it.status), border: `1px solid ${statusColor(it.status)}` }}>\n                        {it.status || 'Sem status'}\n                      </span>\n                    </div>\n                    {it.falha && (\n                      <div style={{ marginBottom: 6 }}>\n                        <RvtFieldLabelLocal>Falha</RvtFieldLabelLocal>\n                        <p style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{it.falha}</p>\n                      </div>\n                    )}\n                    <div className=\"rvt-item-body\" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>\n                      {it.descritivo && (\n                        <div style={{ flex: '1 1 260px', minWidth: 0 }}>\n                          <RvtFieldLabelLocal>{it.tipo === 'inspecao' ? 'Resultado / M\u00e9todo' : 'Descritivo'}</RvtFieldLabelLocal>\n                          <p style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{it.descritivo}</p>\n                        </div>\n                      )}\n                      {it.fotos && it.fotos.length > 0 && (\n                        <div style={{ flex: '0 0 auto' }}>\n                          <RvtFieldLabelLocal>Registro fotogr\u00e1fico</RvtFieldLabelLocal>\n                          <div className=\"rvt-photo-row\" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, maxWidth: 306 }}>\n                            {it.fotos.map((f, fi) => (\n                              <img key={fi} src={f} alt=\"\" style={{ width: 96, height: 96, flexShrink: 0, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />\n                            ))}\n                          </div>\n                        </div>\n                      )}\n                    </div>\n                  </div>\n                ))}";
+
+if (!content.includes(oldBlock)) {
+  if (content.includes(newBlock)) {
+    console.log('O arquivo ja esta com a correcao aplicada. Nada a fazer.');
+    process.exit(0);
+  }
+  console.error('ERRO: nao encontrei o bloco esperado em AtendimentosNovo.jsx (o arquivo pode ja ter sido alterado). Nenhuma mudanca foi feita. Me chama que eu reviso.');
+  process.exit(1);
+}
+
+content = content.replace(oldBlock, newBlock);
+if (hasCRLF) content = content.replace(/\n/g, '\r\n');
+
+fs.writeFileSync(filePath, content, 'utf8');
+console.log('OK: layout de impressao dos Atendimentos atualizado em src/AtendimentosNovo.jsx');
