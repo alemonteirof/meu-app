@@ -5,7 +5,7 @@ import {
   updateAtendimento, updateInspecao, updateOutroItem,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
-  updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico,
+  updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
 } from './supabaseAdapter';
 
 const inputStyle = {
@@ -775,7 +775,25 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
   const [saving, setSaving] = useState(false);
 
   const temCilindroSelecionado = selectedIds.some((id) => options.find((o) => o.id === id)?.kind === 'cilindro');
-
+  const [agendarCombateMode, setAgendarCombateMode] = useState(false);
+  const [agendarCombateIds, setAgendarCombateIds] = useState([]);
+  const [agendarCombateData, setAgendarCombateData] = useState(new Date().toISOString().slice(0, 10));
+  async function handleAgendarCombate(e) {
+    e.preventDefault();
+    if (agendarCombateIds.length === 0) { setMsg('Selecione ao menos 1 item.'); return; }
+    try {
+      const opts = options.filter((o) => agendarCombateIds.includes(o.id));
+      for (const item of opts) {
+        await agendarInspecaoCombate(item.kind, item.id, agendarCombateData);
+      }
+      setMsg(`Próxima inspeção agendada para ${opts.length} item(ns).`);
+      setAgendarCombateIds([]);
+      setAgendarCombateMode(false);
+    } catch (err) {
+      console.error(err);
+      setMsg('Erro ao agendar inspeção.');
+    }
+  }
   async function submitVistoria(e) {
     e.preventDefault();
     if (selectedIds.length === 0) { setMsg('Selecione ao menos um item.'); return; }
@@ -829,38 +847,63 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
           {msg}
         </div>
       )}
-      <form onSubmit={submitVistoria} style={cardStyle}>
-        <div className="grid-2-mobile-safe">
-          <Field label="Técnico"><input style={inputStyle} value={tecnico} onChange={(e) => setTecnico(e.target.value)} /></Field>
-          <Field label="Data"><input type="date" style={inputStyle} value={dataVistoria} onChange={(e) => setDataVistoria(e.target.value)} /></Field>
-        </div>
-        <CombateMultiSelect options={options} selectedIds={selectedIds} setSelectedIds={setSelectedIds} />
-        {temCilindroSelecionado && (
-          <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
-            Cilindro selecionado: o resultado abaixo marca os 4 itens do checklist dele de uma vez (Válvula, Manômetro, Corpo, Etiqueta).
-            Pra registrar cada item do cilindro separado, edita ele direto em Sistemas de Combate.
+            {!agendarCombateMode ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <form onSubmit={submitVistoria} style={{ ...cardStyle, flex: '1 1 400px' }}>
+            <div className="grid-2-mobile-safe">
+              <Field label="Técnico"><input style={inputStyle} value={tecnico} onChange={(e) => setTecnico(e.target.value)} /></Field>
+              <Field label="Data"><input type="date" style={inputStyle} value={dataVistoria} onChange={(e) => setDataVistoria(e.target.value)} /></Field>
+            </div>
+            <CombateMultiSelect options={options} selectedIds={selectedIds} setSelectedIds={setSelectedIds} />
+            {temCilindroSelecionado && (
+              <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
+                Cilindro selecionado: o resultado abaixo marca os 4 itens do checklist dele de uma vez (Válvula, Manômetro, Corpo, Etiqueta).
+                Pra registrar cada item do cilindro separado, edita ele direto em Sistemas de Combate.
+              </div>
+            )}
+            <div className="grid-2-mobile-safe">
+              <Field label="Resultado">
+                <select style={inputStyle} value={resultado} onChange={(e) => setResultado(e.target.value)}>
+                  <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
+                </select>
+              </Field>
+              <Field label="Próxima inspeção">
+                <input type="date" style={inputStyle} value={proximaInspecao} onChange={(e) => setProximaInspecao(e.target.value)} />
+              </Field>
+            </div>
+            <Field label="Falha (se reprovado)">
+              <textarea style={{ ...inputStyle, minHeight: 50 }} value={falha} onChange={(e) => setFalha(e.target.value)} />
+            </Field>
+            <Field label="Observações">
+              <textarea style={{ ...inputStyle, minHeight: 50 }} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+            </Field>
+            <button type="submit" disabled={!canEdit || saving} style={btnStyle}>
+              {saving ? 'Salvando...' : `Registrar vistoria${selectedIds.length > 1 ? ` (${selectedIds.length} itens)` : ''}`}
+            </button>
+          </form>
+          <div style={{ ...cardStyle, maxWidth: 420, flex: '1 1 320px', border: '1px solid #8B2F2F' }}>
+            <h3 style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+              Programe a próxima inspeção nos itens selecionados, sem registrar uma vistoria completa.
+            </p>
+            <button type="button" onClick={() => setAgendarCombateMode(true)} style={{ ...btnStyle, background: 'transparent', color: '#8B2F2F', border: '1px solid #8B2F2F' }}>
+              Selecionar itens
+            </button>
           </div>
-        )}
-        <div className="grid-2-mobile-safe">
-          <Field label="Resultado">
-            <select style={inputStyle} value={resultado} onChange={(e) => setResultado(e.target.value)}>
-              <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
-            </select>
-          </Field>
-          <Field label="Próxima inspeção">
-            <input type="date" style={inputStyle} value={proximaInspecao} onChange={(e) => setProximaInspecao(e.target.value)} />
-          </Field>
         </div>
-        <Field label="Falha (se reprovado)">
-          <textarea style={{ ...inputStyle, minHeight: 50 }} value={falha} onChange={(e) => setFalha(e.target.value)} />
-        </Field>
-        <Field label="Observações">
-          <textarea style={{ ...inputStyle, minHeight: 50 }} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
-        </Field>
-        <button type="submit" disabled={!canEdit || saving} style={btnStyle}>
-          {saving ? 'Salvando...' : `Registrar vistoria${selectedIds.length > 1 ? ` (${selectedIds.length} itens)` : ''}`}
-        </button>
-      </form>
+      ) : (
+        <form onSubmit={handleAgendarCombate} style={{ ...cardStyle, maxWidth: 480 }}>
+          <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
+          <CombateMultiSelect options={options} selectedIds={agendarCombateIds} setSelectedIds={setAgendarCombateIds} />
+          <Field label="Próxima inspeção">
+            <input type="date" style={inputStyle} value={agendarCombateData} onChange={(e) => setAgendarCombateData(e.target.value)} />
+          </Field>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" disabled={!canEdit} style={btnStyle}>Agendar ({agendarCombateIds.length})</button>
+            <button type="button" onClick={() => { setAgendarCombateMode(false); setAgendarCombateIds([]); }} style={{ ...btnStyle, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
@@ -875,6 +918,24 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   const [subAba, setSubAba] = useState('dispositivos');
   const [msg, setMsg] = useState('');
 
+    const [agendarSDAIMode, setAgendarSDAIMode] = useState(false);
+  const [agendarSDAIIds, setAgendarSDAIIds] = useState([]);
+  const [agendarSDAIData, setAgendarSDAIData] = useState(new Date().toISOString().slice(0, 10));
+  async function handleAgendarSDAI(e) {
+    e.preventDefault();
+    if (agendarSDAIIds.length === 0) { setMsg('Selecione ao menos 1 item.'); return; }
+    try {
+      for (const id of agendarSDAIIds) {
+        await agendarInspecaoDispositivo(id, agendarSDAIData);
+      }
+      setMsg(`Próxima inspeção agendada para ${agendarSDAIIds.length} item(ns).`);
+      setAgendarSDAIIds([]);
+      setAgendarSDAIMode(false);
+    } catch (err) {
+      console.error(err);
+      setMsg('Erro ao agendar inspeção.');
+    }
+  }
   const [startForm, setStartForm] = useState({ painelId: '', tecnico: '', data: new Date().toISOString().slice(0, 10) });
   async function iniciarVisita(e) {
     e.preventDefault();
@@ -1148,24 +1209,50 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
         </div>
       )}
 
-      {!visita ? (
-        <form onSubmit={iniciarVisita} style={{ ...cardStyle, maxWidth: 420 }}>
-          <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Iniciar visita técnica</h3>
-          <Field label="Painel (opcional)">
-            <select style={inputStyle} value={startForm.painelId} onChange={(e) => setStartForm({ ...startForm, painelId: e.target.value })}>
-              <option value="">Sem painel específico</option>
-              {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Técnico">
-            <input style={inputStyle} value={startForm.tecnico} onChange={(e) => setStartForm({ ...startForm, tecnico: e.target.value })} />
-          </Field>
-          <Field label="Data">
-            <input type="date" style={inputStyle} value={startForm.data} onChange={(e) => setStartForm({ ...startForm, data: e.target.value })} />
-          </Field>
-          <button type="submit" disabled={!canEdit} style={btnStyle}>Iniciar visita</button>
-        </form>
+            {!visita ? (
+        !agendarSDAIMode ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+            <form onSubmit={iniciarVisita} style={{ ...cardStyle, maxWidth: 420, flex: '1 1 320px' }}>
+              <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Iniciar visita técnica</h3>
+              <Field label="Painel (opcional)">
+                <select style={inputStyle} value={startForm.painelId} onChange={(e) => setStartForm({ ...startForm, painelId: e.target.value })}>
+                  <option value="">Sem painel específico</option>
+                  {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Técnico">
+                <input style={inputStyle} value={startForm.tecnico} onChange={(e) => setStartForm({ ...startForm, tecnico: e.target.value })} />
+              </Field>
+              <Field label="Data">
+                <input type="date" style={inputStyle} value={startForm.data} onChange={(e) => setStartForm({ ...startForm, data: e.target.value })} />
+              </Field>
+              <button type="submit" disabled={!canEdit} style={btnStyle}>Iniciar visita</button>
+            </form>
+            <div style={{ ...cardStyle, maxWidth: 420, flex: '1 1 320px', border: '1px solid #8B2F2F' }}>
+              <h3 style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Programe a próxima inspeção nos itens selecionados, sem registrar uma visita completa.
+              </p>
+              <button type="button" onClick={() => setAgendarSDAIMode(true)} style={{ ...btnStyle, background: 'transparent', color: '#8B2F2F', border: '1px solid #8B2F2F' }}>
+                Selecionar itens
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleAgendarSDAI} style={{ ...cardStyle, maxWidth: 480 }}>
+            <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
+            <DeviceMultiSelect options={deviceOptions} selectedIds={agendarSDAIIds} setSelectedIds={setAgendarSDAIIds} />
+            <Field label="Próxima inspeção">
+              <input type="date" style={inputStyle} value={agendarSDAIData} onChange={(e) => setAgendarSDAIData(e.target.value)} />
+            </Field>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" disabled={!canEdit} style={btnStyle}>Agendar ({agendarSDAIIds.length})</button>
+              <button type="button" onClick={() => { setAgendarSDAIMode(false); setAgendarSDAIIds([]); }} style={{ ...btnStyle, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
+            </div>
+          </form>
+        )
       ) : (
+
         <div>
           <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>

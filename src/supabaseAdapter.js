@@ -808,6 +808,19 @@ export async function updateCombateCilindro(id, patch) {
   if (error) throw error;
 }
 
+export async function agendarInspecaoDispositivo(dispositivoId, proximaInspecao) {
+  const { error } = await supabase.from('dispositivos')
+    .update({ proxima_inspecao: proximaInspecao || null })
+    .eq('id', dispositivoId);
+  if (error) throw error;
+}
+
+export async function agendarInspecaoCombate(kind, id, proximaInspecao) {
+  if (kind === 'subitem') return updateCombateSubitem(id, { proximaInspecao });
+  if (kind === 'componente') return updateCombateComponente(id, { proximaInspecao });
+  if (kind === 'cilindro') return updateCombateCilindro(id, { proximaInspecao });
+}
+
 export async function createCombateHistorico({ clienteId, tipoItem, itemId, categoriaLabel, contextoLabel, tecnico, dataInspecao, resultado, falha, observacoes }) {
   const { error } = await supabase.from('combate_historico').insert({
     cliente_id: clienteId, tipo_item: tipoItem, item_id: itemId,
