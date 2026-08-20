@@ -738,6 +738,42 @@ function buildImportEntities(rows, typeMap, brand, opts) {
   };
 }
 
+/* Compara os dispositivos lidos do arquivo com o que já existe no banco (mesmo laço + mesmo
+ * endereço = mesmo dispositivo físico). Usada pela tela de revisão antes de gravar, pra nunca
+ * duplicar um dispositivo já cadastrado e pra avisar quando algo cadastrado não apareceu no
+ * arquivo novo (possível remoção do painel). */
+function computeImportReview(entities, data) {
+  const loopIdByKey = {};
+  entities.loops.forEach((l) => { loopIdByKey[l.key] = l.existingId || null; });
+
+  const novos = [];
+  const atualizados = [];
+  const seenAddressesByLoop = new Map();
+
+  entities.devices.forEach((d) => {
+    const loopId = loopIdByKey[d.loopKey];
+    if (loopId) {
+      if (!seenAddressesByLoop.has(loopId)) seenAddressesByLoop.set(loopId, new Set());
+      seenAddressesByLoop.get(loopId).add(d.address);
+    }
+    const existing = loopId ? (data.devices || []).find((ed) => ed.loopId === loopId && ed.address === d.address) : null;
+    if (existing) atualizados.push({ ...d, existingId: existing.id });
+    else novos.push(d);
+  });
+
+  const naoEncontrados = [];
+  entities.loops.forEach((l) => {
+    if (!l.existingId) return; // laço novo — não tem o que comparar
+    const seen = seenAddressesByLoop.get(l.existingId) || new Set();
+    (data.devices || []).filter((ed) => ed.loopId === l.existingId && !seen.has(ed.address)).forEach((ed) => {
+      const linkedCount = (data.indicador || []).filter((r) => r.deviceId === ed.id).length;
+      naoEncontrados.push({ ...ed, linkedCount });
+    });
+  });
+
+  return { novos, atualizados, naoEncontrados };
+}
+
 const DEVICE_TYPES = [
   { value: 'fumaca', label: 'Detector de fumaça', icon: Cloud },
   { value: 'calor', label: 'Detector de calor', icon: Thermometer },
@@ -2367,10 +2403,12 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     }
   }
 
-  function importCsvEntities(entities) {
+  function importCsvEntities(entities, removeIds = []) {
     let createdPanelIds = [];
     let createdLoopIds = [];
     let createdDeviceIds = [];
+    let updatedDeviceCount = 0;
+    let removedDeviceCount = 0;
     updateData((prev) => {
       const panelIdByKey = {};
       const newPanels = [];
@@ -2394,35 +2432,49 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           newLoops.push({ id, panelId: panelIdByKey[l.node], name: l.name });
         }
       });
-      const newDevices = entities.devices.map((d) => ({
-        id: uid(),
-        loopId: loopIdByKey[d.loopKey],
-        address: d.address,
-        type: d.type,
-        modelo: d.modelo,
-        description: d.label,
-        subEndereco: d.subEndereco || '',
-        categoriaFuncional: '',
-        papelSinal: '',
-        lastMaintenance: '',
-        nextMaintenance: '',
-        intervalMonths: '',
-      }));
+
+      // Trava anti-duplicata: mesmo laço + mesmo endereço = mesmo dispositivo físico.
+      // Se já existe, atualiza os dados descritivos mantendo o ID (histórico preservado).
+      // Só cria dispositivo novo quando não há match.
+      const removeSet = new Set(removeIds);
+      const updatesById = new Map();
+      const newDevices = [];
+      entities.devices.forEach((d) => {
+        const loopId = loopIdByKey[d.loopKey];
+        const existing = prev.devices.find((ed) => ed.loopId === loopId && ed.address === d.address);
+        if (existing) {
+          updatesById.set(existing.id, { type: d.type, modelo: d.modelo, description: d.label, subEndereco: d.subEndereco || '' });
+        } else {
+          const id = uid();
+          createdDeviceIds.push(id);
+          newDevices.push({
+            id, loopId, address: d.address, type: d.type, modelo: d.modelo,
+            description: d.label, subEndereco: d.subEndereco || '',
+            categoriaFuncional: '', papelSinal: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '',
+          });
+        }
+      });
+      updatedDeviceCount = updatesById.size;
+      removedDeviceCount = removeSet.size;
+
+      const survivingDevices = prev.devices
+        .filter((ed) => !removeSet.has(ed.id))
+        .map((ed) => (updatesById.has(ed.id) ? { ...ed, ...updatesById.get(ed.id) } : ed));
+
       createdPanelIds = newPanels.map((p) => p.id);
       createdLoopIds = newLoops.map((l) => l.id);
-      createdDeviceIds = newDevices.map((d) => d.id);
       return {
         ...prev,
         panels: [...prev.panels, ...newPanels],
         loops: [...prev.loops, ...newLoops],
-        devices: [...prev.devices, ...newDevices],
+        devices: [...survivingDevices, ...newDevices],
       };
     });
     setLastImport({
       panelIds: createdPanelIds,
       loopIds: createdLoopIds,
       deviceIds: createdDeviceIds,
-      summary: `${createdPanelIds.length} painel(éis) novo(s), ${createdLoopIds.length} laço(s) novo(s) e ${createdDeviceIds.length} dispositivo(s)`,
+      summary: `${createdPanelIds.length} painel(éis) novo(s), ${createdLoopIds.length} laço(s) novo(s), ${createdDeviceIds.length} dispositivo(s) novo(s), ${updatedDeviceCount} atualizado(s) e ${removedDeviceCount} removido(s)`,
     });
   }
 
@@ -6368,6 +6420,27 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
   const [fileNames, setFileNames] = useState({});
   const [notifierSheets, setNotifierSheets] = useState({ modules: null, detectors: null });
   const [confirmUndo, setConfirmUndo] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [removeIds, setRemoveIds] = useState(new Set());
+  const [openLoopGroups, setOpenLoopGroups] = useState(new Set());
+
+  const review = entities ? computeImportReview(entities, data) : null;
+
+  function toggleRemoveId(id) {
+    setRemoveIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleLoopGroup(loopId) {
+    setOpenLoopGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(loopId)) next.delete(loopId); else next.add(loopId);
+      return next;
+    });
+  }
 
   const currentModel = modelInfo(brand, model);
   const existingPanel = targetMode === 'existing' ? (data.panels || []).find((p) => p.id === targetPanelId) : null;
@@ -6385,6 +6458,9 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       setError(err.message || 'Não foi possível processar esses dados.');
       setEntities(null);
     }
+    setReviewOpen(false);
+    setRemoveIds(new Set());
+    setOpenLoopGroups(new Set());
   }
 
   function seedTypeMapAndBuild(nextRows) {
@@ -6401,6 +6477,9 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       setError(err.message || 'Não foi possível processar esses dados.');
       setEntities(null);
     }
+    setReviewOpen(false);
+    setRemoveIds(new Set());
+    setOpenLoopGroups(new Set());
   }
 
   function handleBrandChange(value) {
@@ -6513,12 +6592,17 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       } catch (err) {
         setError(err.message || 'Não foi possível processar esses dados.');
       }
+      setReviewOpen(false);
+      setRemoveIds(new Set());
     }
   }
 
   function handleConfirm() {
-    onImport(entities);
+    onImport(entities, Array.from(removeIds));
     setDone(true);
+    setReviewOpen(false);
+    setRemoveIds(new Set());
+    setOpenLoopGroups(new Set());
     setRows(null);
     setEntities(null);
     setNotifierSheets({ modules: null, detectors: null });
@@ -6695,12 +6779,99 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
               </p>
             )}
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Isso vai <strong>adicionar</strong> novos registros à lista atual (não substitui o que já existe). Importar o mesmo arquivo duas vezes cria duplicados.
+              Dispositivos com o mesmo laço e endereço de um já cadastrado são <strong>atualizados</strong>, não duplicados — o histórico (visitas, inspeções, indicador) é preservado.
             </p>
-            <Button variant="primary" onClick={handleConfirm} disabled={targetMode === 'existing' && !existingPanel}>
-              <Upload size={15} /> Confirmar importação
-            </Button>
+            {!reviewOpen && (
+              <Button variant="primary" onClick={() => setReviewOpen(true)} disabled={targetMode === 'existing' && !existingPanel}>
+                <Upload size={15} /> Revisar importação
+              </Button>
+            )}
           </div>
+
+          {reviewOpen && review && (
+            <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Revisar antes de gravar</p>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-md p-2" style={{ background: 'var(--surface-raised)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Novos</p>
+                  <p className="text-lg font-medium" style={{ color: 'var(--status-ok)' }}>{review.novos.length}</p>
+                </div>
+                <div className="rounded-md p-2" style={{ background: 'var(--surface-raised)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Atualizados</p>
+                  <p className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>{review.atualizados.length}</p>
+                </div>
+                <div className="rounded-md p-2" style={{ background: 'var(--surface-raised)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Não encontrados</p>
+                  <p className="text-lg font-medium" style={{ color: 'var(--status-warn)' }}>{review.naoEncontrados.length}</p>
+                </div>
+              </div>
+
+              {review.atualizados.length > 0 && (
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Mesmo laço e endereço já cadastrados nesse painel — os dados serão sincronizados, mantendo o histórico vinculado.
+                </p>
+              )}
+
+              {review.naoEncontrados.length > 0 && (
+                <div className="rounded-md p-2 flex flex-col gap-2" style={{ background: 'var(--surface-raised)', border: '1px solid var(--status-warn)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    Estavam cadastrados neste painel mas não vieram nesse arquivo. Marque os que devem ser removidos — os demais continuam ativos.
+                  </p>
+                  {Object.entries(
+                    review.naoEncontrados.reduce((acc, d) => {
+                      (acc[d.loopId] = acc[d.loopId] || []).push(d);
+                      return acc;
+                    }, {})
+                  ).map(([loopId, itens]) => {
+                    const loopName = (data.loops || []).find((l) => l.id === loopId)?.name || 'Laço';
+                    const isOpen = openLoopGroups.has(loopId);
+                    const markedCount = itens.filter((d) => removeIds.has(d.id)).length;
+                    return (
+                      <div key={loopId} style={{ borderTop: '1px solid var(--border)' }}>
+                        <button type="button" onClick={() => toggleLoopGroup(loopId)}
+                          className="w-full flex items-center justify-between gap-2 py-2 text-left">
+                          <span className="text-sm flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                            {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            {loopName} <span style={{ color: 'var(--text-secondary)' }}>({itens.length})</span>
+                          </span>
+                          {markedCount > 0 && (
+                            <span className="text-xs" style={{ color: 'var(--status-warn)' }}>{markedCount} marcado(s) pra remover</span>
+                          )}
+                        </button>
+                        {isOpen && (
+                          <div className="flex flex-col gap-1 pb-2 pl-1">
+                            {itens.map((d) => (
+                              <label key={d.id} className="flex items-center gap-2 py-1 text-sm">
+                                <input type="checkbox" checked={removeIds.has(d.id)} onChange={() => toggleRemoveId(d.id)} />
+                                <span style={{ color: 'var(--text-primary)' }}>
+                                  Endereço {d.address} · {DEVICE_TYPE_MAP[d.type]?.label || d.type} — {d.description || 'sem etiqueta'}{' '}
+                                  <span style={{ color: 'var(--text-secondary)' }}>
+                                    ({d.linkedCount > 0 ? `${d.linkedCount} registro(s) vinculado(s)` : 'sem histórico'})
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                Atenção: o botão "Desfazer última importação" só reverte dispositivos <strong>novos</strong>. Atualizações e remoções feitas aqui não são desfeitas automaticamente.
+              </p>
+
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setReviewOpen(false)}>Voltar</Button>
+                <Button variant="primary" onClick={handleConfirm}>
+                  <Upload size={15} /> Confirmar importação
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
