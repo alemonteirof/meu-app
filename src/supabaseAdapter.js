@@ -739,12 +739,13 @@ async function doSaveClientData(clienteId, data) {
   }
 }
 
-export async function updateAtendimento(id, { falha, status, descritivo, fotos }) {
+export async function updateAtendimento(id, { falha, status, descritivo, fotos, dispositivoId }) {
   const patch = {};
   if (falha !== undefined) patch.falha = falha || null;
   if (status !== undefined) patch.status = status;
   if (descritivo !== undefined) patch.descritivo = descritivo || null;
   if (fotos !== undefined) patch.fotos = fotos;
+  if (dispositivoId !== undefined) patch.dispositivo_id = dispositivoId || null;
   const { data, error } = await supabase.from('atendimentos').update(patch).eq('id', id).select().single();
   if (error) throw error;
   return data;
@@ -755,7 +756,7 @@ export async function deleteAtendimento(id) {
   if (error) throw error;
 }
 
-export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, metodo, proximaInspecao, fotos }) {
+export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, metodo, proximaInspecao, fotos, dispositivoId }) {
   const patch = {};
   if (resultadoTeste !== undefined) patch.resultado_teste = resultadoTeste || null;
   if (aparencia !== undefined) patch.aparencia = aparencia || null;
@@ -766,6 +767,7 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
   if (metodo !== undefined) patch.metodo = metodo || null;
   if (proximaInspecao !== undefined) patch.proxima_inspecao = proximaInspecao || null;
   if (fotos !== undefined) patch.fotos = fotos;
+  if (dispositivoId !== undefined) patch.dispositivo_id = dispositivoId || null;
   const { data, error } = await supabase.from('inspecoes').update(patch).eq('id', id).select().single();
   if (error) throw error;
   return data;

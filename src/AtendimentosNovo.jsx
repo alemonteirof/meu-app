@@ -388,6 +388,43 @@ function DeviceMultiSelect({ options, selectedIds, setSelectedIds }) {
   );
 }
 
+/** Versão "1 dispositivo só" do buscador acima — usada na reatribuição de item já
+    cadastrado (Editar item), quando o técnico lançou no dispositivo errado. */
+function DeviceSingleSelect({ options, selectedId, setSelectedId, label }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
+  const atual = options.find((o) => o.id === selectedId);
+  return (
+    <Field label={label || 'Dispositivo vinculado'}>
+      {atual && (
+        <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 6, padding: '6px 8px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border)' }}>
+          Atual: {atual.label}
+        </div>
+      )}
+      <input style={inputStyle} placeholder="Buscar por etiqueta, endereço, painel..." value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginTop: 6 }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhum dispositivo encontrado.</div>
+        )}
+        {filtered.slice(0, 100).map((o) => (
+          <div key={o.id} onClick={() => setSelectedId(o.id)}
+            style={{
+              padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--border)',
+              background: o.id === selectedId ? 'rgba(139,47,47,0.15)' : 'transparent',
+              color: o.id === selectedId ? '#8B2F2F' : 'var(--text-primary)', fontWeight: o.id === selectedId ? 600 : 400,
+            }}>
+            {o.label}
+          </div>
+        ))}
+        {filtered.length > 100 && (
+          <div style={{ padding: 8, fontSize: 12, color: 'var(--text-secondary)' }}>Mostrando 100 de {filtered.length} — refine a busca.</div>
+        )}
+      </div>
+    </Field>
+  );
+}
+
 /** Mesmo padrão do DeviceMultiSelect, só que pra itens de Combate a Incêndio — agrupa
     por "grupo" (Casa de Bombas, Hidrante, Fluxostato, Cilindro etc.) já calculado. */
 function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
@@ -453,7 +490,7 @@ function itemsFromVisita(v) {
     if (it.atendimentos) {
       const a = it.atendimentos;
       return {
-        id: it.id, tipo: 'atendimento',
+        id: it.id, tipo: 'atendimento', dispositivoId: a.dispositivo_id || null,
         etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
         endereco: a.dispositivos?.endereco || '',
         falha: a.falha || '', descritivo: a.descritivo || '',
@@ -464,7 +501,7 @@ function itemsFromVisita(v) {
     if (it.inspecoes) {
       const i = it.inspecoes;
       return {
-        id: it.id, tipo: 'inspecao',
+        id: it.id, tipo: 'inspecao', dispositivoId: i.dispositivo_id || null,
         etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || 'Dispositivo',
         endereco: i.dispositivos?.endereco || '',
         falha: i.falha || '',
@@ -622,7 +659,7 @@ function VisitaPrintView({ visitas, client, onBack }) {
 
 /** Formulário inline de edição de 1 item de visita — o tipo de campos muda conforme
     o tipo do item (atendimento / inspeção / outro). */
-function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
+function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }) {
   if (!editForm) return null;
   if (editForm.kind === 'outro') {
     return (
@@ -641,6 +678,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
   if (editForm.kind === 'atendimento') {
     return (
       <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
+        <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
         <Field label="Falha (deixe em branco para preventiva)">
           <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
         </Field>
@@ -665,6 +703,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
   // inspecao
   return (
     <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
+      <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
       <div className="grid-2-mobile-safe">
         <Field label="Funcionamento (resultado do teste)">
           <select style={inputStyle} value={editForm.resultadoTeste} onChange={(e) => setEditForm({ ...editForm, resultadoTeste: e.target.value })}>
@@ -706,13 +745,46 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
 }
 
 /** Card de 1 visita anterior — colapsado por padrão (só resumo), com seta pra expandir
-    a lista de itens, e nesse modo expandido dá pra editar item por item. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit }) {
+    a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
+    grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
+    agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
   const nOutro = itens.filter((it) => it.tipo === 'outro').length;
   const painel = panelOptions.find((p) => p.id === visita.painel_id);
+  const [itemQuery, setItemQuery] = useState('');
+  const [gruposAbertos, setGruposAbertos] = useState({});
+
+  function grupoDoItem(it) {
+    const opt = it.dispositivoId ? (deviceOptions || []).find((o) => o.id === it.dispositivoId) : null;
+    if (!opt) return 'Outros / sem dispositivo vinculado';
+    return `${opt.panelName}${opt.loopName ? ' — ' + opt.loopName : ''}`;
+  }
+
+  const q = itemQuery.trim().toLowerCase();
+  const itensFiltrados = q
+    ? itens.filter((it) => [it.etiqueta, it.endereco, it.falha, it.descritivo, it.descricao].filter(Boolean).join(' ').toLowerCase().includes(q))
+    : itens;
+  const gruposNomes = [...new Set(itensFiltrados.map(grupoDoItem))];
+  const usarGrupos = itens.length > 8 && gruposNomes.length > 1;
+
+  function renderItem(it) {
+    return (
+      <div key={it.id}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}><ItemResumo item={{ ...it, dispositivoLabel: it.etiqueta, resultado: it.status }} /></div>
+          {canEdit && editingItemId !== it.id && (
+            <button type="button" onClick={() => onStartEdit(visita, it)} style={{ ...smallBtnStyle, flexShrink: 0 }}>Editar item</button>
+          )}
+        </div>
+        {editingItemId === it.id && (
+          <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} deviceOptions={deviceOptions} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={cardStyle}>
@@ -741,21 +813,38 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
       </div>
 
       {expanded && (
-        <div style={{ display: 'grid', gap: 6, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-          {itens.map((it) => (
-            <div key={it.id}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}><ItemResumo item={{ ...it, dispositivoLabel: it.etiqueta, resultado: it.status }} /></div>
-                {canEdit && editingItemId !== it.id && (
-                  <button type="button" onClick={() => onStartEdit(visita, it)} style={{ ...smallBtnStyle, flexShrink: 0 }}>Editar item</button>
-                )}
-              </div>
-              {editingItemId === it.id && (
-                <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} />
-              )}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          {itens.length > 8 && (
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="Buscar item por etiqueta, endereço ou falha..." value={itemQuery} onChange={(e) => setItemQuery(e.target.value)} />
+          )}
+          {usarGrupos ? (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {gruposNomes.map((nomeGrupo) => {
+                const itensDoGrupo = itensFiltrados.filter((it) => grupoDoItem(it) === nomeGrupo);
+                const aberto = !!gruposAbertos[nomeGrupo];
+                return (
+                  <div key={nomeGrupo}>
+                    <div onClick={() => setGruposAbertos((prev) => ({ ...prev, [nomeGrupo]: !prev[nomeGrupo] }))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{nomeGrupo} — {itensDoGrupo.length} item(ns)</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{aberto ? '▲' : '▼'}</span>
+                    </div>
+                    {aberto && (
+                      <div style={{ display: 'grid', gap: 6, padding: '6px 0 6px 12px' }}>
+                        {itensDoGrupo.map(renderItem)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {itensFiltrados.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhum item encontrado.</p>}
             </div>
-          ))}
-          {itens.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhum item nesta visita.</p>}
+          ) : (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {itensFiltrados.map(renderItem)}
+              {itensFiltrados.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{itens.length === 0 ? 'Nenhum item nesta visita.' : 'Nenhum item encontrado.'}</p>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1132,11 +1221,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
       setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao, fotos: raw.outro_fotos || [] });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', id: a.id, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
+      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
-        kind: 'inspecao', id: i.id, resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
+        kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
         comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
         observacoes: i.observacoes || '', falha: i.falha || '', proximaInspecao: i.proxima_inspecao || '',
         fotos: i.fotos || [],
@@ -1154,13 +1243,13 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     if (!editForm) return;
     try {
       if (editForm.kind === 'atendimento') {
-        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos });
+        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos, dispositivoId: editForm.dispositivoId });
       } else if (editForm.kind === 'inspecao') {
         await updateInspecao(editForm.id, {
           resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,
           comunicacaoLocal: editForm.comunicacaoLocal, comunicacaoRede: editForm.comunicacaoRede,
           observacoes: editForm.observacoes, falha: editForm.falha, proximaInspecao: editForm.proximaInspecao,
-          fotos: editForm.fotos,
+          fotos: editForm.fotos, dispositivoId: editForm.dispositivoId,
         });
       } else if (editForm.kind === 'outro') {
         await updateOutroItem(editForm.rvtItemId, editForm.descricao, editForm.fotos);
@@ -1430,7 +1519,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               </p>
               <div style={{ display: 'grid', gap: 10 }}>
                 {visitasFiltradas.filter((v) => v.data_visita === dia).map((v) => (
-                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit}
+                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit} deviceOptions={deviceOptions}
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
                     onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
