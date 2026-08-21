@@ -776,8 +776,10 @@ export async function deleteInspecao(id) {
   if (error) throw error;
 }
 
-export async function updateOutroItem(rvtItemId, descricao) {
-  const { error } = await supabase.from('rvt_itens').update({ outro_descricao: descricao }).eq('id', rvtItemId);
+export async function updateOutroItem(rvtItemId, descricao, fotos) {
+  const patch = { outro_descricao: descricao };
+  if (fotos !== undefined) patch.outro_fotos = fotos;
+  const { error } = await supabase.from('rvt_itens').update(patch).eq('id', rvtItemId);
   if (error) throw error;
 }
 

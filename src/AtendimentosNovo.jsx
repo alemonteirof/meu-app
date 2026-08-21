@@ -630,6 +630,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
         <Field label="Descrição">
           <textarea style={{ ...inputStyle, minHeight: 60 }} value={editForm.descricao} onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })} />
         </Field>
+        <FotosField fotos={editForm.fotos || []} setFotos={(updater) => setEditForm((prev) => ({ ...prev, fotos: typeof updater === 'function' ? updater(prev.fotos || []) : updater }))} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
           <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
@@ -653,6 +654,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
         <Field label="Descritivo">
           <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.descritivo} onChange={(e) => setEditForm({ ...editForm, descritivo: e.target.value })} />
         </Field>
+        <FotosField fotos={editForm.fotos || []} setFotos={(updater) => setEditForm((prev) => ({ ...prev, fotos: typeof updater === 'function' ? updater(prev.fotos || []) : updater }))} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
           <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
@@ -694,6 +696,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel }) {
       <Field label="Próxima inspeção">
         <input type="date" style={inputStyle} value={editForm.proximaInspecao} onChange={(e) => setEditForm({ ...editForm, proximaInspecao: e.target.value })} />
       </Field>
+      <FotosField fotos={editForm.fotos || []} setFotos={(updater) => setEditForm((prev) => ({ ...prev, fotos: typeof updater === 'function' ? updater(prev.fotos || []) : updater }))} />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
         <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
@@ -1126,16 +1129,17 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     const raw = (v.rvt_itens || []).find((it) => it.id === item.id);
     if (!raw) return;
     if (raw.outro_descricao !== null && raw.outro_descricao !== undefined) {
-      setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao });
+      setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao, fotos: raw.outro_fotos || [] });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', id: a.id, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '' });
+      setEditForm({ kind: 'atendimento', id: a.id, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
         kind: 'inspecao', id: i.id, resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
         comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
         observacoes: i.observacoes || '', falha: i.falha || '', proximaInspecao: i.proxima_inspecao || '',
+        fotos: i.fotos || [],
       });
     } else {
       return;
@@ -1150,15 +1154,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     if (!editForm) return;
     try {
       if (editForm.kind === 'atendimento') {
-        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo });
+        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos });
       } else if (editForm.kind === 'inspecao') {
         await updateInspecao(editForm.id, {
           resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,
           comunicacaoLocal: editForm.comunicacaoLocal, comunicacaoRede: editForm.comunicacaoRede,
           observacoes: editForm.observacoes, falha: editForm.falha, proximaInspecao: editForm.proximaInspecao,
+          fotos: editForm.fotos,
         });
       } else if (editForm.kind === 'outro') {
-        await updateOutroItem(editForm.rvtItemId, editForm.descricao);
+        await updateOutroItem(editForm.rvtItemId, editForm.descricao, editForm.fotos);
       }
       cancelEditItem();
       refreshVisitas();
