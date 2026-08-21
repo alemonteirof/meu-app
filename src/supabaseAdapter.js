@@ -179,25 +179,49 @@ export async function createVisita({ clienteId, painelId, tecnico, dataVisita })
   return data;
 }
 
-async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao, outroFotos }) {
+async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao, outroFotos, outroAtividade, outroAtividadeDados }) {
   if (!rvtId) return;
   const { error } = await supabase.from('rvt_itens').insert({
     rvt_id: rvtId, atendimento_id: atendimentoId || null,
     inspecao_id: inspecaoId || null, outro_descricao: outroDescricao || null,
     outro_fotos: outroFotos || [],
+    outro_atividade: outroAtividade || null,
+    outro_atividade_dados: outroAtividadeDados || {},
   });
   if (error) throw error;
 }
 
-export async function addOutroToVisita(rvtId, descricao, fotos) {
-  return addItemToVisita(rvtId, { outroDescricao: descricao, outroFotos: fotos });
+export async function addOutroToVisita(rvtId, descricao, fotos, atividade, atividadeDados) {
+  return addItemToVisita(rvtId, {
+    outroDescricao: descricao, outroFotos: fotos,
+    outroAtividade: atividade, outroAtividadeDados: atividadeDados,
+  });
 }
 
-export async function createAtendimento({ dispositivoId, falha, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos }) {
+// Categoria "Diagnóstico" dentro do Outro: cria 1 Corretiva (Aguardando) por dispositivo
+// selecionado + registra 1 item "Outro" (atividade=diagnostico) na visita, pro Dashboard
+// contar como atividade da visita além de contar como Corretiva normal.
+export async function createDiagnosticoOutro({ rvtId, tecnico, dispositivoIds, falha, dataAgendamento, dispositivoLabels, fotos }) {
+  const atendimentosGerados = [];
+  for (const dispositivoId of dispositivoIds) {
+    const a = await createAtendimento({
+      dispositivoId, falha, status: 'aguardando', tecnico, rvtId, fotos,
+      dataAgendamento, descritivo: 'Corretiva gerada a partir de Diagnóstico em visita',
+    });
+    atendimentosGerados.push(a);
+  }
+  await addItemToVisita(rvtId, {
+    outroAtividade: 'diagnostico',
+    outroAtividadeDados: { falha, dataAgendamento, dispositivos: dispositivoLabels || [] },
+  });
+  return atendimentosGerados;
+}
+
+export async function createAtendimento({ dispositivoId, falha, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento }) {
   const { data, error } = await supabase.from('atendimentos').insert({
     dispositivo_id: dispositivoId, falha: falha || null, status: status || 'aguardando',
     tecnico: tecnico || null, descritivo: descritivo || null, origem_inspecao_id: origemInspecaoId || null,
-    fotos: fotos || [],
+    fotos: fotos || [], data_agendamento: dataAgendamento || null,
   }).select().single();
   if (error) throw error;
 
@@ -284,8 +308,8 @@ export async function listVisitas(clienteId) {
     .select(`
       id, data_visita, tecnico, painel_id,
       rvt_itens (
-                id, outro_descricao, outro_fotos,
-        atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) ),
+                id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
+        atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco ) ),
         inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) )
       )
     `)
@@ -433,7 +457,7 @@ export async function loadClientData(clienteId) {
       dataIntervencao1: (a.data_registro || '').slice(0, 10),
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
       dataSolucao: a.status === 'resolvido' ? (a.data_registro || '').slice(0, 10) : '',
-      solucao: '', fotos: a.fotos || [],
+      solucao: '', fotos: a.fotos || [], dataAgendamento: a.data_agendamento || '',
       origemRvt: a.rvt_itens?.[0]?.rvt_id ? `novo-rvt-${a.rvt_itens[0].rvt_id}` : '',
       origemNovo: true,
     })),
@@ -457,10 +481,11 @@ export async function loadClientData(clienteId) {
     id: `novo-rvt-${v.id}`, data: v.data_visita, tecnico: v.tecnico || '',
     origemNovo: true,
     itens: (v.rvt_itens || []).map((it) => {
-      if (it.outro_descricao) {
+      if (it.outro_descricao || it.outro_atividade) {
         return { id: `novo-item-${it.id}`, deviceId: null, categoria: 'outro',
           etiqueta: 'Outros', endereco: '', laco: '', painel: '', equipamento: '', area: '',
-          falha: '', descritivo: it.outro_descricao, status: 'Resolvido',
+          falha: '', descritivo: it.outro_descricao || '', status: 'Resolvido',
+          atividade: it.outro_atividade || '', atividadeDados: it.outro_atividade_dados || {},
           explanacao: '', dataIntervencao: v.data_visita, solucao: '', fotos: [] };
       }
       if (it.atendimentos) {
@@ -469,6 +494,7 @@ export async function loadClientData(clienteId) {
           etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || '',
           endereco: a.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
           falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+          dataAgendamento: a.data_agendamento || '',
           explanacao: '', dataIntervencao: v.data_visita, solucao: '', fotos: a.fotos || [] };
       }
       if (it.inspecoes) {
@@ -739,19 +765,21 @@ async function doSaveClientData(clienteId, data) {
   }
 }
 
-export async function updateAtendimento(id, { falha, status, descritivo, fotos, dispositivoId }) {
+export async function updateAtendimento(id, { falha, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
   const patch = {};
   if (falha !== undefined) patch.falha = falha || null;
   if (status !== undefined) patch.status = status;
   if (descritivo !== undefined) patch.descritivo = descritivo || null;
   if (fotos !== undefined) patch.fotos = fotos;
   if (dispositivoId !== undefined) patch.dispositivo_id = dispositivoId || null;
+  if (dataAgendamento !== undefined) patch.data_agendamento = dataAgendamento || null;
   const { data, error } = await supabase.from('atendimentos').update(patch).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function deleteAtendimento(id) {
+  await supabase.from('rvt_itens').delete().eq('atendimento_id', id);
   const { error } = await supabase.from('atendimentos').delete().eq('id', id);
   if (error) throw error;
 }
@@ -774,6 +802,7 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
 }
 
 export async function deleteInspecao(id) {
+  await supabase.from('rvt_itens').delete().eq('inspecao_id', id);
   const { error } = await supabase.from('inspecoes').delete().eq('id', id);
   if (error) throw error;
 }
@@ -861,6 +890,7 @@ export async function deleteVisita(rvtId) {
   const inspecaoIds = (itens || []).map((i) => i.inspecao_id).filter(Boolean);
   if (atendimentoIds.length) await supabase.from('atendimentos').delete().in('id', atendimentoIds);
   if (inspecaoIds.length) await supabase.from('inspecoes').delete().in('id', inspecaoIds);
+  await supabase.from('rvt_itens').delete().eq('rvt_id', rvtId);
   const { error } = await supabase.from('rvts').delete().eq('id', rvtId);
   if (error) throw error;
 }
