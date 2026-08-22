@@ -807,9 +807,11 @@ export async function deleteInspecao(id) {
   if (error) throw error;
 }
 
-export async function updateOutroItem(rvtItemId, descricao, fotos) {
+export async function updateOutroItem(rvtItemId, descricao, fotos, atividade, atividadeDados) {
   const patch = { outro_descricao: descricao };
   if (fotos !== undefined) patch.outro_fotos = fotos;
+  if (atividade !== undefined) patch.outro_atividade = atividade || null;
+  if (atividadeDados !== undefined) patch.outro_atividade_dados = atividadeDados || {};
   const { error } = await supabase.from('rvt_itens').update(patch).eq('id', rvtItemId);
   if (error) throw error;
 }

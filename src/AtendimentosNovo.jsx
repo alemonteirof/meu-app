@@ -684,9 +684,42 @@ function VisitaPrintView({ visitas, client, onBack }) {
 function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }) {
   if (!editForm) return null;
   if (editForm.kind === 'outro') {
+    const dados = editForm.atividadeDados || {};
+    const setDado = (campo, valor) => setEditForm({ ...editForm, atividadeDados: { ...dados, [campo]: valor } });
     return (
       <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
-        <Field label="Descrição">
+        <Field label="Atividade">
+          <select style={inputStyle} value={editForm.atividade || ''} onChange={(e) => setEditForm({ ...editForm, atividade: e.target.value, atividadeDados: {} })}>
+            <option value="">Genérico (sem categoria)</option>
+            <option value="reuniao">Reunião</option>
+            <option value="preparacao">Preparação</option>
+            <option value="seguranca_trabalho">Segurança do Trabalho</option>
+            <option value="manutencao_nao_cadastrada">Manutenção de Itens não cadastrados</option>
+          </select>
+        </Field>
+        {editForm.atividade === 'diagnostico' && (
+          <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
+            Item criado por um Diagnóstico — a categoria não muda por aqui pra não perder o vínculo com a(s) Corretiva(s) já gerada(s).
+          </div>
+        )}
+        {editForm.atividade === 'reuniao' && (
+          <Field label="Com quem"><input style={inputStyle} value={dados.comQuem || ''} onChange={(e) => setDado('comQuem', e.target.value)} /></Field>
+        )}
+        {editForm.atividade === 'preparacao' && (
+          <Field label="Para que"><input style={inputStyle} value={dados.finalidade || ''} onChange={(e) => setDado('finalidade', e.target.value)} /></Field>
+        )}
+        {editForm.atividade === 'manutencao_nao_cadastrada' && (
+          <div className="grid-2-mobile-safe">
+            <Field label="Nome do item"><input style={inputStyle} value={dados.nomeItem || ''} onChange={(e) => setDado('nomeItem', e.target.value)} /></Field>
+            <Field label="Tipo de manutenção">
+              <select style={inputStyle} value={dados.tipoManutencao || 'corretiva'} onChange={(e) => setDado('tipoManutencao', e.target.value)}>
+                <option value="corretiva">Corretiva</option>
+                <option value="preventiva">Preventiva</option>
+              </select>
+            </Field>
+          </div>
+        )}
+        <Field label={editForm.atividade === 'seguranca_trabalho' ? 'Detalhes' : 'Descrição'}>
           <textarea style={{ ...inputStyle, minHeight: 60 }} value={editForm.descricao} onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })} />
         </Field>
         <FotosField fotos={editForm.fotos || []} setFotos={(updater) => setEditForm((prev) => ({ ...prev, fotos: typeof updater === 'function' ? updater(prev.fotos || []) : updater }))} />
@@ -1281,8 +1314,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   function startEditItem(v, item) {
     const raw = (v.rvt_itens || []).find((it) => it.id === item.id);
     if (!raw) return;
-    if (raw.outro_descricao !== null && raw.outro_descricao !== undefined) {
-      setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao, fotos: raw.outro_fotos || [] });
+    if (raw.outro_descricao || raw.outro_atividade) {
+      setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao || '', fotos: raw.outro_fotos || [],
+        atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {} });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
       setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
@@ -1316,7 +1350,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
           fotos: editForm.fotos, dispositivoId: editForm.dispositivoId,
         });
       } else if (editForm.kind === 'outro') {
-        await updateOutroItem(editForm.rvtItemId, editForm.descricao, editForm.fotos);
+        await updateOutroItem(editForm.rvtItemId, editForm.descricao, editForm.fotos, editForm.atividade, editForm.atividadeDados);
       }
       cancelEditItem();
       refreshVisitas();
