@@ -3497,8 +3497,27 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
     return true;
   });
   const corretivas = filtrado.filter(ehCorretivaReal);
+
+  // itens de visita (SDAI) no mesmo período, usados tanto pro Resumo de Visitas quanto
+  // pra trazer as corretivas "sem cadastro" (Manutenção de Itens não cadastrados) pros
+  // contadores normais de Status/Falhas, junto com as corretivas de dispositivo cadastrado.
+  const itensVisitaPeriodo = (data.rvt || []).flatMap((v) => (v.itens || [])
+    .map((it) => ({ ...it, dataItem: it.dataIntervencao || v.data })))
+    .filter((it) => {
+      if (dashFiltroInicio && it.dataItem < dashFiltroInicio) return false;
+      if (dashFiltroFim && it.dataItem > dashFiltroFim) return false;
+      return true;
+    });
+  const semCadastroCorretivaItems = itensVisitaPeriodo.filter((it) =>
+    it.tipo === 'outro' && it.atividade === 'manutencao_nao_cadastrada' && (it.atividadeDados || {}).tipoManutencao === 'corretiva');
+
   const corretivaCounts = { Aguardando: 0, Andamento: 0, Resolvido: 0 };
   corretivas.forEach((r) => { if (corretivaCounts[r.status] !== undefined) corretivaCounts[r.status] += 1; });
+  semCadastroCorretivaItems.forEach((it) => {
+    const statusRaw = (it.atividadeDados || {}).status || 'aguardando';
+    const status = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+    if (corretivaCounts[status] !== undefined) corretivaCounts[status] += 1;
+  });
   const inspecaoAguardando = counts.overdue;
 
   const corretivaStatusData = [
@@ -3508,16 +3527,13 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
   ].filter((d) => d.value > 0);
 
   const areaData = sortDesc(countBy(filtrado, (r) => r.area, 'Sem área')).slice(0, 10);
-  const falhaData = sortDesc(countBy(corretivas, (r) => r.falha, 'Sem falha')).slice(0, 10);
+  const falhaComSemCadastro = [
+    ...corretivas,
+    ...semCadastroCorretivaItems.map((it) => ({ falha: it.descricao || (it.atividadeDados || {}).nomeItem || 'Sem falha' })),
+  ];
+  const falhaData = sortDesc(countBy(falhaComSemCadastro, (r) => r.falha, 'Sem falha')).slice(0, 10);
 
   // ---- Resumo de Visitas: o que mais é feito nas visitas (Manutenção/Inspeção/Atividades) ----
-  const itensVisitaPeriodo = (data.rvt || []).flatMap((v) => (v.itens || [])
-    .map((it) => ({ ...it, dataItem: it.dataIntervencao || v.data })))
-    .filter((it) => {
-      if (dashFiltroInicio && it.dataItem < dashFiltroInicio) return false;
-      if (dashFiltroFim && it.dataItem > dashFiltroFim) return false;
-      return true;
-    });
   let resumoPreventivaCadastrada = 0, resumoPreventivaSemCadastro = 0;
   let resumoCorretivaCadastrada = 0, resumoCorretivaSemCadastro = 0;
   let resumoInspecao = 0, resumoReuniao = 0, resumoPreparacao = 0, resumoDiagnostico = 0, resumoSeguranca = 0, resumoSemCategoria = 0;

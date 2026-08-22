@@ -194,7 +194,7 @@ function ItemResumo({ item }) {
     const detalhe = item.atividade === 'reuniao' ? dados.comQuem
       : item.atividade === 'preparacao' ? dados.finalidade
       : item.atividade === 'diagnostico' ? [dados.falha, dados.dataAgendamento && `agendado ${formatDateBR(dados.dataAgendamento)}`].filter(Boolean).join(' · ')
-      : item.atividade === 'manutencao_nao_cadastrada' ? [dados.nomeItem, dados.tipoManutencao].filter(Boolean).join(' · ')
+      : item.atividade === 'manutencao_nao_cadastrada' ? [dados.nomeItem, dados.tipoManutencao, dados.status].filter(Boolean).join(' · ')
       : '';
     const texto = item.descricao || item.descritivo || '';
     return (
@@ -717,6 +717,15 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }
                 <option value="preventiva">Preventiva</option>
               </select>
             </Field>
+            {dados.tipoManutencao === 'corretiva' && (
+              <Field label="Status">
+                <select style={inputStyle} value={dados.status || 'aguardando'} onChange={(e) => setDado('status', e.target.value)}>
+                  <option value="aguardando">Aguardando</option>
+                  <option value="andamento">Andamento</option>
+                  <option value="resolvido">Resolvido</option>
+                </select>
+              </Field>
+            )}
           </div>
         )}
         <Field label={editForm.atividade === 'seguranca_trabalho' ? 'Detalhes' : 'Descrição'}>
@@ -1204,12 +1213,13 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   const [outroDiagAgendamento, setOutroDiagAgendamento] = useState('');
   const [outroItemNome, setOutroItemNome] = useState('');
   const [outroItemTipoManutencao, setOutroItemTipoManutencao] = useState('corretiva');
+  const [outroItemStatus, setOutroItemStatus] = useState('aguardando');
 
   function limparFormOutro() {
     setOutroTexto(''); setOutroFotos([]); setOutroAtividade('');
     setOutroComQuem(''); setOutroFinalidade('');
     setOutroDiagDispositivoIds([]); setOutroDiagFalha(''); setOutroDiagAgendamento('');
-    setOutroItemNome(''); setOutroItemTipoManutencao('corretiva');
+    setOutroItemNome(''); setOutroItemTipoManutencao('corretiva'); setOutroItemStatus('aguardando');
   }
 
     async function submitOutro(e) {
@@ -1240,7 +1250,10 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
         let dados = {};
         if (outroAtividade === 'reuniao') dados = { comQuem: outroComQuem.trim() };
         else if (outroAtividade === 'preparacao') dados = { finalidade: outroFinalidade.trim() };
-        else if (outroAtividade === 'manutencao_nao_cadastrada') dados = { nomeItem: outroItemNome.trim(), tipoManutencao: outroItemTipoManutencao };
+        else if (outroAtividade === 'manutencao_nao_cadastrada') {
+          dados = { nomeItem: outroItemNome.trim(), tipoManutencao: outroItemTipoManutencao };
+          if (outroItemTipoManutencao === 'corretiva') dados.status = outroItemStatus;
+        }
 
         await addOutroToVisita(visita.id, outroTexto.trim(), outroFotos, outroAtividade || null, dados);
         setItensVisita((prev) => [...prev, { tipo: 'outro', descricao: outroTexto.trim(), fotos: outroFotos, atividade: outroAtividade, atividadeDados: dados }]);
@@ -1595,6 +1608,15 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                       <option value="preventiva">Preventiva</option>
                     </select>
                   </Field>
+                  {outroItemTipoManutencao === 'corretiva' && (
+                    <Field label="Status">
+                      <select style={inputStyle} value={outroItemStatus} onChange={(e) => setOutroItemStatus(e.target.value)}>
+                        <option value="aguardando">Aguardando</option>
+                        <option value="andamento">Andamento</option>
+                        <option value="resolvido">Resolvido</option>
+                      </select>
+                    </Field>
+                  )}
                 </div>
               )}
 
