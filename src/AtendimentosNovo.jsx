@@ -1,12 +1,20 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import {
-  createVisita, createAtendimento, createInspecao, addOutroToVisita, listVisitas, deleteVisita,
+  createVisita, createAtendimento, createInspecao, addOutroToVisita, createDiagnosticoOutro, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
 } from './supabaseAdapter';
+
+const ATIVIDADE_LABELS = {
+  reuniao: 'Reunião',
+  preparacao: 'Preparação',
+  diagnostico: 'Diagnóstico',
+  seguranca_trabalho: 'Segurança do Trabalho',
+  manutencao_nao_cadastrada: 'Manutenção (item não cadastrado)',
+};
 
 const inputStyle = {
   width: '100%', padding: '8px 10px', borderRadius: 8,
@@ -181,7 +189,19 @@ function buildCombateOptions(data) {
 function ItemResumo({ item }) {
   const nFotos = (item.fotos || []).length;
     if (item.tipo === 'outro') {
-    return <div style={{ fontSize: 13 }}><strong>Outro</strong> · {item.descricao}{nFotos > 0 && ` · ${nFotos} foto(s)`}</div>;
+    const label = ATIVIDADE_LABELS[item.atividade] || 'Outro';
+    const dados = item.atividadeDados || {};
+    const detalhe = item.atividade === 'reuniao' ? dados.comQuem
+      : item.atividade === 'preparacao' ? dados.finalidade
+      : item.atividade === 'diagnostico' ? [dados.falha, dados.dataAgendamento && `agendado ${formatDateBR(dados.dataAgendamento)}`].filter(Boolean).join(' · ')
+      : item.atividade === 'manutencao_nao_cadastrada' ? [dados.nomeItem, dados.tipoManutencao].filter(Boolean).join(' · ')
+      : '';
+    const texto = item.descricao || item.descritivo || '';
+    return (
+      <div style={{ fontSize: 13 }}>
+        <strong>{label}</strong>{detalhe && ` · ${detalhe}`}{texto && ` · ${texto}`}{nFotos > 0 && ` · ${nFotos} foto(s)`}
+      </div>
+    );
   }
   if (item.tipo === 'atendimento') {
     return (
@@ -484,8 +504,10 @@ function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
     de itens de exibição — usado tanto no resumo colapsado quanto na impressão. */
 function itemsFromVisita(v) {
   return (v.rvt_itens || []).map((it) => {
-        if (it.outro_descricao !== null && it.outro_descricao !== undefined) {
-      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido', descritivo: it.outro_descricao, fotos: it.outro_fotos || [] };
+        if (it.outro_descricao || it.outro_atividade) {
+      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido',
+        descritivo: it.outro_descricao || '', fotos: it.outro_fotos || [],
+        atividade: it.outro_atividade || '', atividadeDados: it.outro_atividade_dados || {} };
     }
     if (it.atendimentos) {
       const a = it.atendimentos;
@@ -1141,16 +1163,58 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
     const [outroTexto, setOutroTexto] = useState('');
   const [outroFotos, setOutroFotos] = useState([]);
+  const [outroAtividade, setOutroAtividade] = useState('');
+  const [outroComQuem, setOutroComQuem] = useState('');
+  const [outroFinalidade, setOutroFinalidade] = useState('');
+  const [outroDiagDispositivoIds, setOutroDiagDispositivoIds] = useState([]);
+  const [outroDiagFalha, setOutroDiagFalha] = useState('');
+  const [outroDiagAgendamento, setOutroDiagAgendamento] = useState('');
+  const [outroItemNome, setOutroItemNome] = useState('');
+  const [outroItemTipoManutencao, setOutroItemTipoManutencao] = useState('corretiva');
+
+  function limparFormOutro() {
+    setOutroTexto(''); setOutroFotos([]); setOutroAtividade('');
+    setOutroComQuem(''); setOutroFinalidade('');
+    setOutroDiagDispositivoIds([]); setOutroDiagFalha(''); setOutroDiagAgendamento('');
+    setOutroItemNome(''); setOutroItemTipoManutencao('corretiva');
+  }
+
     async function submitOutro(e) {
     e.preventDefault();
-    if (!outroTexto.trim()) return;
     try {
-      await addOutroToVisita(visita.id, outroTexto.trim(), outroFotos);
-      setItensVisita((prev) => [...prev, { tipo: 'outro', descricao: outroTexto.trim(), fotos: outroFotos }]);
-      setOutroTexto('');
-      setOutroFotos([]);
+      if (outroAtividade === 'diagnostico') {
+        if (outroDiagDispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo pro diagnóstico.'); return; }
+        if (!outroDiagFalha.trim()) { setMsg('Descreva a falha encontrada no diagnóstico.'); return; }
+        const labels = outroDiagDispositivoIds.map((id) => deviceOptions.find((o) => o.id === id)?.label || '');
+        const criados = await createDiagnosticoOutro({
+          rvtId: visita.id, tecnico: visita.tecnico, dispositivoIds: outroDiagDispositivoIds,
+          falha: outroDiagFalha.trim(), dataAgendamento: outroDiagAgendamento,
+          dispositivoLabels: labels, fotos: outroFotos,
+        });
+        setItensVisita((prev) => [
+          ...prev,
+          { tipo: 'outro', atividade: 'diagnostico', descricao: '',
+            atividadeDados: { falha: outroDiagFalha.trim(), dataAgendamento: outroDiagAgendamento, dispositivos: labels }, fotos: [] },
+          ...criados.map((a, i) => ({ tipo: 'atendimento', falha: a.falha, status: a.status, dispositivoLabel: labels[i] || '', fotos: a.fotos })),
+        ]);
+        setMsg(`Diagnóstico registrado — ${criados.length} corretiva(s) criada(s) (Aguardando).`);
+      } else {
+        if (outroAtividade === 'reuniao' && !outroComQuem.trim()) { setMsg('Informe com quem foi a reunião.'); return; }
+        if (outroAtividade === 'preparacao' && !outroFinalidade.trim()) { setMsg('Informe para que é a preparação.'); return; }
+        if (outroAtividade === 'manutencao_nao_cadastrada' && !outroItemNome.trim()) { setMsg('Informe o nome do item.'); return; }
+        if ((outroAtividade === '' || outroAtividade === 'seguranca_trabalho') && !outroTexto.trim()) { setMsg('Descreva a atividade.'); return; }
+
+        let dados = {};
+        if (outroAtividade === 'reuniao') dados = { comQuem: outroComQuem.trim() };
+        else if (outroAtividade === 'preparacao') dados = { finalidade: outroFinalidade.trim() };
+        else if (outroAtividade === 'manutencao_nao_cadastrada') dados = { nomeItem: outroItemNome.trim(), tipoManutencao: outroItemTipoManutencao };
+
+        await addOutroToVisita(visita.id, outroTexto.trim(), outroFotos, outroAtividade || null, dados);
+        setItensVisita((prev) => [...prev, { tipo: 'outro', descricao: outroTexto.trim(), fotos: outroFotos, atividade: outroAtividade, atividadeDados: dados }]);
+        setMsg('Item adicionado à visita.');
+      }
+      limparFormOutro();
       if (onRefresh) onRefresh();
-      setMsg('Item adicionado à visita.');
     } catch (err) {
       console.error(err);
       setMsg('Erro ao adicionar item.');
@@ -1448,9 +1512,64 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
                     {aba === 'outro' && (
             <form onSubmit={submitOutro} style={{ ...cardStyle, marginBottom: 16 }}>
-              <Field label="Descrição (reunião, ajuste de documento, etc.)">
-                <textarea style={{ ...inputStyle, minHeight: 70 }} value={outroTexto} onChange={(e) => setOutroTexto(e.target.value)} />
+              <Field label="Atividade">
+                <select style={inputStyle} value={outroAtividade} onChange={(e) => setOutroAtividade(e.target.value)}>
+                  <option value="">Genérico (sem categoria)</option>
+                  <option value="reuniao">Reunião</option>
+                  <option value="preparacao">Preparação</option>
+                  <option value="diagnostico">Diagnóstico</option>
+                  <option value="seguranca_trabalho">Segurança do Trabalho</option>
+                  <option value="manutencao_nao_cadastrada">Manutenção de Itens não cadastrados</option>
+                </select>
               </Field>
+
+              {outroAtividade === 'reuniao' && (
+                <Field label="Com quem (ex: Bombeiros, Manutenção, Logística, Diretoria)">
+                  <input style={inputStyle} value={outroComQuem} onChange={(e) => setOutroComQuem(e.target.value)} />
+                </Field>
+              )}
+
+              {outroAtividade === 'preparacao' && (
+                <Field label="Para que (ex: Manutenção Corretiva, Manutenção Preventiva, Inspeção, Mudança de Layout)">
+                  <input style={inputStyle} value={outroFinalidade} onChange={(e) => setOutroFinalidade(e.target.value)} />
+                </Field>
+              )}
+
+              {outroAtividade === 'diagnostico' && (
+                <>
+                  <DeviceMultiSelect options={deviceOptions} selectedIds={outroDiagDispositivoIds} setSelectedIds={setOutroDiagDispositivoIds} />
+                  <Field label="Falha encontrada">
+                    <textarea style={{ ...inputStyle, minHeight: 60 }} value={outroDiagFalha} onChange={(e) => setOutroDiagFalha(e.target.value)} />
+                  </Field>
+                  <Field label="Data de agendamento da manutenção">
+                    <input type="date" style={inputStyle} value={outroDiagAgendamento} onChange={(e) => setOutroDiagAgendamento(e.target.value)} />
+                  </Field>
+                  <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
+                    Ao salvar, uma Corretiva com status Aguardando é criada automaticamente pra cada dispositivo selecionado, já com essa falha e a data de agendamento.
+                  </div>
+                </>
+              )}
+
+              {outroAtividade === 'manutencao_nao_cadastrada' && (
+                <div className="grid-2-mobile-safe">
+                  <Field label="Nome do item">
+                    <input style={inputStyle} value={outroItemNome} onChange={(e) => setOutroItemNome(e.target.value)} />
+                  </Field>
+                  <Field label="Tipo de manutenção">
+                    <select style={inputStyle} value={outroItemTipoManutencao} onChange={(e) => setOutroItemTipoManutencao(e.target.value)}>
+                      <option value="corretiva">Corretiva</option>
+                      <option value="preventiva">Preventiva</option>
+                    </select>
+                  </Field>
+                </div>
+              )}
+
+              {outroAtividade !== 'diagnostico' && (
+                <Field label={outroAtividade === 'seguranca_trabalho' ? 'Detalhes' : 'Descrição (reunião, ajuste de documento, etc.)'}>
+                  <textarea style={{ ...inputStyle, minHeight: 70 }} value={outroTexto} onChange={(e) => setOutroTexto(e.target.value)} />
+                </Field>
+              )}
+
               <FotosField fotos={outroFotos} setFotos={setOutroFotos} />
               <button type="submit" disabled={!canEdit} style={btnStyle}>Adicionar à visita</button>
             </form>
