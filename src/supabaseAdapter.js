@@ -482,7 +482,7 @@ export async function loadClientData(clienteId) {
     origemNovo: true,
     itens: (v.rvt_itens || []).map((it) => {
       if (it.outro_descricao || it.outro_atividade) {
-        return { id: `novo-item-${it.id}`, deviceId: null, categoria: 'outro',
+        return { id: `novo-item-${it.id}`, deviceId: null, categoria: 'outro', tipo: 'outro',
           etiqueta: 'Outros', endereco: '', laco: '', painel: '', equipamento: '', area: '',
           falha: '', descritivo: it.outro_descricao || '', status: 'Resolvido',
           atividade: it.outro_atividade || '', atividadeDados: it.outro_atividade_dados || {},
@@ -490,7 +490,7 @@ export async function loadClientData(clienteId) {
       }
       if (it.atendimentos) {
         const a = it.atendimentos;
-        return { id: `novo-item-${it.id}`, deviceId: a.dispositivo_id, categoria: categoriaFor(a.dispositivo_id),
+        return { id: `novo-item-${it.id}`, deviceId: a.dispositivo_id, categoria: categoriaFor(a.dispositivo_id), tipo: 'manutencao',
           etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || '',
           endereco: a.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
           falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
@@ -499,7 +499,7 @@ export async function loadClientData(clienteId) {
       }
       if (it.inspecoes) {
         const i = it.inspecoes;
-        return { id: `novo-item-${it.id}`, deviceId: i.dispositivo_id, categoria: categoriaFor(i.dispositivo_id),
+        return { id: `novo-item-${it.id}`, deviceId: i.dispositivo_id, categoria: categoriaFor(i.dispositivo_id), tipo: 'inspecao',
           etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || '',
           endereco: i.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
           falha: i.falha || '', descritivo: i.resultado_teste || '', status: 'Resolvido',

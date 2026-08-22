@@ -3510,6 +3510,45 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
   const areaData = sortDesc(countBy(filtrado, (r) => r.area, 'Sem área')).slice(0, 10);
   const falhaData = sortDesc(countBy(corretivas, (r) => r.falha, 'Sem falha')).slice(0, 10);
 
+  // ---- Resumo de Visitas: o que mais é feito nas visitas (Manutenção/Inspeção/Atividades) ----
+  const itensVisitaPeriodo = (data.rvt || []).flatMap((v) => (v.itens || [])
+    .map((it) => ({ ...it, dataItem: it.dataIntervencao || v.data })))
+    .filter((it) => {
+      if (dashFiltroInicio && it.dataItem < dashFiltroInicio) return false;
+      if (dashFiltroFim && it.dataItem > dashFiltroFim) return false;
+      return true;
+    });
+  let resumoPreventivaCadastrada = 0, resumoPreventivaSemCadastro = 0;
+  let resumoCorretivaCadastrada = 0, resumoCorretivaSemCadastro = 0;
+  let resumoInspecao = 0, resumoReuniao = 0, resumoPreparacao = 0, resumoDiagnostico = 0, resumoSeguranca = 0, resumoSemCategoria = 0;
+  itensVisitaPeriodo.forEach((it) => {
+    if (it.tipo === 'manutencao') {
+      if (it.falha) resumoCorretivaCadastrada += 1; else resumoPreventivaCadastrada += 1;
+    } else if (it.tipo === 'inspecao') {
+      resumoInspecao += 1;
+    } else if (it.tipo === 'outro') {
+      if (it.atividade === 'reuniao') resumoReuniao += 1;
+      else if (it.atividade === 'preparacao') resumoPreparacao += 1;
+      else if (it.atividade === 'diagnostico') resumoDiagnostico += 1;
+      else if (it.atividade === 'seguranca_trabalho') resumoSeguranca += 1;
+      else if (it.atividade === 'manutencao_nao_cadastrada') {
+        if ((it.atividadeDados || {}).tipoManutencao === 'preventiva') resumoPreventivaSemCadastro += 1;
+        else resumoCorretivaSemCadastro += 1;
+      } else resumoSemCategoria += 1;
+    }
+  });
+  const resumoSemCadastroTotal = resumoPreventivaSemCadastro + resumoCorretivaSemCadastro;
+  const resumoVisitasData = [
+    { label: 'Manutenção Preventiva', value: resumoPreventivaCadastrada + resumoPreventivaSemCadastro, color: 'var(--status-ok)' },
+    { label: 'Manutenção Corretiva', value: resumoCorretivaCadastrada + resumoCorretivaSemCadastro, color: 'var(--status-danger)' },
+    { label: 'Inspeção', value: resumoInspecao, color: 'var(--status-warn)' },
+    { label: 'Reunião', value: resumoReuniao, color: CHART_PALETTE[4] },
+    { label: 'Preparação', value: resumoPreparacao, color: CHART_PALETTE[5] },
+    { label: 'Diagnóstico', value: resumoDiagnostico, color: CHART_PALETTE[6] },
+    { label: 'Segurança do Trabalho', value: resumoSeguranca, color: CHART_PALETTE[7] },
+    { label: 'Outro (sem categoria)', value: resumoSemCategoria, color: 'var(--text-secondary)' },
+  ].filter((d) => d.value > 0);
+
   const combateFiltrado = combateHistorico.filter((r) => {
     const d = r.data_inspecao || '';
     if (dashFiltroInicio && d < dashFiltroInicio) return false;
@@ -3594,6 +3633,18 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
                 <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
               </div>
             )}
+          </div>
+
+          <div>
+            <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Resumo de Visitas</h3>
+            <ChartCard title="O que mais fazemos nas visitas" subtitle="Manutenção, inspeção e atividades (Reunião, Preparação, Diagnóstico, Segurança do Trabalho)">
+              <SimplePieChart data={resumoVisitasData} emptyLabel="Nenhuma visita no período/filtro selecionado." />
+              {resumoSemCadastroTotal > 0 && (
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  Inclui {resumoSemCadastroTotal} manutenção(ões) em item(ns) não cadastrado(s) no sistema.
+                </p>
+              )}
+            </ChartCard>
           </div>
 
           <div>
