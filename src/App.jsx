@@ -2335,14 +2335,18 @@ function ClientSelector({ clients, canManage, onSelect, onCreate, onUpdate, onDe
 /* ------------------------------------------------------------------ */
 
 function Workspace({ client, onUpdateClient, onSwitchClient }) {
-  const { role, signOut } = useAuth();
+  const { role, memberships, isOwner, signOut } = useAuth();
   const [previewRole, setPreviewRole] = useState(null);
-  const navRole = role === 'admin' && previewRole ? previewRole : role;
+  // Cargo efetivo: dono da plataforma sempre admin; senao usa o cargo
+  // especifico desse cliente (memberships) quando existir, senao cai pro cargo global (profiles).
+  const membershipRole = (memberships || []).find((m) => m.client_id === client.id)?.role;
+  const effectiveRole = isOwner ? 'admin' : (membershipRole || role);
+  const navRole = isOwner && previewRole ? previewRole : effectiveRole;
   const roleNavItems = navItemsForRole(navRole);
   const mobilePrimaryKeys = mobilePrimaryKeysForRole(navRole);
   const mobilePrimaryNavItems = roleNavItems.filter((i) => mobilePrimaryKeys.includes(i.key));
   const mobileMoreNavItems = roleNavItems.filter((i) => !mobilePrimaryKeys.includes(i.key));
-  const canEdit = role !== 'visualizador';
+  const canEdit = effectiveRole !== 'visualizador';
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(false);
