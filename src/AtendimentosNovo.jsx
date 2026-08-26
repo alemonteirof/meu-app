@@ -16,6 +16,17 @@ const ATIVIDADE_LABELS = {
   manutencao_nao_cadastrada: 'Manutenção (item não cadastrado)',
 };
 
+/** Detalhe textual de um item "Outro", específico por atividade — reaproveitado
+    no resumo (ItemResumo) e na montagem da impressão (itemsFromVisita). */
+function atividadeDetalhe(atividade, dados) {
+  dados = dados || {};
+  if (atividade === 'reuniao') return dados.comQuem || '';
+  if (atividade === 'preparacao') return dados.finalidade || '';
+  if (atividade === 'diagnostico') return [dados.falha, dados.dataAgendamento && `agendado ${formatDateBR(dados.dataAgendamento)}`].filter(Boolean).join(' · ');
+  if (atividade === 'manutencao_nao_cadastrada') return [dados.nomeItem, dados.tipoManutencao, dados.status].filter(Boolean).join(' · ');
+  return '';
+}
+
 const inputStyle = {
   width: '100%', padding: '8px 10px', borderRadius: 8,
   border: '1px solid var(--border)', background: 'var(--surface)',
@@ -192,21 +203,17 @@ function ItemResumo({ item }) {
     if (item.tipo === 'outro') {
     const label = ATIVIDADE_LABELS[item.atividade] || 'Outro';
     const dados = item.atividadeDados || {};
-    const detalhe = item.atividade === 'reuniao' ? dados.comQuem
-      : item.atividade === 'preparacao' ? dados.finalidade
-      : item.atividade === 'diagnostico' ? [dados.falha, dados.dataAgendamento && `agendado ${formatDateBR(dados.dataAgendamento)}`].filter(Boolean).join(' · ')
-      : item.atividade === 'manutencao_nao_cadastrada' ? [dados.nomeItem, dados.tipoManutencao, dados.status].filter(Boolean).join(' · ')
-      : '';
+    const detalhe = atividadeDetalhe(item.atividade, dados);
     const texto = item.descricao || item.descritivo || '';
     return (
-      <div style={{ fontSize: 13 }}>
+      <div style={{ fontSize: 13, color: '#F1EDEA' }}>
         <strong>{label}</strong>{detalhe && ` · ${detalhe}`}{texto && ` · ${texto}`}{nFotos > 0 && ` · ${nFotos} foto(s)`}
       </div>
     );
   }
   if (item.tipo === 'atendimento') {
     return (
-      <div style={{ fontSize: 13 }}>
+      <div style={{ fontSize: 13, color: '#F1EDEA' }}>
         <strong style={{ color: item.falha ? 'var(--status-danger)' : 'var(--status-ok)' }}>
           {item.falha ? 'Corretiva' : 'Preventiva'}
         </strong> · {item.status} · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
@@ -215,7 +222,7 @@ function ItemResumo({ item }) {
     );
   }
   return (
-    <div style={{ fontSize: 13 }}>
+    <div style={{ fontSize: 13, color: '#F1EDEA' }}>
       <strong>Inspeção</strong> · {item.resultado} · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
       {item.criouCorretiva && <div style={{ color: 'var(--status-danger)' }}>↳ gerou corretiva automática</div>}
     </div>
@@ -506,9 +513,11 @@ function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
 function itemsFromVisita(v) {
   return (v.rvt_itens || []).map((it) => {
         if (it.outro_descricao || it.outro_atividade) {
-      return { id: it.id, tipo: 'outro', etiqueta: 'Outro', status: 'Resolvido',
+      const atividade = it.outro_atividade || '';
+      const atividadeDados = it.outro_atividade_dados || {};
+      return { id: it.id, tipo: 'outro', etiqueta: ATIVIDADE_LABELS[atividade] || 'Outro', status: 'Resolvido',
         descritivo: it.outro_descricao || '', fotos: it.outro_fotos || [],
-        atividade: it.outro_atividade || '', atividadeDados: it.outro_atividade_dados || {} };
+        atividade, atividadeDados };
     }
     if (it.atendimentos) {
       const a = it.atendimentos;
@@ -627,7 +636,10 @@ function VisitaPrintView({ visitas, client, onBack }) {
                     {formatDateBR(dia)}
                   </p>
                 )}
-                {itensDoDia.map((it, i) => (
+                {itensDoDia.map((it, i) => {
+                  const detalheOutro = it.tipo === 'outro' ? atividadeDetalhe(it.atividade, it.atividadeDados) : '';
+                  const textoDescritivo = [detalheOutro, it.descritivo].filter(Boolean).join(' · ');
+                  return (
                   <div key={it.id} className="rvt-item-card rounded-lg p-4" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', breakInside: 'avoid' }}>
                     <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -645,10 +657,10 @@ function VisitaPrintView({ visitas, client, onBack }) {
                       </div>
                     )}
                     <div className="rvt-item-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-                      {it.descritivo && (
+                      {textoDescritivo && (
                         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
                           <RvtFieldLabelLocal>{it.tipo === 'inspecao' ? 'Resultado / Método' : 'Descritivo'}</RvtFieldLabelLocal>
-                          <p style={{ fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{it.descritivo}</p>
+                          <p style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{textoDescritivo}</p>
                         </div>
                       )}
                       {it.fotos && it.fotos.length > 0 && (
@@ -663,7 +675,8 @@ function VisitaPrintView({ visitas, client, onBack }) {
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })}
