@@ -23,11 +23,12 @@ const inputStyle = {
 };
 const labelStyle = { fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' };
 const cardStyle = { border: '1px solid var(--border)', borderRadius: 16, padding: 16, background: 'var(--surface)' };
-const btnStyle = { background: '#8B2F2F', color: '#fff', padding: '8px 16px', borderRadius: 8, border: 'none', fontWeight: 600, cursor: 'pointer' };
-const smallBtnStyle = { padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer' };
+const btnStyle = { background: '#8B2F2F', color: '#fff', padding: '8px 16px', borderRadius: 8, border: 'none', fontWeight: 600, cursor: 'pointer', transition: 'opacity .15s ease' };
+const smallBtnStyle = { padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer', transition: 'color .15s ease, background .15s ease' };
 const tabBtnStyle = (active) => ({
   padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer',
   background: active ? '#8B2F2F' : 'var(--surface)', color: active ? '#fff' : 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+  transition: 'background .15s ease, color .15s ease',
 });
 
 function Field({ label, children }) {
@@ -681,7 +682,7 @@ function VisitaPrintView({ visitas, client, onBack }) {
 
 /** Formulário inline de edição de 1 item de visita — o tipo de campos muda conforme
     o tipo do item (atendimento / inspeção / outro). */
-function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }) {
+function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, saving }) {
   if (!editForm) return null;
   if (editForm.kind === 'outro') {
     const dados = editForm.atividadeDados || {};
@@ -733,7 +734,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }
         </Field>
         <FotosField fotos={editForm.fotos || []} setFotos={(updater) => setEditForm((prev) => ({ ...prev, fotos: typeof updater === 'function' ? updater(prev.fotos || []) : updater }))} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
+          <button type="button" onClick={onSave} disabled={saving} style={{ ...btnStyle, opacity: saving ? 0.7 : 1 }}>{saving ? 'Salvando...' : 'Salvar'}</button>
           <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
         </div>
       </div>
@@ -758,7 +759,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }
         </Field>
         <FotosField fotos={editForm.fotos || []} setFotos={(updater) => setEditForm((prev) => ({ ...prev, fotos: typeof updater === 'function' ? updater(prev.fotos || []) : updater }))} />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" onClick={onSave} style={btnStyle}>Salvar</button>
+          <button type="button" onClick={onSave} disabled={saving} style={{ ...btnStyle, opacity: saving ? 0.7 : 1 }}>{saving ? 'Salvando...' : 'Salvar'}</button>
           <button type="button" onClick={onCancel} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
         </div>
       </div>
@@ -812,7 +813,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions }
     a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
     grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
     agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions }) {
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
@@ -844,7 +845,7 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
           )}
         </div>
         {editingItemId === it.id && (
-          <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} deviceOptions={deviceOptions} />
+          <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} deviceOptions={deviceOptions} saving={savingEdit} />
         )}
       </div>
     );
@@ -877,7 +878,7 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
       </div>
 
       {expanded && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+        <div className="fade-in-up" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
           {itens.length > 8 && (
             <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="Buscar item por etiqueta, endereço ou falha..." value={itemQuery} onChange={(e) => setItemQuery(e.target.value)} />
           )}
@@ -934,9 +935,11 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
   const [agendarCombateMode, setAgendarCombateMode] = useState(false);
   const [agendarCombateIds, setAgendarCombateIds] = useState([]);
   const [agendarCombateData, setAgendarCombateData] = useState(new Date().toISOString().slice(0, 10));
+  const [savingAgendarCombate, setSavingAgendarCombate] = useState(false);
   async function handleAgendarCombate(e) {
     e.preventDefault();
     if (agendarCombateIds.length === 0) { setMsg('Selecione ao menos 1 item.'); return; }
+    setSavingAgendarCombate(true);
     try {
       const opts = options.filter((o) => agendarCombateIds.includes(o.id));
       for (const item of opts) {
@@ -948,6 +951,8 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
     } catch (err) {
       console.error(err);
       setMsg('Erro ao agendar inspeção.');
+    } finally {
+      setSavingAgendarCombate(false);
     }
   }
   async function submitVistoria(e) {
@@ -1004,7 +1009,7 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
         </div>
       )}
             {!agendarCombateMode ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+        <div key="vistoria" className="fade-in-up" style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           <form onSubmit={submitVistoria} style={{ ...cardStyle, flex: '1 1 400px' }}>
             <div className="grid-2-mobile-safe">
               <Field label="Técnico"><input style={inputStyle} value={tecnico} onChange={(e) => setTecnico(e.target.value)} /></Field>
@@ -1033,7 +1038,7 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
             <Field label="Observações">
               <textarea style={{ ...inputStyle, minHeight: 50 }} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
             </Field>
-            <button type="submit" disabled={!canEdit || saving} style={btnStyle}>
+            <button type="submit" disabled={!canEdit || saving} style={{ ...btnStyle, opacity: saving ? 0.7 : 1 }}>
               {saving ? 'Salvando...' : `Registrar vistoria${selectedIds.length > 1 ? ` (${selectedIds.length} itens)` : ''}`}
             </button>
           </form>
@@ -1048,14 +1053,16 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
           </div>
         </div>
       ) : (
-        <form onSubmit={handleAgendarCombate} style={{ ...cardStyle, maxWidth: 480 }}>
+        <form key="agendar-combate" className="fade-in-up" onSubmit={handleAgendarCombate} style={{ ...cardStyle, maxWidth: 480 }}>
           <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
           <CombateMultiSelect options={options} selectedIds={agendarCombateIds} setSelectedIds={setAgendarCombateIds} />
           <Field label="Próxima inspeção">
             <input type="date" style={inputStyle} value={agendarCombateData} onChange={(e) => setAgendarCombateData(e.target.value)} />
           </Field>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="submit" disabled={!canEdit} style={btnStyle}>Agendar ({agendarCombateIds.length})</button>
+            <button type="submit" disabled={!canEdit || savingAgendarCombate} style={{ ...btnStyle, opacity: savingAgendarCombate ? 0.7 : 1 }}>
+              {savingAgendarCombate ? 'Agendando...' : `Agendar (${agendarCombateIds.length})`}
+            </button>
             <button type="button" onClick={() => { setAgendarCombateMode(false); setAgendarCombateIds([]); }} style={{ ...btnStyle, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
           </div>
         </form>
@@ -1077,9 +1084,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     const [agendarSDAIMode, setAgendarSDAIMode] = useState(false);
   const [agendarSDAIIds, setAgendarSDAIIds] = useState([]);
   const [agendarSDAIData, setAgendarSDAIData] = useState(new Date().toISOString().slice(0, 10));
+  const [savingAgendarSDAI, setSavingAgendarSDAI] = useState(false);
   async function handleAgendarSDAI(e) {
     e.preventDefault();
     if (agendarSDAIIds.length === 0) { setMsg('Selecione ao menos 1 item.'); return; }
+    setSavingAgendarSDAI(true);
     try {
       for (const id of agendarSDAIIds) {
         await agendarInspecaoDispositivo(id, agendarSDAIData);
@@ -1090,6 +1099,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     } catch (err) {
       console.error(err);
       setMsg('Erro ao agendar inspeção.');
+    } finally {
+      setSavingAgendarSDAI(false);
     }
   }
   const [startForm, setStartForm] = useState({ painelId: '', tecnico: '', data: new Date().toISOString().slice(0, 10) });
@@ -1133,9 +1144,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
   const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
   const [atFotos, setAtFotos] = useState([]);
+  const [savingAtendimento, setSavingAtendimento] = useState(false);
   async function submitAtendimento(e) {
     e.preventDefault();
     if (atForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
+    setSavingAtendimento(true);
     try {
       const novosItens = [];
       for (const dispositivoId of atForm.dispositivoIds) {
@@ -1154,6 +1167,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     } catch (err) {
       console.error(err);
       setMsg('Erro ao registrar atendimento.');
+    } finally {
+      setSavingAtendimento(false);
     }
   }
 
@@ -1163,12 +1178,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     proximaInspecao: '',
   });
   const [inspFotos, setInspFotos] = useState([]);
+  const [savingInspecao, setSavingInspecao] = useState(false);
   const inspDevicesSelecionados = deviceOptions.filter((o) => inspForm.dispositivoIds.includes(o.id));
   const inspMetodosUnicos = [...new Set(inspDevicesSelecionados.map((d) => getMetodoTeste(d)).filter(Boolean))];
   const inspCategoriasUnicas = [...new Set(inspDevicesSelecionados.map((d) => FUNCTIONAL_CATEGORY_MAP[d.categoriaFuncional]).filter(Boolean))];
   async function submitInspecao(e) {
     e.preventDefault();
     if (inspForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
+    setSavingInspecao(true);
     try {
       const novosItens = [];
       let corretivasGeradas = 0;
@@ -1200,6 +1217,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     } catch (err) {
       console.error(err);
       setMsg('Erro ao registrar inspeção.');
+    } finally {
+      setSavingInspecao(false);
     }
   }
 
@@ -1214,6 +1233,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   const [outroItemNome, setOutroItemNome] = useState('');
   const [outroItemTipoManutencao, setOutroItemTipoManutencao] = useState('corretiva');
   const [outroItemStatus, setOutroItemStatus] = useState('aguardando');
+  const [savingOutro, setSavingOutro] = useState(false);
 
   function limparFormOutro() {
     setOutroTexto(''); setOutroFotos([]); setOutroAtividade('');
@@ -1224,6 +1244,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
     async function submitOutro(e) {
     e.preventDefault();
+    setSavingOutro(true);
     try {
       if (outroAtividade === 'diagnostico') {
         if (outroDiagDispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo pro diagnóstico.'); return; }
@@ -1264,6 +1285,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     } catch (err) {
       console.error(err);
       setMsg('Erro ao adicionar item.');
+    } finally {
+      setSavingOutro(false);
     }
   }
 
@@ -1323,6 +1346,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   // ---- Editar item de uma visita já salva ----
   const [editingItemId, setEditingItemId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [savingEditItem, setSavingEditItem] = useState(false);
 
   function startEditItem(v, item) {
     const raw = (v.rvt_itens || []).find((it) => it.id === item.id);
@@ -1352,6 +1376,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   }
   async function saveEditItem() {
     if (!editForm) return;
+    setSavingEditItem(true);
     try {
       if (editForm.kind === 'atendimento') {
         await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos, dispositivoId: editForm.dispositivoId });
@@ -1372,6 +1397,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     } catch (err) {
       console.error(err);
       setMsg('Erro ao salvar edição.');
+    } finally {
+      setSavingEditItem(false);
     }
   }
 
@@ -1399,10 +1426,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
         <button onClick={() => setSubAba('combate')} style={tabBtnStyle(subAba === 'combate')}>Visitas (Sistemas de Combate)</button>
       </div>
       {subAba === 'combate' && (
-        <VisitaCombateView data={data} clientId={clientId} canEdit={canEdit} onRefresh={onRefresh} />
+        <div key="combate" className="fade-in-up">
+          <VisitaCombateView data={data} clientId={clientId} canEdit={canEdit} onRefresh={onRefresh} />
+        </div>
       )}
       {subAba === 'dispositivos' && (
-    <div>
+    <div key="dispositivos" className="fade-in-up">
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas técnicas</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -1418,7 +1447,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
             {!visita ? (
         !agendarSDAIMode ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <div key="start" className="fade-in-up" style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             <form onSubmit={iniciarVisita} style={{ ...cardStyle, maxWidth: 420, flex: '1 1 320px' }}>
               <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Iniciar visita técnica</h3>
               <Field label="Painel (opcional)">
@@ -1446,21 +1475,23 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
             </div>
           </div>
         ) : (
-          <form onSubmit={handleAgendarSDAI} style={{ ...cardStyle, maxWidth: 480 }}>
+          <form key="agendar-sdai" className="fade-in-up" onSubmit={handleAgendarSDAI} style={{ ...cardStyle, maxWidth: 480 }}>
             <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
             <DeviceMultiSelect options={deviceOptions} selectedIds={agendarSDAIIds} setSelectedIds={setAgendarSDAIIds} />
             <Field label="Próxima inspeção">
               <input type="date" style={inputStyle} value={agendarSDAIData} onChange={(e) => setAgendarSDAIData(e.target.value)} />
             </Field>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" disabled={!canEdit} style={btnStyle}>Agendar ({agendarSDAIIds.length})</button>
+              <button type="submit" disabled={!canEdit || savingAgendarSDAI} style={{ ...btnStyle, opacity: savingAgendarSDAI ? 0.7 : 1 }}>
+                {savingAgendarSDAI ? 'Agendando...' : `Agendar (${agendarSDAIIds.length})`}
+              </button>
               <button type="button" onClick={() => { setAgendarSDAIMode(false); setAgendarSDAIIds([]); }} style={{ ...btnStyle, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Cancelar</button>
             </div>
           </form>
         )
       ) : (
 
-        <div>
+        <div key="ativa" className="fade-in-up">
           <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
               Visita em andamento — {visita.tecnico || 'sem técnico'} · {visita.data_visita}
@@ -1483,7 +1514,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
           </div>
 
           {aba === 'manutencao' && (
-            <form onSubmit={submitAtendimento} style={{ ...cardStyle, marginBottom: 16 }}>
+            <form key="manutencao" className="fade-in-up" onSubmit={submitAtendimento} style={{ ...cardStyle, marginBottom: 16 }}>
               <DeviceMultiSelect options={deviceOptions} selectedIds={atForm.dispositivoIds}
                 setSelectedIds={(next) => setAtForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
               <Field label="Falha (deixe em branco para preventiva)">
@@ -1500,14 +1531,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={atForm.descritivo} onChange={(e) => setAtForm({ ...atForm, descritivo: e.target.value })} />
               </Field>
               <FotosField fotos={atFotos} setFotos={setAtFotos} />
-              <button type="submit" disabled={!canEdit} style={btnStyle}>
-                Adicionar à visita{atForm.dispositivoIds.length > 1 ? ` (${atForm.dispositivoIds.length} itens)` : ''}
+              <button type="submit" disabled={!canEdit || savingAtendimento} style={{ ...btnStyle, opacity: savingAtendimento ? 0.7 : 1 }}>
+                {savingAtendimento ? 'Salvando...' : `Adicionar à visita${atForm.dispositivoIds.length > 1 ? ` (${atForm.dispositivoIds.length} itens)` : ''}`}
               </button>
             </form>
           )}
 
           {aba === 'inspecao' && (
-            <form onSubmit={submitInspecao} style={{ ...cardStyle, marginBottom: 16 }}>
+            <form key="inspecao" className="fade-in-up" onSubmit={submitInspecao} style={{ ...cardStyle, marginBottom: 16 }}>
               <DeviceMultiSelect options={deviceOptions} selectedIds={inspForm.dispositivoIds}
                 setSelectedIds={(next) => setInspForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
               {(inspCategoriasUnicas.length > 0 || inspMetodosUnicos.length > 0) && (
@@ -1551,14 +1582,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                 <input type="date" style={inputStyle} value={inspForm.proximaInspecao} onChange={(e) => setInspForm({ ...inspForm, proximaInspecao: e.target.value })} />
               </Field>
               <FotosField fotos={inspFotos} setFotos={setInspFotos} />
-              <button type="submit" disabled={!canEdit} style={btnStyle}>
-                Adicionar à visita{inspForm.dispositivoIds.length > 1 ? ` (${inspForm.dispositivoIds.length} itens)` : ''}
+              <button type="submit" disabled={!canEdit || savingInspecao} style={{ ...btnStyle, opacity: savingInspecao ? 0.7 : 1 }}>
+                {savingInspecao ? 'Salvando...' : `Adicionar à visita${inspForm.dispositivoIds.length > 1 ? ` (${inspForm.dispositivoIds.length} itens)` : ''}`}
               </button>
             </form>
           )}
 
                     {aba === 'outro' && (
-            <form onSubmit={submitOutro} style={{ ...cardStyle, marginBottom: 16 }}>
+            <form key="outro" className="fade-in-up" onSubmit={submitOutro} style={{ ...cardStyle, marginBottom: 16 }}>
               <Field label="Atividade">
                 <select style={inputStyle} value={outroAtividade} onChange={(e) => setOutroAtividade(e.target.value)}>
                   <option value="">Genérico (sem categoria)</option>
@@ -1627,7 +1658,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               )}
 
               <FotosField fotos={outroFotos} setFotos={setOutroFotos} />
-              <button type="submit" disabled={!canEdit} style={btnStyle}>Adicionar à visita</button>
+              <button type="submit" disabled={!canEdit || savingOutro} style={{ ...btnStyle, opacity: savingOutro ? 0.7 : 1 }}>
+                {savingOutro ? 'Salvando...' : 'Adicionar à visita'}
+              </button>
             </form>
           )}
 
@@ -1685,9 +1718,18 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
           </div>
         </div>
 
-        {loadingVisitas && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Carregando...</p>}
+        {loadingVisitas && (
+          <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="skeleton" style={{ width: '45%', height: 14 }} />
+                <div className="skeleton" style={{ width: '25%', height: 11 }} />
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'grid', gap: 18 }}>
-          {diasVisitas.map((dia) => (
+          {!loadingVisitas && diasVisitas.map((dia) => (
             <div key={dia}>
               <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 {formatDateBR(dia)}
@@ -1698,7 +1740,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
                     onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
-                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} />
+                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} savingEdit={savingEditItem} />
                 ))}
               </div>
             </div>

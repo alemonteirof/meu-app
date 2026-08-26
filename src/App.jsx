@@ -1283,12 +1283,12 @@ function EmptyState({ icon: Icon, title, description, actionLabel, onAction }) {
 function Modal({ title, onClose, children, wide }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-in"
       style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={onClose}
     >
       <div
-        className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} rounded-2xl overflow-y-auto`}
+        className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} rounded-2xl overflow-y-auto modal-panel-in`}
         style={{ background: 'var(--surface)', border: '1px solid var(--border)', maxHeight: '85vh' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -3008,9 +3008,11 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   if (!loaded || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="min-h-screen font-body" style={{ background: 'var(--bg)' }}>
         <PageStyles />
-        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)' }} />
+        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+          <DashboardSkeleton />
+        </main>
       </div>
     );
   }
@@ -3060,7 +3062,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                 {ROLE_LABELS[role] || role}
               </span>
               {saveError && (
-                <span className="text-xs px-2 py-1 rounded-md" style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
+                <span className="text-xs px-2 py-1 rounded-md fade-in-up" style={{ color: 'var(--status-danger)', border: '1px solid var(--status-danger)' }}>
                   {role === 'visualizador' ? 'Somente leitura' : 'Falha ao salvar'}
                 </span>
               )}
@@ -3239,17 +3241,21 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               <button className="nav-tab" data-active={indicadorTab === 'spci'} onClick={() => setIndicadorTab('spci')}>SPCI (Sistemas de Combate)</button>
             </div>
             {indicadorTab === 'sdai' && (
-              <IndicadorView data={data} canEdit={canEdit} client={client}
-                onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
-                onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
-                onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
-                onImportFile={handleImportIndicador} onLinkDevices={linkIndicadorToDevices}
-                onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
-                onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
-                onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
+              <div key="sdai" className="fade-in-up">
+                <IndicadorView data={data} canEdit={canEdit} client={client}
+                  onCreate={() => setModal({ type: 'indicador', mode: 'create', initial: null })}
+                  onEdit={(r) => setModal({ type: 'indicador', mode: 'edit', initial: r })}
+                  onDelete={(r) => setConfirmState({ title: 'Excluir registro', message: `Excluir o registro "${r.etiqueta || r.falha}"?`, onConfirm: () => deleteIndicador(r.id) })}
+                  onImportFile={handleImportIndicador} onLinkDevices={linkIndicadorToDevices}
+                  onBulkDelete={(ids) => setConfirmState({ title: 'Excluir registros selecionados', message: `Excluir ${ids.length} registro(s) selecionado(s) do Indicador? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorBulk(ids) })}
+                  onDeleteByStatus={(status, count) => setConfirmState({ title: 'Excluir por status', message: `Excluir ${count} registro(s) com status "${status}"? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorByStatus(status) })}
+                  onDeleteAll={(count) => setConfirmState({ title: 'Excluir todos os registros', message: `Excluir todos os ${count} registro(s) do Indicador deste cliente? Essa ação não pode ser desfeita.`, onConfirm: () => deleteIndicadorAll() })} />
+              </div>
             )}
             {indicadorTab === 'spci' && (
-              <CombateHistoricoView clientId={client.id} />
+              <div key="spci" className="fade-in-up">
+                <CombateHistoricoView clientId={client.id} />
+              </div>
             )}
           </div>
         )}
@@ -3459,6 +3465,41 @@ function countByMonth(list, months = 12) {
   return buckets;
 }
 
+/** Skeleton do Dashboard — mostrado enquanto os dados do cliente carregam do Supabase, no lugar do spinner genérico. */
+function DashboardSkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <div className="skeleton" style={{ width: 140, height: 22 }} />
+        <div className="skeleton" style={{ width: 200, height: 14 }} />
+      </div>
+      <div className="flex gap-2">
+        <div className="skeleton" style={{ width: 70, height: 30, borderRadius: '8px 8px 0 0' }} />
+        <div className="skeleton" style={{ width: 190, height: 30, borderRadius: '8px 8px 0 0' }} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="skeleton w-9 h-9 flex-shrink-0" />
+            <div className="flex flex-col gap-1.5 flex-1">
+              <div className="skeleton" style={{ width: '60%', height: 18 }} />
+              <div className="skeleton" style={{ width: '85%', height: 11 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {[0, 1].map((i) => (
+          <div key={i} className="rounded-xl p-4 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="skeleton" style={{ width: '50%', height: 14 }} />
+            <div className="skeleton" style={{ width: '100%', height: 140 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ data, counts, attentionItems, combateCounts, combateAttentionItems, canEdit, onMaintain, onInspect, onGoPanels, clientId }) {
   const [painelTab, setPainelTab] = useState('sdai');
   const [dashFiltroInicio, setDashFiltroInicio] = useState('');
@@ -3597,7 +3638,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
       </div>
 
       {painelTab === 'sdai' && (
-        <div className="flex flex-col gap-6">
+        <div key="sdai" className="flex flex-col gap-6 fade-in-up">
           <div>
             <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -3692,7 +3733,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
       )}
 
       {painelTab === 'spci' && (
-        <div className="flex flex-col gap-6">
+        <div key="spci" className="flex flex-col gap-6 fade-in-up">
           <div>
             <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -3789,9 +3830,11 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
         )}
       </div>
           {selectedIds.length > 0 && (
-            <Button variant="danger" onClick={() => { onBulkDeletePanels(selectedIds); exitSelectMode(); }}>
-              <Trash2 size={15} /> Excluir selecionados
-            </Button>
+            <div className="fade-in-up">
+              <Button variant="danger" onClick={() => { onBulkDeletePanels(selectedIds); exitSelectMode(); }}>
+                <Trash2 size={15} /> Excluir selecionados
+              </Button>
+            </div>
           )}
 
       {data.panels.length > 0 && (
@@ -3920,14 +3963,20 @@ function ComplementaresView({
       </div>
 
       {['beam', 'chama', 'gas', 'termo'].includes(tab) && (
-        <ComplementarGrupo1List data={data} devices={grupo1Devices} canEdit={canEdit} showCalibracao={tab === 'gas'}
-          onInspectDevice={onInspectDevice} onSubmitCalibracao={onSubmitCalibracao} onSubmitEtiqueta={onSubmitEtiqueta} />
+        <div key={tab} className="fade-in-up">
+          <ComplementarGrupo1List data={data} devices={grupo1Devices} canEdit={canEdit} showCalibracao={tab === 'gas'}
+            onInspectDevice={onInspectDevice} onSubmitCalibracao={onSubmitCalibracao} onSubmitEtiqueta={onSubmitEtiqueta} />
+        </div>
       )}
       {tab === 'baterias_painel' && (
-        <BateriasPainelList data={data} canEdit={canEdit} onSubmit={onSubmitBateriaPainel} />
+        <div key="baterias_painel" className="fade-in-up">
+          <BateriasPainelList data={data} canEdit={canEdit} onSubmit={onSubmitBateriaPainel} />
+        </div>
       )}
       {tab === 'fontes_auxiliares' && (
-        <FontesAuxiliaresList data={data} canEdit={canEdit} onSubmit={onSubmitFonteAuxiliar} onDelete={onDeleteFonteAuxiliar} />
+        <div key="fontes_auxiliares" className="fade-in-up">
+          <FontesAuxiliaresList data={data} canEdit={canEdit} onSubmit={onSubmitFonteAuxiliar} onDelete={onDeleteFonteAuxiliar} />
+        </div>
       )}
     </div>
   );
@@ -4337,7 +4386,7 @@ function ConjuntoCard({ conjunto, subitens, panelOptions, canEdit, onEditConjunt
         </div>
       )}
       {expanded && (
-        <div className="flex flex-col gap-2 mt-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="flex flex-col gap-2 mt-1 pt-2 fade-in-up" style={{ borderTop: '1px solid var(--border)' }}>
           {subitens.map((s) => {
             const info = conjuntoSubitemInfo(conjunto.tipo, s.categoria);
             const isLgeTanque = conjunto.tipo === 'lge' && s.categoria === 'tanque_lge';
@@ -4372,9 +4421,11 @@ function ConjuntoCard({ conjunto, subitens, panelOptions, canEdit, onEditConjunt
                   )}
                 </div>
                 {editingSubitemId === s.id && (
-                  <SubitemEditForm subitem={s} info={info} isLge={isLgeTanque}
-                    onSave={(values) => { onSubmitSubitem(s.id, values); setEditingSubitemId(null); }}
-                    onCancel={() => setEditingSubitemId(null)} />
+                  <div className="fade-in-up">
+                    <SubitemEditForm subitem={s} info={info} isLge={isLgeTanque}
+                      onSave={(values) => { onSubmitSubitem(s.id, values); setEditingSubitemId(null); }}
+                      onCancel={() => setEditingSubitemId(null)} />
+                  </div>
                 )}
               </div>
             );
@@ -4654,7 +4705,7 @@ function BateriaCard({ bateria, cilindros, panelOptions, canEdit, onEditBateria,
         </div>
       )}
       {expanded && (
-        <div className="flex flex-col gap-2 mt-1 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="flex flex-col gap-2 mt-1 pt-2 fade-in-up" style={{ borderTop: '1px solid var(--border)' }}>
           {cilindros.length === 0 && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum cilindro cadastrado nessa bateria ainda.</p>}
           {cilindros.map((c) => {
             const retestVencido = c.proximaRetestLaboratorial && c.proximaRetestLaboratorial < todayISO();
@@ -4771,7 +4822,16 @@ function CombateHistoricoView({ clientId }) {
         <input type="date" className={inputCls} value={filtroDataDe} onChange={(e) => setFiltroDataDe(e.target.value)} />
         <input type="date" className={inputCls} value={filtroDataAte} onChange={(e) => setFiltroDataAte(e.target.value)} />
       </div>
-      {loading && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Carregando...</p>}
+      {loading && (
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-lg p-3 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div className="skeleton" style={{ width: '40%', height: 13 }} />
+              <div className="skeleton" style={{ width: '65%', height: 11 }} />
+            </div>
+          ))}
+        </div>
+      )}
       {!loading && filtrado.length === 0 && (
         <EmptyState icon={Activity} title="Nenhum registro no histórico" description="Vistorias registradas pela sub-aba 'Visita (Sistemas de Combate)' em Atendimentos aparecem aqui." />
       )}
@@ -4817,7 +4877,7 @@ function CombateIncendioView({
       </div>
 
       {grupo === 'agua' && (
-        <>
+        <div key="agua" className="flex flex-col gap-4 fade-in-up">
           <div className="flex gap-1 flex-wrap">
             {COMBATE_AGUA_TIPOS.map((t) => (
               <button key={t} type="button" onClick={() => setAguaTipo(t)} className="nav-tab" data-active={aguaTipo === t}>
@@ -4825,30 +4885,34 @@ function CombateIncendioView({
               </button>
             ))}
           </div>
-          <ConjuntosList data={data} canEdit={canEdit} tipo={aguaTipo} agente={null}
+          <ConjuntosList key={aguaTipo} data={data} canEdit={canEdit} tipo={aguaTipo} agente={null}
             onSubmitConjunto={onSubmitConjunto} onDeleteConjunto={onDeleteConjunto} onSubmitSubitem={onSubmitSubitem} />
-        </>
+        </div>
       )}
 
       {grupo === 'gas' && (
-        <>
+        <div key="gas" className="flex flex-col gap-4 fade-in-up">
           <div className="flex gap-1 flex-wrap">
             {COMBATE_GAS_AGENTES.map((a) => (
               <button key={a.value} type="button" onClick={() => setGasAgente(a.value)} className="nav-tab" data-active={gasAgente === a.value}>{a.label}</button>
             ))}
           </div>
-          <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Sistema</h3>
-          <ConjuntosList data={data} canEdit={canEdit} tipo="sistema_gas" agente={gasAgente}
-            onSubmitConjunto={onSubmitConjunto} onDeleteConjunto={onDeleteConjunto} onSubmitSubitem={onSubmitSubitem} />
-          <h3 className="font-medium text-sm mt-2" style={{ color: 'var(--text-primary)' }}>Bateria de Cilindros</h3>
-          <BateriasCilindrosList data={data} canEdit={canEdit} agente={gasAgente}
-            onSubmitBateria={onSubmitBateria} onDeleteBateria={onDeleteBateria}
-            onSubmitCilindro={onSubmitCilindro} onDeleteCilindro={onDeleteCilindro} />
-        </>
+          <div key={gasAgente} className="flex flex-col gap-4 fade-in-up">
+            <h3 className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Sistema</h3>
+            <ConjuntosList data={data} canEdit={canEdit} tipo="sistema_gas" agente={gasAgente}
+              onSubmitConjunto={onSubmitConjunto} onDeleteConjunto={onDeleteConjunto} onSubmitSubitem={onSubmitSubitem} />
+            <h3 className="font-medium text-sm mt-2" style={{ color: 'var(--text-primary)' }}>Bateria de Cilindros</h3>
+            <BateriasCilindrosList data={data} canEdit={canEdit} agente={gasAgente}
+              onSubmitBateria={onSubmitBateria} onDeleteBateria={onDeleteBateria}
+              onSubmitCilindro={onSubmitCilindro} onDeleteCilindro={onDeleteCilindro} />
+          </div>
+        </div>
       )}
 
       {grupo === 'componentes' && (
-        <ComponentesList data={data} canEdit={canEdit} onSubmit={onSubmitComponente} onDelete={onDeleteComponente} />
+        <div key="componentes" className="fade-in-up">
+          <ComponentesList data={data} canEdit={canEdit} onSubmit={onSubmitComponente} onDelete={onDeleteComponente} />
+        </div>
       )}
     </div>
   );
@@ -4900,7 +4964,7 @@ function PanelDetail({
       </div>
 
       {tab === 'loops' && (
-        <div className="flex flex-col gap-3">
+        <div key="loops" className="flex flex-col gap-3 fade-in-up">
           {canEdit && (
             <div className="flex justify-end gap-2 flex-wrap">
               {selectMode ? (
@@ -4912,7 +4976,7 @@ function PanelDetail({
             </div>
           )}
           {selectMode && (
-            <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap fade-in-up" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
                 {selectedIds.length === 0 ? 'Marque os dispositivos que quer atualizar de uma vez.' : `${selectedIds.length} dispositivo(s) selecionado(s)`}
               </p>
@@ -4964,7 +5028,7 @@ function PanelDetail({
                       )}
                     </div>
                     {expanded && (
-                      <div className="px-3.5 pb-3.5 flex flex-col gap-2">
+                      <div className="px-3.5 pb-3.5 flex flex-col gap-2 fade-in-up">
                         {selectMode && devices.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5 mb-1">
                             <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Marcar todos:</span>
@@ -5007,7 +5071,7 @@ function PanelDetail({
       )}
 
       {tab === 'nacs' && (
-        <div className="flex flex-col gap-3">
+        <div key="nacs" className="flex flex-col gap-3 fade-in-up">
           {canEdit && (
             <div className="flex justify-end">
               <Button variant="primary" onClick={() => onCreateNac(panelId)}><Plus size={15} /> Novo circuito</Button>
@@ -5251,8 +5315,11 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
 
   const linkedCount = list.filter((r) => r.deviceId).length;
   const [printMode, setPrintMode] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   async function exportIndicadorXlsx() {
+    setExporting(true);
+    try {
     const VINHO = 'FF8B2F2F';
     const VINHO_ESCURO = 'FF5F1F1F';
     const CINZA_BORDA = 'FFD7DADC';
@@ -5622,7 +5689,10 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-}
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (printMode) return <IndicadorPrintView entries={filtered} client={client} onBack={() => setPrintMode(false)} />;
 
@@ -5670,14 +5740,15 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
               {moreMenuOpen && (
                 <>
                   <div onClick={() => setMoreMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
-                  <div style={{
+                  <div className="fade-in-up" style={{
                     position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, minWidth: 230, borderRadius: 10,
                     border: '1px solid var(--border)', background: 'var(--surface)', boxShadow: '0 10px 30px rgba(0,0,0,0.35)', overflow: 'hidden',
                   }}>
                     {list.length > 0 && (
                       <>
-                        <button type="button" onClick={() => { exportIndicadorXlsx(); setMoreMenuOpen(false); }} style={dropdownItemStyle}>
-                          <FileText size={15} /> Exportar Excel
+                        <button type="button" onClick={async () => { await exportIndicadorXlsx(); setMoreMenuOpen(false); }} disabled={exporting}
+                          style={{ ...dropdownItemStyle, ...(exporting ? { opacity: 0.6, pointerEvents: 'none' } : {}) }}>
+                          <FileText size={15} /> {exporting ? 'Gerando planilha...' : 'Exportar Excel'}
                         </button>
                         <button type="button" onClick={() => { setPrintMode(true); setMoreMenuOpen(false); }} style={dropdownItemStyle}>
                           <Printer size={15} /> Imprimir / Salvar PDF
@@ -5706,7 +5777,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       {linkMsg && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{linkMsg}</p>}
 
       {selectMode && (
-        <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap fade-in-up" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
             {selectedIds.length === 0 ? 'Marque os registros que quer excluir de uma vez.' : `${selectedIds.length} registro(s) selecionado(s)`}
           </p>
@@ -6072,7 +6143,7 @@ function ItemsTableAndCards({ columnHeaders, items }) {
                 )}
               </button>
               {expanded && (
-                <div className="px-2.5 pb-2.5 grid grid-cols-2 gap-1 text-xs" style={{ borderTop: '1px solid var(--border)', paddingTop: 8, color: 'var(--text-secondary)' }}>
+                <div className="px-2.5 pb-2.5 grid grid-cols-2 gap-1 text-xs fade-in-up" style={{ borderTop: '1px solid var(--border)', paddingTop: 8, color: 'var(--text-secondary)' }}>
                   {it.extra.slice(1).map((ex, i) => <div key={i}>{ex.label}: <strong style={{ color: 'var(--text-primary)' }}>{ex.value || '—'}</strong></div>)}
                 </div>
               )}
@@ -6215,14 +6286,14 @@ function ReportView({ data, client, filters, setFilters }) {
       </div>
 
       {reportTab === 'sdai' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
+        <div key="sdai" className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print fade-in-up">
           <StatCard label="Total monitorado" value={sdaiTotal} color="var(--text-secondary)" icon={ClipboardList} />
           <StatCard label="Não operantes" value={sdaiNaoOperante} color="var(--status-danger)" icon={AlertTriangle} />
           <StatCard label="Necessitam troca" value={sdaiNecessitaTroca} color="var(--status-warn)" icon={AlertTriangle} />
           <StatCard label="Com corretiva pendente" value={corretivasPendentesIds.size} color="var(--text-secondary)" icon={Activity} />
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print">
+        <div key="spci" className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print fade-in-up">
           <StatCard label="Total monitorado" value={spciTotal} color="var(--text-secondary)" icon={ClipboardList} />
           <StatCard label="Reprovados" value={spciReprovados} color="var(--status-danger)" icon={AlertTriangle} />
           <StatCard label="Sem inspeção registrada" value={spciSemInspecao} color="var(--status-warn)" icon={Clock} />
@@ -6317,12 +6388,14 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
           <button key={t.key} className="nav-tab" data-active={tab === t.key} onClick={() => setTab(t.key)}><t.icon size={15} /> {t.label}</button>
         ))}
       </div>
-      {tab === 'cliente' && <ClientForm initial={client} onSubmit={(v) => onUpdateClient(v)} onCancel={() => {}} embedded />}
-      {tab === 'marca' && <BrandingForm client={client} onSave={(branding) => onUpdateClient({ branding })} />}
-      {tab === 'usuario' && <UserForm client={client} onSave={(user) => onUpdateClient({ user })} onRemove={() => onUpdateClient({ user: null })} />}
-      {tab === 'modelos' && <ModelLibraryManager data={data} onSave={onSaveModelPhoto} onRemove={onRemoveModelPhoto} />}
-      {tab === 'operadores' && <MembersManager clientId={client.id} />}
-      {tab === 'importar' && <ImportCsvView onImport={onImportCsv} data={data} lastImport={lastImport} onUndoImport={onUndoImport} />}
+      <div key={tab} className="fade-in-up">
+        {tab === 'cliente' && <ClientForm initial={client} onSubmit={(v) => onUpdateClient(v)} onCancel={() => {}} embedded />}
+        {tab === 'marca' && <BrandingForm client={client} onSave={(branding) => onUpdateClient({ branding })} />}
+        {tab === 'usuario' && <UserForm client={client} onSave={(user) => onUpdateClient({ user })} onRemove={() => onUpdateClient({ user: null })} />}
+        {tab === 'modelos' && <ModelLibraryManager data={data} onSave={onSaveModelPhoto} onRemove={onRemoveModelPhoto} />}
+        {tab === 'operadores' && <MembersManager clientId={client.id} />}
+        {tab === 'importar' && <ImportCsvView onImport={onImportCsv} data={data} lastImport={lastImport} onUndoImport={onUndoImport} />}
+      </div>
     </div>
   );
 }
@@ -6494,6 +6567,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [removeIds, setRemoveIds] = useState(new Set());
   const [openLoopGroups, setOpenLoopGroups] = useState(new Set());
+  const [parsingFile, setParsingFile] = useState(false);
 
   const review = entities ? computeImportReview(entities, data) : null;
 
@@ -6598,6 +6672,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
     if (!file) return;
     setFileNames({ hochikiLp1: file.name });
     setError(''); setDone(false);
+    setParsingFile(true);
     try {
       const words = await extractPdfWords(file);
       const parsedRows = parseLp1Report(words);
@@ -6605,6 +6680,8 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
     } catch (err) {
       setError(err.message || 'Não foi possível ler esse arquivo PDF.');
       setRows(null); setEntities(null);
+    } finally {
+      setParsingFile(false);
     }
   }
 
@@ -6613,6 +6690,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
     if (!file) return;
     setError(''); setDone(false);
     setFileNames((prev) => ({ ...prev, [slot]: file.name }));
+    setParsingFile(true);
     try {
       const rawRows = await readFileAsRows(file);
       const parsedSheet = parseNotifierSheet(rawRows);
@@ -6626,6 +6704,8 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
       seedTypeMapAndBuild(combined);
     } catch (err) {
       setError(err.message || 'Não foi possível ler esse arquivo.');
+    } finally {
+      setParsingFile(false);
     }
   }
 
@@ -6814,12 +6894,13 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
             {fileNames.detectors && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Detectores: {fileNames.detectors}</p>}
           </div>
         )}
+        {parsingFile && <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}><Loader2 size={13} className="animate-spin" /> Lendo arquivo...</p>}
         {error && <p className="text-xs" style={{ color: 'var(--status-danger)' }}>{error}</p>}
         {done && <p className="text-xs" style={{ color: 'var(--status-ok)' }}>Importação concluída! Confira em "Painéis".</p>}
       </div>
 
       {entities && (
-        <>
+        <div className="flex flex-col gap-4 fade-in-up">
           <div className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Confirme a categoria de cada tipo de dispositivo</p>
             <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
@@ -6860,7 +6941,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
           </div>
 
           {reviewOpen && review && (
-            <div className="rounded-lg p-3.5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="rounded-lg p-3.5 flex flex-col gap-3 fade-in-up" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Revisar antes de gravar</p>
 
               <div className="grid grid-cols-3 gap-2">
@@ -6911,7 +6992,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
                           )}
                         </button>
                         {isOpen && (
-                          <div className="flex flex-col gap-1 pb-2 pl-1">
+                          <div className="flex flex-col gap-1 pb-2 pl-1 fade-in-up">
                             {itens.map((d) => (
                               <label key={d.id} className="flex items-center gap-2 py-1 text-sm">
                                 <input type="checkbox" checked={removeIds.has(d.id)} onChange={() => toggleRemoveId(d.id)} />
@@ -6943,7 +7024,7 @@ function ImportCsvView({ onImport, data, lastImport, onUndoImport }) {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -7024,7 +7105,7 @@ function MembersManager({ clientId }) {
             <option value="visualizador">Visualizador (só leitura)</option>
             <option value="admin">Admin deste cliente</option>
           </select>
-          <Button variant="primary" type="submit" disabled={saving}><UserPlus size={15} /> Vincular</Button>
+          <Button variant="primary" type="submit" disabled={saving}><UserPlus size={15} /> {saving ? 'Vinculando...' : 'Vincular'}</Button>
         </form>
         {error && <p className="text-xs" style={{ color: 'var(--status-danger)' }}>{error}</p>}
         {info && <p className="text-xs" style={{ color: 'var(--accent)' }}>{info}</p>}
@@ -7033,7 +7114,14 @@ function MembersManager({ clientId }) {
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Usuários vinculados</p>
         {members === null ? (
-          <Loader2 size={18} className="animate-spin" style={{ color: 'var(--accent)' }} />
+          <div className="flex flex-col gap-2">
+            {[0, 1].map((i) => (
+              <div key={i} className="flex items-center justify-between gap-2 rounded-lg p-2.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <div className="skeleton" style={{ width: '45%', height: 13 }} />
+                <div className="skeleton" style={{ width: 70, height: 22 }} />
+              </div>
+            ))}
+          </div>
         ) : members.length === 0 ? (
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nenhum usuário vinculado ainda.</p>
         ) : (
@@ -7097,6 +7185,21 @@ function PageStyles() {
       .led[data-pulse="true"] { animation: ledpulse 1.6s ease-in-out infinite; }
       @keyframes ledpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
       @media (prefers-reduced-motion: reduce) { .led[data-pulse="true"] { animation: none; } }
+
+      /* ---- Motion base: skeleton loading + entrada suave de painéis (usado em todos os módulos) ---- */
+      @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      .skeleton { background: var(--surface-raised); border-radius: 8px; animation: skeleton-pulse 1.4s ease-in-out infinite; }
+      @keyframes fade-in-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+      .fade-in-up { animation: fade-in-up .2s ease-out backwards; }
+      @keyframes modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes modal-panel-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      .modal-backdrop-in { animation: modal-backdrop-in .15s ease-out; }
+      .modal-panel-in { animation: modal-panel-in .18s cubic-bezier(0.16, 1, 0.3, 1); }
+      @media (prefers-reduced-motion: reduce) {
+        .skeleton { animation: none; opacity: 0.7; }
+        .fade-in-up { animation: none; }
+        .modal-backdrop-in, .modal-panel-in { animation: none; }
+      }
       .status-pill {
         font-size: 11px; font-family: 'IBM Plex Mono', monospace; padding: 3px 8px;
         border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; flex-shrink: 0;
