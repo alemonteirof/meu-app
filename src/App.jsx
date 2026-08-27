@@ -5338,8 +5338,8 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
     const AMARELO_CLARO = 'FFFDF3CF';
     const AMARELO_TEXTO = 'FF9C7A0A';
 
-    const HEADERS = ['Data', 'Tipo', 'Local', 'Endereço', 'Laço', 'Painel', 'Equipamento', 'Área', 'Falha', 'Status', 'Solução', 'Data Solução'];
-    const COL_WIDTHS = [12, 12, 26, 10, 8, 14, 22, 14, 30, 14, 32, 12];
+    const HEADERS = ['Data', 'Tipo', 'Local', 'Endereço', 'Laço', 'Painel', 'Equipamento', 'Falha', 'Status', 'Descritivo', 'Data Solução'];
+    const COL_WIDTHS = [12, 12, 26, 10, 8, 14, 22, 30, 14, 32, 12];
     const RODAPE_TEXTO = 'Documento gerado pelo Centro de Controle de Manutenção — M.A.J Eletro Eletrônica LTDA · CNPJ: 45.893.915/0001-01';
 
     let logoBase64 = null;
@@ -5455,8 +5455,8 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
           formatDateBR(row.dataDiagnostico),
           row.tipo === 'inspecao' ? 'Inspeção' : row.tipo === 'manutencao' ? 'Manutenção' : 'Falha',
           row.etiqueta || '', row.endereco || '', row.laco || '', row.painel || '',
-          row.equipamento || '', row.area || '', row.falha || '', row.status || '',
-          row.solucao || '', formatDateBR(row.dataSolucao),
+          row.equipamento || '', row.falha || '', row.status || '',
+          row.descritivo || '', formatDateBR(row.dataSolucao),
         ];
         valores.forEach((v, c) => {
           const cell = ws.getCell(r, c + 1);
@@ -5469,7 +5469,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
         });
         const corSt = corStatus(row.status);
         if (corSt) {
-          const statusCell = ws.getCell(r, 10);
+          const statusCell = ws.getCell(r, 9);
           statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: corSt.fill } };
           statusCell.font = { bold: true, color: { argb: corSt.font } };
         }
@@ -5477,7 +5477,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
         r += 1;
       });
       if (linhas.length) {
-        ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 12 } };
+        ws.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: r - 1, column: 11 } };
       }
       return r;
     }
@@ -5524,13 +5524,12 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
 
     const kpis = [
       { label: 'TOTAL DE REGISTROS', valor: total, cor: VINHO, aba: 'Dados', delta: deltaTexto(todosRegistros) },
-      { label: 'FALHAS', valor: falhas.length, cor: VERMELHO, aba: 'Falhas', delta: deltaTexto(todasFalhas) },
       { label: 'MANUTENÇÕES', valor: manutencoes.length, cor: LARANJA, aba: 'Manutenções', delta: deltaTexto(todasManut) },
       { label: 'INSPEÇÕES', valor: inspecoes.length, cor: AZUL, aba: 'Inspeções', delta: deltaTexto(todasInsp) },
     ];
 
     const statusFalhasCounts = { Resolvido: 0, Andamento: 0, Aguardando: 0 };
-    falhas.forEach((r) => { if (statusFalhasCounts[r.status] !== undefined) statusFalhasCounts[r.status] += 1; });
+    manutencoes.forEach((r) => { if (statusFalhasCounts[r.status] !== undefined) statusFalhasCounts[r.status] += 1; });
 
     const resumo = wb.addWorksheet('Resumo');
     resumo.views = [{ showGridLines: false }];
@@ -5545,8 +5544,8 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
 
     const kpiRow = 7;
     kpis.forEach((k, i) => {
-      const c0 = i * 3 + 1;
-      const c1 = c0 + 2;
+      const c0 = i * 4 + 1;
+      const c1 = c0 + 3;
       resumo.mergeCells(kpiRow, c0, kpiRow + 1, c1);
       const cell = resumo.getCell(kpiRow, c0);
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CINZA_CLARO } };
@@ -5570,7 +5569,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
 
     const statusTituloRow = kpiRow + 4;
     resumo.mergeCells(`A${statusTituloRow}:L${statusTituloRow}`);
-    resumo.getCell(`A${statusTituloRow}`).value = 'SITUAÇÃO DAS FALHAS';
+    resumo.getCell(`A${statusTituloRow}`).value = 'SITUAÇÃO DAS MANUTENÇÕES';
     resumo.getCell(`A${statusTituloRow}`).font = { size: 10, bold: true, color: { argb: VINHO_ESCURO } };
     resumo.getRow(statusTituloRow).height = 18;
 
@@ -5599,8 +5598,8 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
     const tipoPieImg = await renderChartImage({
       type: 'pie',
       data: {
-        labels: ['Falha', 'Manutenção', 'Inspeção'],
-        datasets: [{ data: [falhas.length, manutencoes.length, inspecoes.length], backgroundColor: [corHex(VERMELHO), corHex(LARANJA), corHex(AZUL)] }],
+        labels: ['Manutenção', 'Inspeção'],
+        datasets: [{ data: [manutencoes.length, inspecoes.length], backgroundColor: [corHex(LARANJA), corHex(AZUL)] }],
       },
       options: {
         responsive: false,
@@ -5619,11 +5618,29 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       options: {
         responsive: false,
         plugins: {
-          title: { display: true, text: 'Situação das Falhas', font: { size: 20, weight: 'bold' } },
+          title: { display: true, text: 'Situação das Manutenções', font: { size: 20, weight: 'bold' } },
           legend: { position: 'right', labels: { font: { size: 14 } } },
         },
       },
     });
+
+    const falhaData = sortDesc(countBy(manutencoes, (r) => r.falha, 'Sem motivo')).slice(0, 10);
+    const motivoBarImg = falhaData.length ? await renderChartImage({
+      type: 'bar',
+      data: {
+        labels: falhaData.map((d) => d.label),
+        datasets: [{ label: 'Ocorrências', data: falhaData.map((d) => d.value), backgroundColor: corHex(VERMELHO), maxBarThickness: 26 }],
+      },
+      options: {
+        responsive: false,
+        indexAxis: 'y',
+        plugins: {
+          title: { display: true, text: 'Motivos de falha mais comuns', font: { size: 20, weight: 'bold' } },
+          legend: { display: false },
+        },
+        scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
+      },
+    }, 900, 260) : null;
 
     const chartRow = statusKpiRow + 3;
     if (tipoPieImg) {
@@ -5634,8 +5651,13 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       const statusPieId = wb.addImage({ base64: statusPieImg, extension: 'png' });
       resumo.addImage(statusPieId, { tl: { col: 7, row: chartRow - 1 }, ext: { width: 420, height: 270 } });
     }
+    const motivoChartRow = chartRow + 16;
+    if (motivoBarImg) {
+      const motivoBarId = wb.addImage({ base64: motivoBarImg, extension: 'png' });
+      resumo.addImage(motivoBarId, { tl: { col: 0, row: motivoChartRow - 1 }, ext: { width: 860, height: 260 } });
+    }
 
-    const notaRow = chartRow + 16;
+    const notaRow = motivoBarImg ? motivoChartRow + 16 : chartRow + 16;
     resumo.mergeCells(`A${notaRow}:L${notaRow}`);
     resumo.getCell(`A${notaRow}`).value = 'Clique num cartão acima pra ver a lista daquele tipo. Gráfico de tendência mensal na aba "Tendência".';
     resumo.getCell(`A${notaRow}`).font = { size: 9, italic: true, color: { argb: CINZA_TEXTO } };
@@ -5675,7 +5697,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
     }
 
     criaAbaDados('Dados', registros);
-    criaAbaDados('Falhas', falhas, ' — Falhas');
+
     criaAbaDados('Manutenções', manutencoes, ' — Manutenções');
     criaAbaDados('Inspeções', inspecoes, ' — Inspeções');
 

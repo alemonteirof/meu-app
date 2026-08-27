@@ -285,7 +285,7 @@ export async function createInspecao({
 export async function listAtendimentos(clienteId) {
   const { data, error } = await supabase
     .from('atendimentos')
-    .select('*, dispositivos!inner(id, etiqueta, endereco, cliente_id), rvt_itens(rvt_id)')
+    .select('*, dispositivos!inner(id, etiqueta, endereco, cliente_id, modelo, lacos(nome, paineis(nome)), paineis(nome)), rvt_itens(rvt_id)')
     .eq('dispositivos.cliente_id', clienteId)
     .order('data_registro', { ascending: false });
   if (error) throw error;
@@ -295,7 +295,7 @@ export async function listAtendimentos(clienteId) {
 export async function listInspecoes(clienteId) {
   const { data, error } = await supabase
     .from('inspecoes')
-    .select('*, dispositivos!inner(id, etiqueta, endereco, cliente_id), rvt_itens(rvt_id)')
+    .select('*, dispositivos!inner(id, etiqueta, endereco, cliente_id, modelo, lacos(nome, paineis(nome)), paineis(nome)), rvt_itens(rvt_id)')
     .eq('dispositivos.cliente_id', clienteId)
     .order('data_inspecao', { ascending: false });
   if (error) throw error;
@@ -309,8 +309,8 @@ export async function listVisitas(clienteId) {
       id, data_visita, tecnico, painel_id,
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
-        atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco ) ),
-        inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco ) )
+        atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) ),
+        inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) )
       )
     `)
     .eq('cliente_id', clienteId)
@@ -451,7 +451,10 @@ export async function loadClientData(clienteId) {
       id: `novo-at-${a.id}`, tipo: 'manutencao', deviceId: a.dispositivo_id,
       categoria: categoriaFor(a.dispositivo_id),
       etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || '',
-      endereco: a.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
+      endereco: a.dispositivos?.endereco || '',
+      laco: a.dispositivos?.lacos?.nome || '',
+      painel: a.dispositivos?.paineis?.nome || a.dispositivos?.lacos?.paineis?.nome || '',
+      equipamento: a.dispositivos?.modelo || '', area: '',
       falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
       explanacao: '', dataDiagnostico: (a.data_registro || '').slice(0, 10),
       dataIntervencao1: (a.data_registro || '').slice(0, 10),
@@ -465,7 +468,10 @@ export async function loadClientData(clienteId) {
       id: `novo-insp-${i.id}`, tipo: 'inspecao', deviceId: i.dispositivo_id,
       categoria: categoriaFor(i.dispositivo_id),
       etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || '',
-      endereco: i.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
+      endereco: i.dispositivos?.endereco || '',
+      laco: i.dispositivos?.lacos?.nome || '',
+      painel: i.dispositivos?.paineis?.nome || i.dispositivos?.lacos?.paineis?.nome || '',
+      equipamento: i.dispositivos?.modelo || '', area: '',
       falha: i.falha || '', descritivo: i.observacoes || i.resultado_teste || '', status: 'Resolvido',
       explanacao: '', dataDiagnostico: i.data_inspecao || '',
       dataIntervencao1: i.data_inspecao || '',
@@ -492,7 +498,10 @@ export async function loadClientData(clienteId) {
         const a = it.atendimentos;
         return { id: `novo-item-${it.id}`, deviceId: a.dispositivo_id, categoria: categoriaFor(a.dispositivo_id), tipo: 'manutencao',
           etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || '',
-          endereco: a.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
+          endereco: a.dispositivos?.endereco || '',
+          laco: a.dispositivos?.lacos?.nome || '',
+          painel: a.dispositivos?.paineis?.nome || a.dispositivos?.lacos?.paineis?.nome || '',
+          equipamento: a.dispositivos?.modelo || '', area: '',
           falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
           dataAgendamento: a.data_agendamento || '',
           explanacao: '', dataIntervencao: v.data_visita, solucao: '', fotos: a.fotos || [] };
@@ -501,7 +510,10 @@ export async function loadClientData(clienteId) {
         const i = it.inspecoes;
         return { id: `novo-item-${it.id}`, deviceId: i.dispositivo_id, categoria: categoriaFor(i.dispositivo_id), tipo: 'inspecao',
           etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || '',
-          endereco: i.dispositivos?.endereco || '', laco: '', painel: '', equipamento: '', area: '',
+          endereco: i.dispositivos?.endereco || '',
+          laco: i.dispositivos?.lacos?.nome || '',
+          painel: i.dispositivos?.paineis?.nome || i.dispositivos?.lacos?.paineis?.nome || '',
+          equipamento: i.dispositivos?.modelo || '', area: '',
           falha: i.falha || '', descritivo: i.resultado_teste || '', status: 'Resolvido',
           explanacao: '', dataIntervencao: i.data_inspecao, solucao: '', fotos: i.fotos || [] };
       }
