@@ -7,6 +7,7 @@ import {
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
 } from './supabaseAdapter';
+import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca } from './lib/falhasPorMarca';
 
 const ATIVIDADE_LABELS = {
   reuniao: 'Reunião',
@@ -134,6 +135,7 @@ function buildDeviceOptions(data) {
         label: `${complementarTipo} — ${d.etiquetaComplementar || d.description || 'Sem etiqueta'} — ${papelSinalLabelAt(d.papelSinal)} (${d.address})`,
         type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
         panelId: null, panelName: 'Dispositivos Complementares',
+        panelMarca: panel ? panel.marca || '' : '',
         loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
       });
       return;
@@ -142,6 +144,7 @@ function buildDeviceOptions(data) {
       id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
       type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
+      panelMarca: panel ? panel.marca || '' : '',
       loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
     });
   });
@@ -150,6 +153,7 @@ function buildDeviceOptions(data) {
     options.push({
       id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 'saida',
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
+      panelMarca: panel ? panel.marca || '' : '',
       loopId: null, loopName: null,
     });
   });
@@ -449,6 +453,149 @@ function DeviceSingleSelect({ options, selectedId, setSelectedId, label }) {
           <div style={{ padding: 8, fontSize: 12, color: 'var(--text-secondary)' }}>Mostrando 100 de {filtered.length} — refine a busca.</div>
         )}
       </div>
+    </Field>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Campo "Falha" travado por marca (Hochiki / Notifier)
+ * ------------------------------------------------------------------ */
+
+const emptyFalha = () => ({ codigo: '', categoria: '', marca: '', detalhe: '' });
+
+/** Texto legível gravado em `falha` (todos os consumidores atuais mostram essa string):
+    rótulo PT da falha catalogada, ou o texto livre digitado no modo "Outro". */
+function falhaTexto(v) {
+  if (!v) return '';
+  if (v.codigo) {
+    const f = getFalhaPorCodigo(v.codigo);
+    return f ? f.pt : '';
+  }
+  return v.detalhe || '';
+}
+
+/** Reidrata o objeto do FalhaSelect a partir de um registro do banco
+    (atendimento/inspeção de listVisitas). Registro legado sem código -> modo "Outro". */
+function falhaSelFromRecord(row) {
+  const r = row || {};
+  const codigo = r.falha_codigo || '';
+  if (codigo) {
+    const f = getFalhaPorCodigo(codigo);
+    return { codigo, categoria: r.falha_categoria || (f ? f.categoria : ''), marca: r.falha_marca || '', detalhe: '' };
+  }
+  return { codigo: '', categoria: '', marca: r.falha_marca || '', detalhe: r.falha || '' };
+}
+
+/** Marca única dos painéis dos dispositivos selecionados — só retorna se todos
+    convergem numa marca conhecida; senão '' (o seletor cai no campo "Outro"). */
+function marcaDeDispositivos(ids, deviceOptions) {
+  const marcas = new Set(
+    (ids || [])
+      .map((id) => (deviceOptions || []).find((o) => o.id === id))
+      .map((o) => normalizarMarca(o?.panelMarca))
+      .filter(Boolean),
+  );
+  return marcas.size === 1 ? [...marcas][0] : '';
+}
+
+/** Combobox de falha com busca bilíngue (PT — EN), lista travada pela marca do painel.
+    Sempre oferece "Outro (descrever)" -> textarea livre (codigo/categoria nulos). */
+function FalhaSelect({ marca, value, onChange, label = 'Falha', hint }) {
+  const v = value || emptyFalha();
+  const lista = falhasParaMarca(marca);
+  const marcaOk = lista.length > 0;
+  const marcaNorm = normalizarMarca(marca);
+  const selecionada = v.codigo ? getFalhaPorCodigo(v.codigo) : null;
+  const [modoOutro, setModoOutro] = useState(() => !v.codigo && !!v.detalhe);
+  const [trocando, setTrocando] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const emOutro = !marcaOk || modoOutro;
+  const q = query.trim().toLowerCase();
+  const filtrada = q
+    ? lista.filter((f) => f.pt.toLowerCase().includes(q) || f.en.toLowerCase().includes(q))
+    : lista;
+
+  function escolher(f) {
+    onChange({ codigo: f.codigo, categoria: f.categoria, marca: marcaNorm, detalhe: '' });
+    setTrocando(false);
+    setModoOutro(false);
+    setQuery('');
+  }
+  function limpar() {
+    onChange(emptyFalha());
+    setTrocando(false);
+    setModoOutro(false);
+    setQuery('');
+  }
+  function setDetalhe(texto) {
+    onChange({ codigo: '', categoria: '', marca: marcaNorm || '', detalhe: texto });
+  }
+
+  return (
+    <Field label={label}>
+      {hint && <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '-2px 0 6px' }}>{hint}</p>}
+
+      {emOutro ? (
+        <>
+          {selecionada && (
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
+              Falha catalogada anterior: <strong>{selecionada.pt}</strong>. Edite abaixo para substituir por texto livre.
+            </p>
+          )}
+          <textarea
+            style={{ ...inputStyle, minHeight: 50 }}
+            placeholder="Descreva a falha encontrada"
+            value={v.detalhe || ''}
+            onChange={(e) => setDetalhe(e.target.value)}
+          />
+          {!marcaOk ? (
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+              Painel sem marca Hochiki/Notifier definida (ou dispositivos de marcas diferentes) — descreva a falha livremente.
+            </p>
+          ) : (
+            <button type="button" onClick={() => { setModoOutro(false); setDetalhe(''); }}
+              style={{ ...smallBtnStyle, marginTop: 6 }}>
+              ← Voltar para a lista {marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki'}
+            </button>
+          )}
+        </>
+      ) : selecionada && !trocando ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1, minWidth: 160 }}>
+            {selecionada.pt} <span style={{ color: 'var(--text-secondary)' }}>— {selecionada.en}</span>
+          </span>
+          <button type="button" onClick={() => setTrocando(true)} style={smallBtnStyle}>Trocar</button>
+          <button type="button" onClick={limpar} style={smallBtnStyle}>Limpar</button>
+        </div>
+      ) : (
+        <>
+          <input
+            style={inputStyle}
+            placeholder={`Buscar falha ${marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki'} (português ou inglês)...`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginTop: 6 }}>
+            {filtrada.slice(0, 120).map((f) => (
+              <div key={f.codigo} onClick={() => escolher(f)}
+                style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                {f.pt} <span style={{ color: 'var(--text-secondary)' }}>— {f.en}</span>
+              </div>
+            ))}
+            {filtrada.length === 0 && (
+              <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma falha da lista bate com a busca.</div>
+            )}
+            <div onClick={() => { setModoOutro(true); setTrocando(false); }}
+              style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', color: '#8B2F2F', fontWeight: 600 }}>
+              + Outro (descrever)
+            </div>
+          </div>
+          {selecionada && (
+            <button type="button" onClick={() => setTrocando(false)} style={{ ...smallBtnStyle, marginTop: 6 }}>Cancelar troca</button>
+          )}
+        </>
+      )}
     </Field>
   );
 }
@@ -757,9 +904,12 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
     return (
       <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
         <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
-        <Field label="Falha (deixe em branco para preventiva)">
-          <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
-        </Field>
+        <FalhaSelect
+          label="Falha (deixe em branco para preventiva)"
+          marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
+          value={editForm.falhaSel}
+          onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
+        />
         <Field label="Status">
           <select style={inputStyle} value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
             <option value="aguardando">Aguardando</option>
@@ -807,9 +957,12 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
       <Field label="Observações">
         <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.observacoes} onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })} />
       </Field>
-      <Field label="Falha (se preenchida, cria/mantém corretiva)">
-        <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
-      </Field>
+      <FalhaSelect
+        label="Falha (se preenchida, cria/mantém corretiva)"
+        marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
+        value={editForm.falhaSel}
+        onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
+      />
       <Field label="Próxima inspeção">
         <input type="date" style={inputStyle} value={editForm.proximaInspecao} onChange={(e) => setEditForm({ ...editForm, proximaInspecao: e.target.value })} />
       </Field>
@@ -1178,7 +1331,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   }
 }
 
-  const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
+  const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '' });
   const [atFotos, setAtFotos] = useState([]);
   const [savingAtendimento, setSavingAtendimento] = useState(false);
   async function submitAtendimento(e) {
@@ -1190,13 +1343,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
       for (const dispositivoId of atForm.dispositivoIds) {
         const result = await createAtendimento({
           dispositivoId, falha: atForm.falha, status: atForm.status, descritivo: atForm.descritivo,
+          falhaCodigo: atForm.falhaSel?.codigo || null, falhaMarca: atForm.falhaSel?.marca || null, falhaCategoria: atForm.falhaSel?.categoria || null,
           tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
         });
         const label = deviceOptions.find((o) => o.id === dispositivoId)?.label || '';
         novosItens.push({ tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos });
       }
       setItensVisita((prev) => [...prev, ...novosItens]);
-      setAtForm({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
+      setAtForm({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '' });
       setAtFotos([]);
       if (onRefresh) onRefresh();
       setMsg(`${novosItens.length} item(ns) adicionado(s) à visita.`);
@@ -1210,7 +1364,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
   const [inspForm, setInspForm] = useState({
     dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
-    comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '',
+    comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '', falhaSel: emptyFalha(),
     proximaInspecao: '',
   });
   const [inspFotos, setInspFotos] = useState([]);
@@ -1231,6 +1385,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
           dispositivoId, tecnico: visita.tecnico, resultadoTeste: inspForm.resultadoTeste, aparencia: inspForm.aparencia,
           comunicacaoLocal: inspForm.comunicacaoLocal, comunicacaoRede: inspForm.comunicacaoRede,
           observacoes: inspForm.observacoes, falha: inspForm.falha, metodo: getMetodoTeste(device),
+          falhaCodigo: inspForm.falhaSel?.codigo || null, falhaMarca: inspForm.falhaSel?.marca || null, falhaCategoria: inspForm.falhaSel?.categoria || null,
           dataInspecao: visita.data_visita, proximaInspecao: inspForm.proximaInspecao, rvtId: visita.id, fotos: inspFotos,
         });
         if (result.atendimento) corretivasGeradas += 1;
@@ -1242,7 +1397,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
       setItensVisita((prev) => [...prev, ...novosItens]);
       setInspForm({
         dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
-        comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '',
+        comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '', falhaSel: emptyFalha(),
         proximaInspecao: '',
       });
       setInspFotos([]);
@@ -1265,6 +1420,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   const [outroFinalidade, setOutroFinalidade] = useState('');
   const [outroDiagDispositivoIds, setOutroDiagDispositivoIds] = useState([]);
   const [outroDiagFalha, setOutroDiagFalha] = useState('');
+  const [outroDiagFalhaSel, setOutroDiagFalhaSel] = useState(emptyFalha());
   const [outroDiagAgendamento, setOutroDiagAgendamento] = useState('');
   const [outroItemNome, setOutroItemNome] = useState('');
   const [outroItemTipoManutencao, setOutroItemTipoManutencao] = useState('corretiva');
@@ -1274,7 +1430,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
   function limparFormOutro() {
     setOutroTexto(''); setOutroFotos([]); setOutroAtividade('');
     setOutroComQuem(''); setOutroFinalidade('');
-    setOutroDiagDispositivoIds([]); setOutroDiagFalha(''); setOutroDiagAgendamento('');
+    setOutroDiagDispositivoIds([]); setOutroDiagFalha(''); setOutroDiagFalhaSel(emptyFalha()); setOutroDiagAgendamento('');
     setOutroItemNome(''); setOutroItemTipoManutencao('corretiva'); setOutroItemStatus('aguardando');
   }
 
@@ -1289,6 +1445,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
         const criados = await createDiagnosticoOutro({
           rvtId: visita.id, tecnico: visita.tecnico, dispositivoIds: outroDiagDispositivoIds,
           falha: outroDiagFalha.trim(), dataAgendamento: outroDiagAgendamento,
+          falhaCodigo: outroDiagFalhaSel.codigo || null, falhaMarca: outroDiagFalhaSel.marca || null, falhaCategoria: outroDiagFalhaSel.categoria || null,
           dispositivoLabels: labels, fotos: outroFotos,
         });
         setItensVisita((prev) => [
@@ -1392,13 +1549,13 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
         atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {} });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
+      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
         kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
         comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
-        observacoes: i.observacoes || '', falha: i.falha || '', proximaInspecao: i.proxima_inspecao || '',
+        observacoes: i.observacoes || '', falha: i.falha || '', falhaSel: falhaSelFromRecord(i), proximaInspecao: i.proxima_inspecao || '',
         fotos: i.fotos || [],
       });
     } else {
@@ -1415,12 +1572,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     setSavingEditItem(true);
     try {
       if (editForm.kind === 'atendimento') {
-        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos, dispositivoId: editForm.dispositivoId });
+        await updateAtendimento(editForm.id, {
+          falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos, dispositivoId: editForm.dispositivoId,
+          falhaCodigo: editForm.falhaSel?.codigo || null, falhaMarca: editForm.falhaSel?.marca || null, falhaCategoria: editForm.falhaSel?.categoria || null,
+        });
       } else if (editForm.kind === 'inspecao') {
         await updateInspecao(editForm.id, {
           resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,
           comunicacaoLocal: editForm.comunicacaoLocal, comunicacaoRede: editForm.comunicacaoRede,
           observacoes: editForm.observacoes, falha: editForm.falha, proximaInspecao: editForm.proximaInspecao,
+          falhaCodigo: editForm.falhaSel?.codigo || null, falhaMarca: editForm.falhaSel?.marca || null, falhaCategoria: editForm.falhaSel?.categoria || null,
           fotos: editForm.fotos, dispositivoId: editForm.dispositivoId,
         });
       } else if (editForm.kind === 'outro') {
@@ -1553,9 +1714,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
             <form key="manutencao" className="fade-in-up" onSubmit={submitAtendimento} style={{ ...cardStyle, marginBottom: 16 }}>
               <DeviceMultiSelect options={deviceOptions} selectedIds={atForm.dispositivoIds}
                 setSelectedIds={(next) => setAtForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
-              <Field label="Falha (deixe em branco para preventiva)">
-                <textarea style={{ ...inputStyle, minHeight: 60 }} value={atForm.falha} onChange={(e) => setAtForm({ ...atForm, falha: e.target.value })} />
-              </Field>
+              <FalhaSelect
+                label="Falha (deixe em branco para preventiva)"
+                marca={marcaDeDispositivos(atForm.dispositivoIds, deviceOptions)}
+                value={atForm.falhaSel}
+                onChange={(next) => setAtForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
+              />
               <Field label="Status">
                 <select style={inputStyle} value={atForm.status} onChange={(e) => setAtForm({ ...atForm, status: e.target.value })}>
                   <option value="aguardando">Aguardando</option>
@@ -1611,9 +1775,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               <Field label="Observações">
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.observacoes} onChange={(e) => setInspForm({ ...inspForm, observacoes: e.target.value })} />
               </Field>
-              <Field label="Falha (se preenchida, cria corretiva automática em todos os selecionados)">
-                <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.falha} onChange={(e) => setInspForm({ ...inspForm, falha: e.target.value })} />
-              </Field>
+              <FalhaSelect
+                label="Falha (se preenchida, cria corretiva automática em todos os selecionados)"
+                marca={marcaDeDispositivos(inspForm.dispositivoIds, deviceOptions)}
+                value={inspForm.falhaSel}
+                onChange={(next) => setInspForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
+              />
               <Field label="Próxima inspeção">
                 <input type="date" style={inputStyle} value={inspForm.proximaInspecao} onChange={(e) => setInspForm({ ...inspForm, proximaInspecao: e.target.value })} />
               </Field>
@@ -1652,9 +1819,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               {outroAtividade === 'diagnostico' && (
                 <>
                   <DeviceMultiSelect options={deviceOptions} selectedIds={outroDiagDispositivoIds} setSelectedIds={setOutroDiagDispositivoIds} />
-                  <Field label="Falha encontrada">
-                    <textarea style={{ ...inputStyle, minHeight: 60 }} value={outroDiagFalha} onChange={(e) => setOutroDiagFalha(e.target.value)} />
-                  </Field>
+                  <FalhaSelect
+                    label="Falha encontrada"
+                    marca={marcaDeDispositivos(outroDiagDispositivoIds, deviceOptions)}
+                    value={outroDiagFalhaSel}
+                    onChange={(next) => { setOutroDiagFalhaSel(next); setOutroDiagFalha(falhaTexto(next)); }}
+                  />
                   <Field label="Data de agendamento da manutenção">
                     <input type="date" style={inputStyle} value={outroDiagAgendamento} onChange={(e) => setOutroDiagAgendamento(e.target.value)} />
                   </Field>

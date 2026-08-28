@@ -201,11 +201,11 @@ export async function addOutroToVisita(rvtId, descricao, fotos, atividade, ativi
 // Categoria "Diagnóstico" dentro do Outro: cria 1 Corretiva (Aguardando) por dispositivo
 // selecionado + registra 1 item "Outro" (atividade=diagnostico) na visita, pro Dashboard
 // contar como atividade da visita além de contar como Corretiva normal.
-export async function createDiagnosticoOutro({ rvtId, tecnico, dispositivoIds, falha, dataAgendamento, dispositivoLabels, fotos }) {
+export async function createDiagnosticoOutro({ rvtId, tecnico, dispositivoIds, falha, falhaCodigo, falhaMarca, falhaCategoria, dataAgendamento, dispositivoLabels, fotos }) {
   const atendimentosGerados = [];
   for (const dispositivoId of dispositivoIds) {
     const a = await createAtendimento({
-      dispositivoId, falha, status: 'aguardando', tecnico, rvtId, fotos,
+      dispositivoId, falha, falhaCodigo, falhaMarca, falhaCategoria, status: 'aguardando', tecnico, rvtId, fotos,
       dataAgendamento, descritivo: 'Corretiva gerada a partir de Diagnóstico em visita',
     });
     atendimentosGerados.push(a);
@@ -217,9 +217,10 @@ export async function createDiagnosticoOutro({ rvtId, tecnico, dispositivoIds, f
   return atendimentosGerados;
 }
 
-export async function createAtendimento({ dispositivoId, falha, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento }) {
+export async function createAtendimento({ dispositivoId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento }) {
   const { data, error } = await supabase.from('atendimentos').insert({
     dispositivo_id: dispositivoId, falha: falha || null, status: status || 'aguardando',
+    falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null, falha_categoria: falhaCategoria || null,
     tecnico: tecnico || null, descritivo: descritivo || null, origem_inspecao_id: origemInspecaoId || null,
     fotos: fotos || [], data_agendamento: dataAgendamento || null,
   }).select().single();
@@ -248,7 +249,7 @@ async function selectAllRows(builderFactory) {
 }
 export async function createInspecao({
   dispositivoId, tecnico, resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede,
-  observacoes, falha, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
+  observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
 }) {
   const dataFinal = dataInspecao || new Date().toISOString().slice(0, 10);
 
@@ -256,7 +257,8 @@ export async function createInspecao({
     dispositivo_id: dispositivoId, tecnico: tecnico || null, resultado_teste: resultadoTeste || null,
     aparencia: aparencia || null, comunicacao_local: comunicacaoLocal || null,
     comunicacao_rede: comunicacaoRede || null, observacoes: observacoes || null,
-    falha: falha || null, metodo: metodo || null, data_inspecao: dataFinal,
+    falha: falha || null, falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null,
+    falha_categoria: falhaCategoria || null, metodo: metodo || null, data_inspecao: dataFinal,
     proxima_inspecao: proximaInspecao || null, fotos: fotos || [],
   }).select().single();
   if (error) throw error;
@@ -266,7 +268,7 @@ export async function createInspecao({
   let atendimento = null;
   if (falha && falha.trim()) {
     atendimento = await createAtendimento({
-      dispositivoId, falha, status: 'aguardando', origemInspecaoId: inspecao.id, rvtId,
+      dispositivoId, falha, falhaCodigo, falhaMarca, falhaCategoria, status: 'aguardando', origemInspecaoId: inspecao.id, rvtId,
       descritivo: 'Corretiva gerada automaticamente por falha na inspeção',
     });
   }
@@ -309,8 +311,8 @@ export async function listVisitas(clienteId) {
       id, data_visita, tecnico, painel_id,
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
-        atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) ),
-        inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) )
+        atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) ),
+        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) )
       )
     `)
     .eq('cliente_id', clienteId)
@@ -401,6 +403,7 @@ export async function loadClientData(clienteId) {
 
   const panels = paineis.map((p) => ({
     id: p.id, name: p.nome, location: p.localizacao || '', model: p.modelo || '',
+    marca: p.marca || '',
     installDate: p.data_instalacao || '', notes: p.observacoes || '',
   }));
 
@@ -455,7 +458,8 @@ export async function loadClientData(clienteId) {
       laco: a.dispositivos?.lacos?.nome || '',
       painel: a.dispositivos?.paineis?.nome || a.dispositivos?.lacos?.paineis?.nome || '',
       equipamento: a.dispositivos?.modelo || '', area: '',
-      falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+      falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaCategoria: a.falha_categoria || '',
+      descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
       explanacao: '', dataDiagnostico: (a.data_registro || '').slice(0, 10),
       dataIntervencao1: (a.data_registro || '').slice(0, 10),
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
@@ -472,7 +476,8 @@ export async function loadClientData(clienteId) {
       laco: i.dispositivos?.lacos?.nome || '',
       painel: i.dispositivos?.paineis?.nome || i.dispositivos?.lacos?.paineis?.nome || '',
       equipamento: i.dispositivos?.modelo || '', area: '',
-      falha: i.falha || '', descritivo: i.observacoes || i.resultado_teste || '', status: 'Resolvido',
+      falha: i.falha || '', falhaCodigo: i.falha_codigo || '', falhaCategoria: i.falha_categoria || '',
+      descritivo: i.observacoes || i.resultado_teste || '', status: 'Resolvido',
       explanacao: '', dataDiagnostico: i.data_inspecao || '',
       dataIntervencao1: i.data_inspecao || '',
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
@@ -502,7 +507,8 @@ export async function loadClientData(clienteId) {
           laco: a.dispositivos?.lacos?.nome || '',
           painel: a.dispositivos?.paineis?.nome || a.dispositivos?.lacos?.paineis?.nome || '',
           equipamento: a.dispositivos?.modelo || '', area: '',
-          falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+          falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaMarca: a.falha_marca || '', falhaCategoria: a.falha_categoria || '',
+          descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
           dataAgendamento: a.data_agendamento || '',
           explanacao: '', dataIntervencao: v.data_visita, solucao: '', fotos: a.fotos || [] };
       }
@@ -514,7 +520,8 @@ export async function loadClientData(clienteId) {
           laco: i.dispositivos?.lacos?.nome || '',
           painel: i.dispositivos?.paineis?.nome || i.dispositivos?.lacos?.paineis?.nome || '',
           equipamento: i.dispositivos?.modelo || '', area: '',
-          falha: i.falha || '', descritivo: i.resultado_teste || '', status: 'Resolvido',
+          falha: i.falha || '', falhaCodigo: i.falha_codigo || '', falhaMarca: i.falha_marca || '', falhaCategoria: i.falha_categoria || '',
+          descritivo: i.resultado_teste || '', status: 'Resolvido',
           explanacao: '', dataIntervencao: i.data_inspecao, solucao: '', fotos: i.fotos || [] };
       }
       return null;
@@ -590,7 +597,8 @@ async function doSaveClientData(clienteId, data) {
   // ---- Painéis: upsert (nunca apaga tudo primeiro) + remove só os que saíram da lista ----
   const panelRows = (data.panels || []).map((p) => ({
     id: p.id, cliente_id: clienteId, nome: p.name, localizacao: p.location || null,
-    modelo: p.model || null, data_instalacao: p.installDate || null, observacoes: p.notes || null,
+    modelo: p.model || null, marca: p.marca || null,
+    data_instalacao: p.installDate || null, observacoes: p.notes || null,
   }));
   if (panelRows.length) {
     const { error } = await supabase.from('paineis').upsert(panelRows);
@@ -777,9 +785,12 @@ async function doSaveClientData(clienteId, data) {
   }
 }
 
-export async function updateAtendimento(id, { falha, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
+export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, falhaCategoria, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
   const patch = {};
   if (falha !== undefined) patch.falha = falha || null;
+  if (falhaCodigo !== undefined) patch.falha_codigo = falhaCodigo || null;
+  if (falhaMarca !== undefined) patch.falha_marca = falhaMarca || null;
+  if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (status !== undefined) patch.status = status;
   if (descritivo !== undefined) patch.descritivo = descritivo || null;
   if (fotos !== undefined) patch.fotos = fotos;
@@ -796,7 +807,7 @@ export async function deleteAtendimento(id) {
   if (error) throw error;
 }
 
-export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, metodo, proximaInspecao, fotos, dispositivoId }) {
+export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, proximaInspecao, fotos, dispositivoId }) {
   const patch = {};
   if (resultadoTeste !== undefined) patch.resultado_teste = resultadoTeste || null;
   if (aparencia !== undefined) patch.aparencia = aparencia || null;
@@ -804,6 +815,9 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
   if (comunicacaoRede !== undefined) patch.comunicacao_rede = comunicacaoRede || null;
   if (observacoes !== undefined) patch.observacoes = observacoes || null;
   if (falha !== undefined) patch.falha = falha || null;
+  if (falhaCodigo !== undefined) patch.falha_codigo = falhaCodigo || null;
+  if (falhaMarca !== undefined) patch.falha_marca = falhaMarca || null;
+  if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (metodo !== undefined) patch.metodo = metodo || null;
   if (proximaInspecao !== undefined) patch.proxima_inspecao = proximaInspecao || null;
   if (fotos !== undefined) patch.fotos = fotos;

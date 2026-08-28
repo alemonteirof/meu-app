@@ -6,6 +6,7 @@ import {
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
   listCombateHistorico,
 } from './supabaseAdapter';
+import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -685,6 +686,7 @@ function buildImportEntities(rows, typeMap, brand, opts) {
         key: r.node,
         name: cleanTitle || `Painel ${r.node}`,
         model: panelModel || '',
+        marca: brand === 'notifier' ? 'notifier' : 'hochiki',
         existingId: existingPanel ? existingPanel.id : null,
       });
     }
@@ -1412,15 +1414,22 @@ function MaintenanceScheduleFields({ values, setValues }) {
 }
 
 function PanelForm({ initial, onSubmit, onCancel }) {
-  const [v, setV] = useState(initial || { name: '', location: '', model: '', installDate: '', notes: '' });
+  const [v, setV] = useState({ name: '', location: '', model: '', marca: '', installDate: '', notes: '', ...(initial || {}) });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
       <Field label="Identificação do painel *"><input autoFocus className={inputCls} value={v.name}
         onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Painel Central — Térreo" required /></Field>
       <Field label="Localização"><input className={inputCls} value={v.location}
         onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Sala de segurança, Bloco A" /></Field>
-      <Field label="Marca / Modelo"><input className={inputCls} value={v.model}
-        onChange={(e) => setV({ ...v, model: e.target.value })} placeholder="Ex.: Intelbras / Notifier..." /></Field>
+      <Field label="Marca (trava a lista de falhas nas visitas)">
+        <select className={inputCls} value={v.marca} onChange={(e) => setV({ ...v, marca: e.target.value })}>
+          <option value="">Outro / não sei</option>
+          <option value="hochiki">Hochiki / VES</option>
+          <option value="notifier">Notifier (Honeywell)</option>
+        </select>
+      </Field>
+      <Field label="Modelo"><input className={inputCls} value={v.model}
+        onChange={(e) => setV({ ...v, model: e.target.value })} placeholder="Ex.: FireNET L@titude, NFS2-640..." /></Field>
       <Field label="Data de instalação"><input type="date" className={inputCls} value={v.installDate}
         onChange={(e) => setV({ ...v, installDate: e.target.value })} /></Field>
       <Field label="Observações"><textarea rows={3} className={inputCls} value={v.notes}
@@ -2422,7 +2431,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         } else {
           const id = uid();
           panelIdByKey[p.key] = id;
-          newPanels.push({ id, name: p.name, location: '', model: p.model || '', installDate: '', notes: '' });
+          newPanels.push({ id, name: p.name, location: '', model: p.model || '', marca: p.marca || '', installDate: '', notes: '' });
         }
       });
       const loopIdByKey = {};
@@ -3571,12 +3580,15 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
     { label: 'Resolvido', value: corretivaCounts.Resolvido, color: 'var(--status-ok)' },
   ].filter((d) => d.value > 0);
 
-  const areaData = sortDesc(countBy(filtrado, (r) => r.area, 'Sem área')).slice(0, 10);
-  const falhaComSemCadastro = [
-    ...corretivas,
-    ...semCadastroCorretivaItems.map((it) => ({ falha: it.descricao || (it.atividadeDados || {}).nomeItem || 'Sem falha' })),
-  ];
-  const falhaData = sortDesc(countBy(falhaComSemCadastro, (r) => r.falha, 'Sem falha')).slice(0, 10);
+  // Gráfico "Falhas mais comuns" agrupa pela categoria unificada (falha_categoria),
+  // não pelo texto livre. Registros antigos/sem código caem em "Não classificado".
+  // Categoria "diagnostico" (desabilitação/teste — não é defeito) fica fora.
+  const rotuloDiagnostico = rotuloCategoria(CATEGORIA_DIAGNOSTICO);
+  const falhaCategoriaLinhas = [
+    ...corretivas.map((r) => ({ cat: rotuloCategoria(r.falhaCategoria) })),
+    ...semCadastroCorretivaItems.map(() => ({ cat: rotuloCategoria('') })),
+  ].filter((r) => r.cat !== rotuloDiagnostico);
+  const falhaData = sortDesc(countBy(falhaCategoriaLinhas, (r) => r.cat, 'Não classificado')).slice(0, 10);
 
   // ---- Resumo de Visitas: o que mais é feito nas visitas (Manutenção/Inspeção/Atividades) ----
   let resumoPreventivaCadastrada = 0, resumoPreventivaSemCadastro = 0;
@@ -3688,10 +3700,13 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no período/filtro selecionado.</p>
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 gap-4">
-                <ChartCard title="Status das corretivas"><SimplePieChart data={corretivaStatusData} /></ChartCard>
-                <ChartCard title="Registros por área" subtitle="Onde mais aparecem"><SimpleBarChart data={areaData} /></ChartCard>
-                <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
+              <div className="grid sm:grid-cols-2 gap-4 items-stretch">
+                <ChartCard title="Status das corretivas">
+                  <div className="flex-1 flex items-center">
+                    <SimplePieChart data={corretivaStatusData} size={196} />
+                  </div>
+                </ChartCard>
+                <ChartCard title="Falhas mais comuns" subtitle="Top 10 por categoria"><SimpleBarChart data={falhaData} /></ChartCard>
               </div>
             )}
           </div>
@@ -5624,7 +5639,13 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       },
     });
 
-    const falhaData = sortDesc(countBy(manutencoes, (r) => r.falha, 'Sem motivo')).slice(0, 10);
+    const rotuloDiagnostico = rotuloCategoria(CATEGORIA_DIAGNOSTICO);
+    const falhaData = sortDesc(countBy(
+      manutencoes
+        .map((r) => ({ cat: rotuloCategoria(r.falhaCategoria) }))
+        .filter((r) => r.cat !== rotuloDiagnostico),
+      (r) => r.cat, 'Não classificado',
+    )).slice(0, 10);
     const motivoBarImg = falhaData.length ? await renderChartImage({
       type: 'bar',
       data: {
@@ -5635,7 +5656,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
         responsive: false,
         indexAxis: 'y',
         plugins: {
-          title: { display: true, text: 'Motivos de falha mais comuns', font: { size: 20, weight: 'bold' } },
+          title: { display: true, text: 'Falhas por categoria', font: { size: 20, weight: 'bold' } },
           legend: { display: false },
         },
         scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
