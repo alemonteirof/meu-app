@@ -826,7 +826,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
     a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
     grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
     agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit }) {
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
@@ -881,6 +881,12 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
         <button type="button" onClick={() => onVerImprimir(visita)} style={smallBtnStyle}>Ver / Imprimir</button>
         {canEdit && (
           <button type="button" onClick={onToggleExpand} style={smallBtnStyle}>Editar</button>
+        )}
+        {canEdit && (
+          <button type="button" onClick={() => onReopen(visita)}
+            style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>
+            + Adicionar itens
+          </button>
         )}
         {canEdit && (
           <button type="button" onClick={() => onDelete(visita.id)}
@@ -1138,6 +1144,23 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
     setItensVisita([]);
     setMsg('');
     refreshVisitas();
+  }
+
+  /** Reabre uma visita já salva (do histórico "Visitas anteriores") pra permitir
+      adicionar novos itens a ela — reaproveita o mesmo workspace da visita em
+      andamento (submitAtendimento/submitInspecao/submitOutro já gravam com rvtId:
+      visita.id, então funciona igual pra visita nova ou reaberta). */
+  function reabrirVisita(v) {
+    setVisita(v);
+    setItensVisita([]);
+    setAba('manutencao');
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(v.id);
+      return next;
+    });
+    setMsg('Visita reaberta — os itens que você adicionar agora entram nela.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function cancelarVisita() {
@@ -1678,7 +1701,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
           )}
 
           <div>
-            <h4 style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>Itens desta visita ({itensVisita.length})</h4>
+            <h4 style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>Itens adicionados agora ({itensVisita.length})</h4>
+            {itemsFromVisita(visita).length > 0 && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                Essa visita já tinha {itemsFromVisita(visita).length} item(ns) salvos antes — eles continuam lá, essa lista mostra só o que você está adicionando agora.
+              </p>
+            )}
             <div style={{ display: 'grid', gap: 6 }}>
               {itensVisita.map((it, idx) => (
                 <div key={idx} style={{ ...cardStyle, padding: 10 }}>
@@ -1751,7 +1779,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
                 {visitasFiltradas.filter((v) => v.data_visita === dia).map((v) => (
                   <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit} deviceOptions={deviceOptions}
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
-                    onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])}
+                    onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])} onReopen={reabrirVisita}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
                     onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} savingEdit={savingEditItem} />
                 ))}
