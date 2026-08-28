@@ -58,6 +58,14 @@ function formatDateBR(dateStr) {
   return `${d}/${m}/${y}`;
 }
 
+const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+// Data por extenso, usada só na visão "Relatórios" do cliente (mais amigável que dd/mm/aaaa).
+function formatDateLong(dateStr) {
+  if (!dateStr) return '—';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return `${d} de ${MESES_PT[m - 1]} de ${y}`;
+}
+
 function statusColor(status) {
   if (status === 'Resolvido') return 'var(--status-ok)';
   if (status === 'Andamento') return 'var(--status-warn, #f59f00)';
@@ -979,7 +987,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
     a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
     grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
     agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit }) {
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit, reportMode = false }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
@@ -1018,20 +1026,38 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
   }
 
   return (
-    <div style={cardStyle}>
+    <div style={cardStyle} className={reportMode ? 'rvt-report-card' : undefined} data-open={reportMode ? expanded : undefined}>
       <button type="button" onClick={onToggleExpand} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 8, padding: 0, width: '100%', textAlign: 'left' }}>
-        <span style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0, marginTop: 2 }}>{expanded ? '▾' : '▸'}</span>
+        <span className={reportMode ? 'rvt-report-chevron' : undefined} style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0, marginTop: 2, display: 'inline-block' }}>
+          {reportMode ? '▸' : (expanded ? '▾' : '▸')}
+        </span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
-            {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
-          </div>
+          {reportMode ? (
+            <>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 15 }}>
+                Relatório de {formatDateLong(visita.data_visita)}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
+                {painel ? `${painel.name} · ` : ''}{itens.length} {itens.length === 1 ? 'serviço registrado' : 'serviços registrados'}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
+                {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
+              </div>
+            </>
+          )}
         </div>
       </button>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-        <button type="button" onClick={() => onVerImprimir(visita)} style={smallBtnStyle}>Ver / Imprimir</button>
+        <button type="button" onClick={() => onVerImprimir(visita)} className={reportMode ? 'rvt-report-cta' : undefined}
+          style={reportMode ? { ...btnStyle, padding: '7px 18px' } : smallBtnStyle}>
+          {reportMode ? 'Ver relatório' : 'Ver / Imprimir'}
+        </button>
         {canEdit && (
           <button type="button" onClick={onToggleExpand} style={smallBtnStyle}>Editar</button>
         )}
@@ -1243,7 +1269,10 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
   );
 }
 
-export default function AtendimentosNovo({ data, client, clientId, canEdit, onRefresh }) {
+export default function AtendimentosNovo({ data, client, clientId, canEdit: canEditProp, onRefresh, reportMode = false }) {
+  // reportMode: usado pelo menu "Relatórios" (acesso do cliente/visualizador). Mostra só
+  // a lista/impressão de relatórios de visita, sem os fluxos de criação/edição.
+  const canEdit = reportMode ? false : canEditProp;
   const deviceOptions = buildDeviceOptions(data);
   const panelOptions = data.panels || [];
 
@@ -1618,21 +1647,25 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        <button onClick={() => setSubAba('dispositivos')} style={tabBtnStyle(subAba === 'dispositivos')}>Visitas (SDAI)</button>
-        <button onClick={() => setSubAba('combate')} style={tabBtnStyle(subAba === 'combate')}>Visitas (Sistemas de Combate)</button>
-      </div>
-      {subAba === 'combate' && (
+      {!reportMode && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          <button onClick={() => setSubAba('dispositivos')} style={tabBtnStyle(subAba === 'dispositivos')}>Visitas (SDAI)</button>
+          <button onClick={() => setSubAba('combate')} style={tabBtnStyle(subAba === 'combate')}>Visitas (Sistemas de Combate)</button>
+        </div>
+      )}
+      {!reportMode && subAba === 'combate' && (
         <div key="combate" className="fade-in-up">
           <VisitaCombateView data={data} clientId={clientId} canEdit={canEdit} onRefresh={onRefresh} />
         </div>
       )}
-      {subAba === 'dispositivos' && (
+      {(reportMode || subAba === 'dispositivos') && (
     <div key="dispositivos" className="fade-in-up">
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas técnicas</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>{reportMode ? 'Relatórios de visita técnica' : 'Visitas técnicas'}</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Uma visita pode reunir manutenções, inspeções e outros itens (reuniões, ajustes).
+          {reportMode
+            ? 'Consulte, visualize e imprima os relatórios das visitas técnicas realizadas.'
+            : 'Uma visita pode reunir manutenções, inspeções e outros itens (reuniões, ajustes).'}
         </p>
       </div>
 
@@ -1642,7 +1675,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
         </div>
       )}
 
-            {!visita ? (
+            {!reportMode && (!visita ? (
         !agendarSDAIMode ? (
           <div key="start" className="fade-in-up" style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             <form onSubmit={iniciarVisita} style={{ ...cardStyle, maxWidth: 420, flex: '1 1 320px' }}>
@@ -1887,35 +1920,48 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
             </div>
           </div>
         </div>
-      )}
+      ))}
 
       <div style={{ marginTop: 32 }}>
-        <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Visitas anteriores</h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <h3 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{reportMode ? 'Relatórios disponíveis' : 'Visitas anteriores'}</h3>
+          {reportMode && !loadingVisitas && (
+            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              {visitasFiltradas.length} {visitasFiltradas.length === 1 ? 'relatório' : 'relatórios'}
+            </span>
+          )}
+        </div>
 
         <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-          <div style={{ minWidth: 160 }}>
-            <span style={labelStyle}>Técnico</span>
-            <input style={inputStyle} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} placeholder="Buscar técnico..." />
-          </div>
-          <div style={{ minWidth: 160 }}>
-            <span style={labelStyle}>Painel</span>
-            <select style={inputStyle} value={filtroPainelId} onChange={(e) => setFiltroPainelId(e.target.value)}>
-              <option value="">Todos os painéis</option>
-              {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
+          {!reportMode && (
+            <>
+              <div style={{ minWidth: 160 }}>
+                <span style={labelStyle}>Técnico</span>
+                <input style={inputStyle} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} placeholder="Buscar técnico..." />
+              </div>
+              <div style={{ minWidth: 160 }}>
+                <span style={labelStyle}>Painel</span>
+                <select style={inputStyle} value={filtroPainelId} onChange={(e) => setFiltroPainelId(e.target.value)}>
+                  <option value="">Todos os painéis</option>
+                  {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
           <div style={{ minWidth: 140 }}>
-            <span style={labelStyle}>De</span>
+            <span style={labelStyle}>{reportMode ? 'De (data)' : 'De'}</span>
             <input type="date" style={inputStyle} value={filtroDataDe} onChange={(e) => setFiltroDataDe(e.target.value)} />
           </div>
           <div style={{ minWidth: 140 }}>
-            <span style={labelStyle}>Até</span>
+            <span style={labelStyle}>{reportMode ? 'Até (data)' : 'Até'}</span>
             <input type="date" style={inputStyle} value={filtroDataAte} onChange={(e) => setFiltroDataAte(e.target.value)} />
           </div>
         </div>
 
         <div style={{ ...cardStyle, marginBottom: 16 }}>
-          <span style={{ ...labelStyle, marginBottom: 8 }}>Imprimir período (várias visitas de uma vez, agrupadas por dia)</span>
+          <span style={{ ...labelStyle, marginBottom: 8 }}>
+            {reportMode ? 'Baixar um período inteiro em PDF (relatórios agrupados por dia)' : 'Imprimir período (várias visitas de uma vez, agrupadas por dia)'}
+          </span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
             <div style={{ minWidth: 140 }}>
               <span style={labelStyle}>De</span>
@@ -1925,7 +1971,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               <span style={labelStyle}>Até</span>
               <input type="date" style={inputStyle} value={periodoAte} onChange={(e) => setPeriodoAte(e.target.value)} />
             </div>
-            <button type="button" onClick={imprimirPeriodo} style={btnStyle}>Gerar impressão do período</button>
+            <button type="button" onClick={imprimirPeriodo} className={reportMode ? 'rvt-report-cta' : undefined} style={btnStyle}>
+              {reportMode ? 'Gerar PDF do período' : 'Gerar impressão do período'}
+            </button>
           </div>
         </div>
 
@@ -1939,15 +1987,17 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
             ))}
           </div>
         )}
-        <div style={{ display: 'grid', gap: 18 }}>
-          {!loadingVisitas && diasVisitas.map((dia) => (
-            <div key={dia}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {formatDateBR(dia)}
-              </p>
+        <div style={{ display: 'grid', gap: reportMode ? 12 : 18 }}>
+          {!loadingVisitas && diasVisitas.map((dia, idx) => (
+            <div key={dia} className={reportMode ? 'rvt-report-group' : undefined} style={reportMode ? { '--i': Math.min(idx, 6) } : undefined}>
+              {!reportMode && (
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {formatDateBR(dia)}
+                </p>
+              )}
               <div style={{ display: 'grid', gap: 10 }}>
                 {visitasFiltradas.filter((v) => v.data_visita === dia).map((v) => (
-                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit} deviceOptions={deviceOptions}
+                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit} deviceOptions={deviceOptions} reportMode={reportMode}
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
                     onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])} onReopen={reabrirVisita}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
@@ -1956,7 +2006,13 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit, onRe
               </div>
             </div>
           ))}
-          {!loadingVisitas && diasVisitas.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhuma visita encontrada.</p>}
+          {!loadingVisitas && diasVisitas.length === 0 && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+              {reportMode
+                ? 'Nenhum relatório por aqui ainda. Assim que uma visita técnica for concluída, o relatório aparece nesta lista.'
+                : 'Nenhuma visita encontrada.'}
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -825,6 +825,7 @@ const NAV_ITEMS = [
   { key: 'sdai', label: 'Sistemas de Detecção e Alarme', icon: Cpu },
   { key: 'combate', label: 'Sistemas de Combate', icon: Flame },
   { key: 'report', label: 'Inspeções', icon: ClipboardList },
+  { key: 'relatorios', label: 'Relatórios', icon: FileText },
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
@@ -834,7 +835,8 @@ const NAV_ITEMS = [
 const NAV_KEYS_BY_ROLE = {
   admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'settings'],
   operador: ['dashboard', 'atendimentos', 'sdai', 'combate', 'report', 'indicador'],
-  visualizador: ['dashboard', 'sdai', 'combate', 'report', 'indicador'],
+  // "relatorios" só pro visualizador: Admin/Operador acessam o mesmo RVT por dentro de Atendimentos.
+  visualizador: ['dashboard', 'relatorios', 'sdai', 'combate', 'report', 'indicador'],
 };
 function navItemsForRole(role) {
   const keys = NAV_KEYS_BY_ROLE[role] || NAV_KEYS_BY_ROLE.visualizador;
@@ -843,7 +845,9 @@ function navItemsForRole(role) {
 // Os 4 destinos mais usados ficam fixos na barra inferior do mobile (padrão "app", tipo CifraClub);
 // o resto (dentro do que o role pode ver) fica na aba "Mais".
 function mobilePrimaryKeysForRole(role) {
-  if (role === 'visualizador') return ['dashboard', 'indicador', 'sdai', 'report'];
+  // Cliente (visualizador): "Relatórios" (RVT) é o destino principal — entra fixo na barra;
+  // Indicador desce pra aba "Mais". Admin/Operador nem enxergam "Relatórios" (usam Atendimentos).
+  if (role === 'visualizador') return ['dashboard', 'relatorios', 'sdai', 'report'];
   return ['atendimentos', 'dashboard', 'sdai', 'indicador'];
 }
 // Views internas que pertencem ao item de menu "Sistemas de Detecção e Alarme"
@@ -3156,6 +3160,10 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         )}
         {view === 'atendimentos' && (
           <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit}
+            onRefresh={async () => setData(await loadClientData(client.id))} />
+        )}
+        {view === 'relatorios' && (
+          <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit} reportMode
             onRefresh={async () => setData(await loadClientData(client.id))} />
         )}
 
@@ -7238,10 +7246,25 @@ function PageStyles() {
       @keyframes modal-panel-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
       .modal-backdrop-in { animation: modal-backdrop-in .15s ease-out; }
       .modal-panel-in { animation: modal-panel-in .18s cubic-bezier(0.16, 1, 0.3, 1); }
+
+      /* ---- Lista "Relatórios" (visão do cliente): entrada em stagger + hover/press sutil ---- */
+      /* Frequência: baixa (cliente consulta de vez em quando) -> movimento discreto é ok.        */
+      /* Só transform/opacity animados; durações alinhadas ao resto do app (<=280ms, mesma curva).*/
+      .rvt-report-group { animation: fade-in-up .26s ease-out backwards; animation-delay: calc(var(--i, 0) * 45ms); }
+      .rvt-report-card { transition: transform .16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .16s ease; }
+      .rvt-report-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -12px rgba(0,0,0,0.45); }
+      .rvt-report-chevron { transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1); }
+      .rvt-report-card[data-open="true"] .rvt-report-chevron { transform: rotate(90deg); }
+      .rvt-report-cta { transition: transform .12s ease; }
+      .rvt-report-cta:active { transform: scale(0.97); }
+
       @media (prefers-reduced-motion: reduce) {
         .skeleton { animation: none; opacity: 0.7; }
         .fade-in-up { animation: none; }
         .modal-backdrop-in, .modal-panel-in { animation: none; }
+        .rvt-report-group { animation: none; }
+        .rvt-report-card, .rvt-report-chevron, .rvt-report-cta { transition: none; }
+        .rvt-report-card:hover { transform: none; }
       }
       .status-pill {
         font-size: 11px; font-family: 'IBM Plex Mono', monospace; padding: 3px 8px;
