@@ -8,6 +8,7 @@ import {
   listClientes, upsertCliente, deleteCliente,
 } from './supabaseAdapter';
 import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
+import { logSecurityEvent } from './lib/securityLog';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -119,6 +120,7 @@ function LoginScreen() {
         setInfo('Conta criada! Um administrador precisa liberar seu nível de acesso antes que você possa usar o sistema plenamente.');
       }
     } catch (err) {
+      if (mode === 'login') logSecurityEvent('login_falhou', { email, detail: { msg: err.message } });
       setError(err.message || 'Não foi possível entrar.');
     } finally {
       setLoading(false);
@@ -2396,6 +2398,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       const loaded = await loadClientData(client.id);
       setData(loaded);
       } catch (e) {
+        if (String(e?.code) === '42501' || /policy|permission|denied/i.test(e?.message || '')) {
+          logSecurityEvent('acesso_negado', { detail: { onde: 'loadClientData', msg: e?.message } });
+        }
         setData(emptyData());
       } finally {
         setLoaded(true);
