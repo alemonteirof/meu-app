@@ -953,6 +953,8 @@ function photoForModelo(data, modelo) {
 /* Resize + compress an uploaded image file into a small base64 JPEG */
 function compressImageFile(file, maxDim = 480, quality = 0.75) {
   return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) { reject(new Error(`"${file.name}" não é uma imagem.`)); return; }
+    if (file.size > 25 * 1024 * 1024) { reject(new Error(`"${file.name}" é muito grande (limite 25 MB).`)); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new window.Image();
@@ -979,14 +981,15 @@ function compressImageFile(file, maxDim = 480, quality = 0.75) {
 /* Upload de múltiplas fotos (com atalho de câmera no celular), comprimindo cada uma. */
 function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
   const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState('');
   async function handleChange(e) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    setBusy(true);
+    setBusy(true); setErro('');
     try {
       const compressed = await Promise.all(files.map((f) => compressImageFile(f, 900, 0.7)));
       onChange([...(photos || []), ...compressed]);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); setErro(err.message || 'Não foi possível anexar a(s) foto(s).'); }
     finally { setBusy(false); e.target.value = ''; }
   }
   function removeAt(idx) {
@@ -1013,6 +1016,7 @@ function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
           <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handleChange} disabled={busy} />
         </label>
       </div>
+      {erro && <p className="text-xs mt-1" style={{ color: 'var(--status-danger)' }}>{erro}</p>}
     </div>
   );
 }

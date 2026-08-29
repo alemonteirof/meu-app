@@ -73,8 +73,12 @@ function statusColor(status) {
   return 'var(--text-secondary)';
 }
 
+const MAX_FOTO_BYTES = 8 * 1024 * 1024; // 8 MB por foto — fotos vão em base64 na linha do banco
+
 function filesToBase64(fileList) {
   return Promise.all(Array.from(fileList).map((file) => new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) { reject(new Error(`"${file.name}" não é uma imagem.`)); return; }
+    if (file.size > MAX_FOTO_BYTES) { reject(new Error(`"${file.name}": ${(file.size / 1048576).toFixed(1)} MB. Limite de 8 MB por foto — reduza a resolução.`)); return; }
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
@@ -84,10 +88,16 @@ function filesToBase64(fileList) {
 
 function FotosField({ fotos, setFotos }) {
   const inputRef = useRef(null);
+  const [erroFoto, setErroFoto] = useState('');
   async function handleChange(e) {
     if (!e.target.files || e.target.files.length === 0) return;
-    const novas = await filesToBase64(e.target.files);
-    setFotos((prev) => [...prev, ...novas]);
+    setErroFoto('');
+    try {
+      const novas = await filesToBase64(e.target.files);
+      setFotos((prev) => [...prev, ...novas]);
+    } catch (err) {
+      setErroFoto(err.message || 'Não foi possível anexar a foto.');
+    }
     e.target.value = '';
   }
   return (
@@ -103,6 +113,7 @@ function FotosField({ fotos, setFotos }) {
       >
         + Anexar foto
       </button>
+      {erroFoto && <p style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 6 }}>{erroFoto}</p>}
       {fotos.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
           {fotos.map((f, idx) => (
