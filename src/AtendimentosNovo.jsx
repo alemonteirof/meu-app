@@ -6,6 +6,7 @@ import {
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
+  salvarAssinaturaVisita,
 } from './supabaseAdapter';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca } from './lib/falhasPorMarca';
 
@@ -715,6 +716,164 @@ function RvtFieldLabelLocal({ children }) {
   return <p style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 600, marginBottom: 2, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
 }
 
+/** Data/hora "dd/mm/aaaa às HH:MM" a partir de um ISO/timestamptz — reaproveita formatDateBR
+    para a parte da data e só acrescenta a hora local. */
+function formatDateTimeBR(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${formatDateBR(ymd)} às ${hh}:${mm}`;
+}
+
+/** Campo de assinatura de aprovação do cliente para 1 visita (rvt).
+    Dois modos alternáveis: desenho no canvas (mouse + touch) ou nome digitado.
+    O formulário de captura fica fora da impressão (no-print); depois de confirmada,
+    a assinatura é exibida somente-leitura e entra na impressão. */
+function SignatureField({ visita }) {
+  const [confirmada, setConfirmada] = useState(
+    visita?.assinatura_cliente
+      ? { tipo: visita.assinatura_cliente_tipo || 'texto', valor: visita.assinatura_cliente, data: visita.assinatura_cliente_data }
+      : null,
+  );
+  const [modo, setModo] = useState('desenho'); // 'desenho' | 'texto'
+  const [nome, setNome] = useState('');
+  const [temTraco, setTemTraco] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const canvasRef = useRef(null);
+  const desenhandoRef = useRef(false);
+
+  const pontoNoCanvas = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches && e.touches[0] ? e.touches[0] : e;
+    return {
+      x: (src.clientX - rect.left) * (canvas.width / rect.width),
+      y: (src.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
+  const iniciarTraco = (e) => {
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext('2d');
+    const { x, y } = pontoNoCanvas(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    desenhandoRef.current = true;
+  };
+  const moverTraco = (e) => {
+    if (!desenhandoRef.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1a1a1a';
+    const { x, y } = pontoNoCanvas(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    if (!temTraco) setTemTraco(true);
+  };
+  const terminarTraco = () => { desenhandoRef.current = false; };
+
+  const limparCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    setTemTraco(false);
+  };
+
+  const confirmar = async () => {
+    setErro('');
+    const tipo = modo === 'desenho' ? 'desenho' : 'texto';
+    let valor;
+    if (tipo === 'desenho') {
+      if (!temTraco) { setErro('Desenhe a assinatura antes de confirmar.'); return; }
+      valor = canvasRef.current.toDataURL('image/png');
+    } else {
+      if (!nome.trim()) { setErro('Digite o nome completo antes de confirmar.'); return; }
+      valor = nome.trim();
+    }
+    setSalvando(true);
+    try {
+      await salvarAssinaturaVisita(visita.id, { tipo, valor });
+      setConfirmada({ tipo, valor, data: new Date().toISOString() });
+    } catch {
+      setErro('Não foi possível salvar a assinatura. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (confirmada) {
+    return (
+      <div className="rvt-summary-card rounded-lg p-4" style={{ background: 'var(--surface-raised)' }}>
+        <RvtFieldLabelLocal>Assinatura do cliente — aprovação do serviço</RvtFieldLabelLocal>
+        {confirmada.tipo === 'desenho' ? (
+          <img
+            src={confirmada.valor}
+            alt="Assinatura do cliente"
+            style={{ display: 'block', width: '100%', maxWidth: 360, height: 'auto', background: '#fff', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}
+          />
+        ) : (
+          <p style={{ fontFamily: '"Segoe Script", "Brush Script MT", "Snell Roundhand", cursive', fontSize: 26, color: 'var(--text-primary)', margin: '6px 0 2px' }}>
+            {confirmada.valor}
+          </p>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+          Confirmada em {formatDateTimeBR(confirmada.data)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rvt-summary-card rounded-lg p-4 no-print" style={{ background: 'var(--surface-raised)' }}>
+      <RvtFieldLabelLocal>Assinatura do cliente — aprovação do serviço</RvtFieldLabelLocal>
+      <div style={{ display: 'flex', gap: 8, margin: '6px 0 10px', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => { setModo('desenho'); setErro(''); }} style={tabBtnStyle(modo === 'desenho')}>Desenhar</button>
+        <button type="button" onClick={() => { setModo('texto'); setErro(''); }} style={tabBtnStyle(modo === 'texto')}>Digitar nome</button>
+      </div>
+
+      {modo === 'desenho' ? (
+        <div>
+          <canvas
+            ref={canvasRef}
+            width={600}
+            height={180}
+            onMouseDown={iniciarTraco}
+            onMouseMove={moverTraco}
+            onMouseUp={terminarTraco}
+            onMouseLeave={terminarTraco}
+            onTouchStart={iniciarTraco}
+            onTouchMove={moverTraco}
+            onTouchEnd={terminarTraco}
+            style={{ display: 'block', width: '100%', maxWidth: 600, height: 180, background: '#fff', borderRadius: 6, border: '1px solid var(--border)', touchAction: 'none', cursor: 'crosshair' }}
+          />
+          <button type="button" onClick={limparCanvas} style={{ ...smallBtnStyle, marginTop: 8 }}>Limpar</button>
+        </div>
+      ) : (
+        <input
+          type="text"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Nome completo de quem aprova"
+          style={inputStyle}
+        />
+      )}
+
+      {erro && <p style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 8 }}>{erro}</p>}
+
+      <div style={{ marginTop: 10 }}>
+        <button type="button" onClick={confirmar} disabled={salvando} style={{ ...btnStyle, opacity: salvando ? 0.7 : 1 }}>
+          {salvando ? 'Salvando...' : 'Confirmar assinatura'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, print-area
     etc.) que o RVT antigo usava, então imprime/exporta exatamente igual. Aceita 1 visita (impressão
     individual) ou várias (impressão de período, agrupadas por dia dentro do mesmo documento). */
@@ -846,6 +1005,8 @@ function VisitaPrintView({ visitas, client, onBack }) {
               </div>
             );
           })}
+
+          {!isPeriodo && <SignatureField visita={visitas[0]} />}
 
           <div className="rvt-footer-band">
             <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>

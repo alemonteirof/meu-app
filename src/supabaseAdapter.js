@@ -359,6 +359,7 @@ export async function listVisitas(clienteId) {
     .from('rvts')
     .select(`
       id, data_visita, tecnico, painel_id,
+      assinatura_cliente, assinatura_cliente_tipo, assinatura_cliente_data,
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
         atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) ),
@@ -889,6 +890,17 @@ export async function updateOutroItem(rvtItemId, descricao, fotos, atividade, at
   if (atividade !== undefined) patch.outro_atividade = atividade || null;
   if (atividadeDados !== undefined) patch.outro_atividade_dados = atividadeDados || {};
   const { error } = await supabase.from('rvt_itens').update(patch).eq('id', rvtItemId);
+  if (error) throw error;
+}
+
+/** Assinatura de aprovação do cliente para 1 registro de visita (rvt).
+    `tipo` = 'desenho' (valor = base64 PNG) ou 'texto' (valor = nome digitado). */
+export async function salvarAssinaturaVisita(rvtId, { tipo, valor }) {
+  const { error } = await supabase.from('rvts').update({
+    assinatura_cliente: valor,
+    assinatura_cliente_tipo: tipo,
+    assinatura_cliente_data: new Date().toISOString(),
+  }).eq('id', rvtId);
   if (error) throw error;
 }
 
