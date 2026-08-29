@@ -5,6 +5,7 @@ import {
   COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
   listCombateHistorico,
+  listClientes, upsertCliente, deleteCliente,
 } from './supabaseAdapter';
 import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
 import React, { useState, useEffect } from 'react';
@@ -1019,6 +1020,13 @@ function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
 /* ---- Multi-tenant helpers (clients list + legacy single-tenant migration) ---- */
 
 async function loadAndMigrateClients() {
+  // Com Supabase, a lista de clientes vem da tabela 'clientes' (RLS por linha).
+  if (supabase) {
+    try { return await listClientes(); }
+    catch (e) { console.error(e); return []; }
+  }
+
+  // Modo local legado (sem Supabase): lista vinha do window.storage
   let list = [];
   try {
     const res = await window.storage.get(CLIENTS_KEY, false);
@@ -7421,6 +7429,7 @@ function Root() {
   }
 
   function persistClients(next) {
+    if (supabase) return; // cada cliente é gravado individualmente na tabela
     (async () => { try { await window.storage.set(CLIENTS_KEY, JSON.stringify(next), false); } catch (e) { console.error(e); } })();
   }
   function updateClients(mutator) {
@@ -7430,15 +7439,26 @@ function Root() {
   async function createClient(values) {
     const id = uid();
     const newClient = { id, name: values.name, address: values.address || '', contact: values.contact || '', branding: {}, user: null };
+    if (supabase) {
+      try { await upsertCliente(newClient); }
+      catch (e) { console.error(e); return; }
+    }
     updateClients((prev) => [...prev, newClient]);
     try { await window.storage.set(clientDataKey(id), JSON.stringify(emptyData()), false); } catch (e) { console.error(e); }
   }
   function updateClient(id, patch) {
     updateClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    if (supabase) {
+      const cur = (clients || []).find((c) => c.id === id);
+      if (cur) upsertCliente({ ...cur, ...patch }).catch((e) => console.error(e));
+    }
   }
   function deleteClient(id) {
     updateClients((prev) => prev.filter((c) => c.id !== id));
-    (async () => { try { await window.storage.delete(clientDataKey(id), false); } catch (e) { /* ignore */ } })();
+    (async () => {
+      try { if (supabase) await deleteCliente(id); } catch (e) { console.error(e); }
+      try { await window.storage.delete(clientDataKey(id), false); } catch (e) { /* ignore */ }
+    })();
     if (activeClientId === id) { setActiveClientId(null); setAuthedClientId(null); clearLastClientId(); }
   }
 

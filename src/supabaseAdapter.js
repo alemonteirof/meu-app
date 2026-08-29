@@ -4,6 +4,56 @@ function legacyKey(clienteId) {
   return `pci-dados-cliente-${clienteId}`;
 }
 
+// ---- Clientes (lista multi-tenant) — fonte de verdade migrada do kv_store 'pci-clientes-v1' ----
+
+function rowToCliente(r) {
+  return {
+    id: r.id,
+    name: r.nome,
+    address: r.endereco || '',
+    contact: r.contato || '',
+    branding: {
+      logoData: r.logo_data || null,
+      coverColor: r.cover_color || null,
+      coverImageData: r.cover_image_data || null,
+      bgColor: r.bg_color || null,
+    },
+    user: null,
+  };
+}
+
+function clienteToRow(c) {
+  return {
+    id: c.id,
+    nome: c.name,
+    endereco: c.address || null,
+    contato: c.contact || null,
+    logo_data: c.branding?.logoData || null,
+    cover_color: c.branding?.coverColor || null,
+    cover_image_data: c.branding?.coverImageData || null,
+    bg_color: c.branding?.bgColor || null,
+  };
+}
+
+export async function listClientes() {
+  const { data, error } = await supabase
+    .from('clientes').select('*').order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(rowToCliente);
+}
+
+export async function upsertCliente(client) {
+  const { data, error } = await supabase
+    .from('clientes').upsert(clienteToRow(client)).select().single();
+  if (error) throw error;
+  return rowToCliente(data);
+}
+
+export async function deleteCliente(id) {
+  const { error } = await supabase.from('clientes').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export const DEVICE_TYPE_LABELS = {
   fumaca: 'Detector de fumaça',
   calor: 'Detector de calor',
