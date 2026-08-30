@@ -282,7 +282,7 @@ export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId,
   return atendimentosGerados;
 }
 
-export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento }) {
+export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento, dataRegistro }) {
   const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId });
   const hoje = new Date().toISOString().slice(0, 10);
   const { data, error } = await supabase.from('atendimentos').insert({
@@ -291,6 +291,7 @@ export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteA
     falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null, falha_categoria: falhaCategoria || null,
     tecnico: tecnico || null, descritivo: descritivo || null, origem_inspecao_id: origemInspecaoId || null,
     fotos: fotos || [], data_agendamento: dataAgendamento || null,
+    ...(dataRegistro ? { data_registro: dataRegistro } : {}),
   }).select().single();
   if (error) throw error;
 
@@ -304,6 +305,27 @@ export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteA
 
   await addItemToVisita(rvtId, { atendimentoId: data.id });
   return data;
+}
+
+/** Converte um item de visita "Outro → Manutenção de item não cadastrado" numa Corretiva
+    de verdade contra um alvo (dispositivo / Bateria de Painel / Fonte Auxiliar), SEM criar
+    um novo item de visita — religa o mesmo rvt_itens ao atendimento novo e limpa os campos
+    "outro". A data do atendimento fica a da visita (dataRegistro). */
+export async function converterOutroParaAtendimento({ rvtItemId, dataRegistro, alvo, clienteId, falha, falhaCategoria, status, descritivo, fotos, tecnico }) {
+  const at = await createAtendimento({
+    dispositivoId: alvo.kind === 'dispositivo' ? alvo.id : null,
+    bateriaPainelId: alvo.kind === 'bateria_painel' ? alvo.id : null,
+    fonteAuxiliarId: alvo.kind === 'fonte_auxiliar' ? alvo.id : null,
+    clienteId, falha: falha || null, falhaCategoria: falhaCategoria || null,
+    status: status || 'aguardando', descritivo: descritivo || null, fotos: fotos || [],
+    tecnico: tecnico || null, dataRegistro,
+  });
+  const { error } = await supabase.from('rvt_itens').update({
+    atendimento_id: at.id,
+    outro_descricao: null, outro_atividade: null, outro_atividade_dados: null, outro_fotos: [],
+  }).eq('id', rvtItemId);
+  if (error) throw error;
+  return at;
 }
 
 /** cliente_id p/ atendimentos/inspecoes: usa o passado; senão deriva do alvo (dispositivo/bateria/fonte). */

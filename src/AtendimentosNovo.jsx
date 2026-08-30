@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, createDiagnosticoOutro, listVisitas, deleteVisita,
-  updateAtendimento, updateInspecao, updateOutroItem,
+  updateAtendimento, updateInspecao, updateOutroItem, converterOutroParaAtendimento,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
@@ -1107,9 +1107,43 @@ function VisitaPrintView({ visitas, client, onBack }) {
   );
 }
 
+/** Bloco "Converter para manutenção de equipamento" — só aparece em item
+    "Outro → Manutenção de item não cadastrado". Cria uma corretiva real contra o
+    equipamento escolhido (dispositivo / Bateria de Painel / Fonte Auxiliar), com a
+    data da visita, e some com o item "Outro". */
+function ConverterParaManutencao({ editForm, dados, onConvert, deviceOptions, saving }) {
+  const [alvo, setAlvo] = useState('');
+  const [falha, setFalha] = useState(dados.nomeItem || editForm.descricao || '');
+  const [categoria, setCategoria] = useState('');
+  const bloqueado = saving || !alvo || !categoria;
+  return (
+    <div style={{ marginTop: 10, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+      <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>Converter para manutenção de equipamento</p>
+      <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        Vira uma corretiva vinculada a um equipamento (dispositivo, Bateria de Painel ou Fonte Auxiliar), mantendo a data da visita. O item “Outro” deixa de existir.
+      </p>
+      <DeviceSingleSelect options={deviceOptions} selectedId={alvo} setSelectedId={setAlvo} />
+      <Field label="Falha">
+        <input style={inputStyle} value={falha} onChange={(e) => setFalha(e.target.value)} placeholder="Ex.: Substituição das baterias" />
+      </Field>
+      <Field label="Categoria da falha">
+        <select style={inputStyle} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+          <option value="">Selecione a categoria...</option>
+          {Object.entries(CATEGORIAS_FALHA).map(([k, r]) => <option key={k} value={k}>{r}</option>)}
+        </select>
+      </Field>
+      <button type="button" disabled={bloqueado}
+        onClick={() => onConvert({ alvoOptionId: alvo, falha, falhaCategoria: categoria, status: dados.status })}
+        style={{ ...btnStyle, opacity: bloqueado ? 0.6 : 1, marginTop: 4 }}>
+        {saving ? 'Convertendo...' : 'Converter'}
+      </button>
+    </div>
+  );
+}
+
 /** Formulário inline de edição de 1 item de visita — o tipo de campos muda conforme
     o tipo do item (atendimento / inspeção / outro). */
-function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, saving }) {
+function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, deviceOptions, saving }) {
   if (!editForm) return null;
   if (editForm.kind === 'outro') {
     const dados = editForm.atividadeDados || {};
@@ -1155,6 +1189,9 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
               </Field>
             )}
           </div>
+        )}
+        {editForm.atividade === 'manutencao_nao_cadastrada' && onConvert && (
+          <ConverterParaManutencao editForm={editForm} dados={dados} onConvert={onConvert} deviceOptions={deviceOptions} saving={saving} />
         )}
         <Field label={editForm.atividade === 'seguranca_trabalho' ? 'Detalhes' : 'Descrição'}>
           <textarea style={{ ...inputStyle, minHeight: 60 }} value={editForm.descricao} onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })} />
@@ -1250,7 +1287,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
     a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
     grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
     agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit, reportMode = false }) {
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, onConvertOutro, deviceOptions, savingEdit, reportMode = false }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
@@ -1282,7 +1319,7 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
           )}
         </div>
         {editingItemId === it.id && (
-          <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} deviceOptions={deviceOptions} saving={savingEdit} />
+          <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} onConvert={onConvertOutro} deviceOptions={deviceOptions} saving={savingEdit} />
         )}
       </div>
     );
@@ -1848,7 +1885,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (!raw) return;
     if (raw.outro_descricao || raw.outro_atividade) {
       setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao || '', fotos: raw.outro_fotos || [],
-        atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {} });
+        atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {},
+        visitaData: v.data_visita, visitaTecnico: v.tecnico || '' });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
       setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
@@ -1904,6 +1942,36 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     } catch (err) {
       console.error(err);
       setMsg('Erro ao salvar edição.');
+    } finally {
+      setSavingEditItem(false);
+    }
+  }
+
+  /** Converte o item "Outro → Manutenção de item não cadastrado" em edição numa Corretiva
+      real contra o alvo escolhido (dispositivo / Bateria de Painel / Fonte Auxiliar). */
+  async function converterItemOutro({ alvoOptionId, falha, falhaCategoria, status }) {
+    if (!editForm || editForm.kind !== 'outro') return;
+    if (!alvoOptionId) { setMsg('Escolha o equipamento (dispositivo, bateria ou fonte).'); return; }
+    if (!falhaCategoria) { setMsg('Escolha a categoria da falha.'); return; }
+    setSavingEditItem(true);
+    try {
+      const dados = editForm.atividadeDados || {};
+      await converterOutroParaAtendimento({
+        rvtItemId: editForm.rvtItemId, dataRegistro: editForm.visitaData,
+        alvo: decodeAlvo(alvoOptionId), clienteId: clientId,
+        falha: (falha || dados.nomeItem || editForm.descricao || '').trim(),
+        falhaCategoria,
+        status: status || dados.status || 'aguardando',
+        descritivo: editForm.descricao || '', fotos: editForm.fotos || [],
+        tecnico: editForm.visitaTecnico || '',
+      });
+      cancelEditItem();
+      refreshVisitas();
+      if (onRefresh) onRefresh();
+      setMsg('Item convertido em manutenção do equipamento.');
+    } catch (err) {
+      console.error(err);
+      setMsg('Erro ao converter o item.');
     } finally {
       setSavingEditItem(false);
     }
@@ -2282,7 +2350,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
                     onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])} onReopen={reabrirVisita}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
-                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} savingEdit={savingEditItem} />
+                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} onConvertOutro={converterItemOutro} savingEdit={savingEditItem} />
                 ))}
               </div>
             </div>
