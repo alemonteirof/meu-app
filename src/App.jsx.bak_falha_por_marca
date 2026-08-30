@@ -4,12 +4,8 @@ import {
   FUNCTIONAL_CATEGORIES, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
   COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
-  REDE_TIPOS,
   listCombateHistorico,
-  listClientes, upsertCliente, deleteCliente,
 } from './supabaseAdapter';
-import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
-import { logSecurityEvent } from './lib/securityLog';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -121,7 +117,6 @@ function LoginScreen() {
         setInfo('Conta criada! Um administrador precisa liberar seu nível de acesso antes que você possa usar o sistema plenamente.');
       }
     } catch (err) {
-      if (mode === 'login') logSecurityEvent('login_falhou', { email, detail: { msg: err.message } });
       setError(err.message || 'Não foi possível entrar.');
     } finally {
       setLoading(false);
@@ -690,7 +685,6 @@ function buildImportEntities(rows, typeMap, brand, opts) {
         key: r.node,
         name: cleanTitle || `Painel ${r.node}`,
         model: panelModel || '',
-        marca: brand === 'notifier' ? 'notifier' : 'hochiki',
         existingId: existingPanel ? existingPanel.id : null,
       });
     }
@@ -829,7 +823,6 @@ const NAV_ITEMS = [
   { key: 'sdai', label: 'Sistemas de Detecção e Alarme', icon: Cpu },
   { key: 'combate', label: 'Sistemas de Combate', icon: Flame },
   { key: 'report', label: 'Inspeções', icon: ClipboardList },
-  { key: 'relatorios', label: 'Relatórios', icon: FileText },
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'settings', label: 'Configurações', icon: Settings },
 ];
@@ -839,8 +832,7 @@ const NAV_ITEMS = [
 const NAV_KEYS_BY_ROLE = {
   admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'settings'],
   operador: ['dashboard', 'atendimentos', 'sdai', 'combate', 'report', 'indicador'],
-  // "relatorios" só pro visualizador: Admin/Operador acessam o mesmo RVT por dentro de Atendimentos.
-  visualizador: ['dashboard', 'relatorios', 'sdai', 'combate', 'report', 'indicador'],
+  visualizador: ['dashboard', 'sdai', 'combate', 'report', 'indicador'],
 };
 function navItemsForRole(role) {
   const keys = NAV_KEYS_BY_ROLE[role] || NAV_KEYS_BY_ROLE.visualizador;
@@ -849,9 +841,7 @@ function navItemsForRole(role) {
 // Os 4 destinos mais usados ficam fixos na barra inferior do mobile (padrão "app", tipo CifraClub);
 // o resto (dentro do que o role pode ver) fica na aba "Mais".
 function mobilePrimaryKeysForRole(role) {
-  // Cliente (visualizador): "Relatórios" (RVT) é o destino principal — entra fixo na barra;
-  // Indicador desce pra aba "Mais". Admin/Operador nem enxergam "Relatórios" (usam Atendimentos).
-  if (role === 'visualizador') return ['dashboard', 'relatorios', 'sdai', 'report'];
+  if (role === 'visualizador') return ['dashboard', 'indicador', 'sdai', 'report'];
   return ['atendimentos', 'dashboard', 'sdai', 'indicador'];
 }
 // Views internas que pertencem ao item de menu "Sistemas de Detecção e Alarme"
@@ -860,7 +850,7 @@ function mobilePrimaryKeysForRole(role) {
 const SDAI_VIEWS = ['panels', 'panelDetail', 'complementares'];
 
 const emptyData = () => ({
-  panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [], redeDispositivos: [],
+  panels: [], loops: [], nacs: [], devices: [], pumpDevices: [], gasDetectors: [],
   bateriasPainel: [], fontesAuxiliares: [], combateConjuntos: [], combateSubitens: [], combateComponentes: [],
   combateBaterias: [], combateCilindros: [],
   maintenanceLog: [], inspectionLog: [], modelPhotos: {}, indicador: [], rvt: [],
@@ -956,8 +946,6 @@ function photoForModelo(data, modelo) {
 /* Resize + compress an uploaded image file into a small base64 JPEG */
 function compressImageFile(file, maxDim = 480, quality = 0.75) {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) { reject(new Error(`"${file.name}" não é uma imagem.`)); return; }
-    if (file.size > 25 * 1024 * 1024) { reject(new Error(`"${file.name}" é muito grande (limite 25 MB).`)); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new window.Image();
@@ -984,15 +972,14 @@ function compressImageFile(file, maxDim = 480, quality = 0.75) {
 /* Upload de múltiplas fotos (com atalho de câmera no celular), comprimindo cada uma. */
 function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
   const [busy, setBusy] = useState(false);
-  const [erro, setErro] = useState('');
   async function handleChange(e) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    setBusy(true); setErro('');
+    setBusy(true);
     try {
       const compressed = await Promise.all(files.map((f) => compressImageFile(f, 900, 0.7)));
       onChange([...(photos || []), ...compressed]);
-    } catch (err) { console.error(err); setErro(err.message || 'Não foi possível anexar a(s) foto(s).'); }
+    } catch (err) { console.error(err); }
     finally { setBusy(false); e.target.value = ''; }
   }
   function removeAt(idx) {
@@ -1019,7 +1006,6 @@ function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
           <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handleChange} disabled={busy} />
         </label>
       </div>
-      {erro && <p className="text-xs mt-1" style={{ color: 'var(--status-danger)' }}>{erro}</p>}
     </div>
   );
 }
@@ -1027,13 +1013,6 @@ function MultiPhotoUpload({ photos, onChange, label = 'Fotos' }) {
 /* ---- Multi-tenant helpers (clients list + legacy single-tenant migration) ---- */
 
 async function loadAndMigrateClients() {
-  // Com Supabase, a lista de clientes vem da tabela 'clientes' (RLS por linha).
-  if (supabase) {
-    try { return await listClientes(); }
-    catch (e) { console.error(e); return []; }
-  }
-
-  // Modo local legado (sem Supabase): lista vinha do window.storage
   let list = [];
   try {
     const res = await window.storage.get(CLIENTS_KEY, false);
@@ -1139,18 +1118,6 @@ function complementaresTrackableItems(data) {
       meta: 'Dispositivos Complementares',
       nextMaintenance: f.proximaInspecao, lastMaintenance: f.dataInspecao,
       nextInspection: f.proximaInspecao, lastInspection: f.dataInspecao,
-      icon: Zap, photo: null,
-    });
-  });
-  (data.redeDispositivos || []).forEach((r) => {
-    const panel = data.panels.find((p) => p.id === r.panelId);
-    items.push({
-      id: r.id, category: 'redeDispositivos', panelId: r.panelId || null,
-      title: `${r.tipoLabel || 'Rede'}${r.etiqueta ? ` — ${r.etiqueta}` : ''}${panel ? ` (${panel.name})` : ''}`,
-      address: null, modelo: r.modelo || '',
-      meta: 'Dispositivos Complementares',
-      nextMaintenance: r.nextMaintenance, lastMaintenance: r.lastMaintenance,
-      nextInspection: r.nextInspection, lastInspection: r.lastInspection,
       icon: Zap, photo: null,
     });
   });
@@ -1445,22 +1412,15 @@ function MaintenanceScheduleFields({ values, setValues }) {
 }
 
 function PanelForm({ initial, onSubmit, onCancel }) {
-  const [v, setV] = useState({ name: '', location: '', model: '', marca: '', installDate: '', notes: '', ...(initial || {}) });
+  const [v, setV] = useState(initial || { name: '', location: '', model: '', installDate: '', notes: '' });
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
       <Field label="Identificação do painel *"><input autoFocus className={inputCls} value={v.name}
         onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Painel Central — Térreo" required /></Field>
       <Field label="Localização"><input className={inputCls} value={v.location}
         onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="Ex.: Sala de segurança, Bloco A" /></Field>
-      <Field label="Marca (trava a lista de falhas nas visitas)">
-        <select className={inputCls} value={v.marca} onChange={(e) => setV({ ...v, marca: e.target.value })}>
-          <option value="">Outro / não sei</option>
-          <option value="hochiki">Hochiki / VES</option>
-          <option value="notifier">Notifier (Honeywell)</option>
-        </select>
-      </Field>
-      <Field label="Modelo"><input className={inputCls} value={v.model}
-        onChange={(e) => setV({ ...v, model: e.target.value })} placeholder="Ex.: FireNET L@titude, NFS2-640..." /></Field>
+      <Field label="Marca / Modelo"><input className={inputCls} value={v.model}
+        onChange={(e) => setV({ ...v, model: e.target.value })} placeholder="Ex.: Intelbras / Notifier..." /></Field>
       <Field label="Data de instalação"><input type="date" className={inputCls} value={v.installDate}
         onChange={(e) => setV({ ...v, installDate: e.target.value })} /></Field>
       <Field label="Observações"><textarea rows={3} className={inputCls} value={v.notes}
@@ -2411,9 +2371,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       const loaded = await loadClientData(client.id);
       setData(loaded);
       } catch (e) {
-        if (String(e?.code) === '42501' || /policy|permission|denied/i.test(e?.message || '')) {
-          logSecurityEvent('acesso_negado', { detail: { onde: 'loadClientData', msg: e?.message } });
-        }
         setData(emptyData());
       } finally {
         setLoaded(true);
@@ -2465,7 +2422,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         } else {
           const id = uid();
           panelIdByKey[p.key] = id;
-          newPanels.push({ id, name: p.name, location: '', model: p.model || '', marca: p.marca || '', installDate: '', notes: '' });
+          newPanels.push({ id, name: p.name, location: '', model: p.model || '', installDate: '', notes: '' });
         }
       });
       const loopIdByKey = {};
@@ -2564,28 +2521,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
   function deleteFonteAuxiliar(id) {
     updateData((prev) => ({ ...prev, fontesAuxiliares: (prev.fontesAuxiliares || []).filter((f) => f.id !== id) }));
-    setConfirmState(null);
-  }
-
-  function submitRedeDispositivo(mode, initial, values) {
-    updateData((prev) => {
-      const row = {
-        panelId: values.painelId, tipo: values.tipo,
-        etiqueta: (values.etiqueta || '').trim(), modelo: (values.modelo || '').trim(),
-        nextMaintenance: values.nextMaintenance || '',
-      };
-      if (mode === 'create') {
-        return { ...prev, redeDispositivos: [...(prev.redeDispositivos || []), { id: uid(), ...row }] };
-      }
-      return {
-        ...prev,
-        redeDispositivos: (prev.redeDispositivos || []).map((r) => (r.id === initial.id ? { ...r, ...row } : r)),
-      };
-    });
-  }
-
-  function deleteRedeDispositivo(id) {
-    updateData((prev) => ({ ...prev, redeDispositivos: (prev.redeDispositivos || []).filter((r) => r.id !== id) }));
     setConfirmState(null);
   }
 
@@ -2804,7 +2739,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         try {
           const visitaNova = await createVisita({ clienteId: client.id, dataVisita: values.dataDiagnostico || undefined });
           await createAtendimento({
-            dispositivoId: values.deviceId, clienteId: client.id, falha: values.falha, status: (values.status || 'Aguardando').toLowerCase(),
+            dispositivoId: values.deviceId, falha: values.falha, status: (values.status || 'Aguardando').toLowerCase(),
             descritivo: values.descritivo || '', fotos: values.fotos || [], rvtId: visitaNova.id,
           });
           const reloaded = await loadClientData(client.id);
@@ -2905,7 +2840,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         try {
           const visitaNova = await createVisita({ clienteId: client.id, dataVisita: values.date });
           await createAtendimento({
-            dispositivoId: id, clienteId: client.id, falha: values.falha, status: (values.status || 'Resolvido').toLowerCase(),
+            dispositivoId: id, falha: values.falha, status: (values.status || 'Resolvido').toLowerCase(),
             descritivo: values.description || '', tecnico: values.technician || '', fotos: [], rvtId: visitaNova.id,
           });
           const reloaded = await loadClientData(client.id);
@@ -3000,7 +2935,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           const dataInspecaoNova = values.lastInspection || todayISO();
           const visitaNova = await createVisita({ clienteId: client.id, dataVisita: dataInspecaoNova, tecnico: values.technician || '' });
           await createInspecao({
-            dispositivoId: id, clienteId: client.id, tecnico: values.technician || '',
+            dispositivoId: id, tecnico: values.technician || '',
             resultadoTeste: values.operationalStatus || '', aparencia: values.appearance || '',
             comunicacaoLocal: values.localComm || '', comunicacaoRede: values.networkComm || '',
             observacoes: values.observacoes || '', falha: values.falha || '', metodo: getMetodoTeste(modal.item), dataInspecao: dataInspecaoNova,
@@ -3214,10 +3149,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit}
             onRefresh={async () => setData(await loadClientData(client.id))} />
         )}
-        {view === 'relatorios' && (
-          <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit} reportMode
-            onRefresh={async () => setData(await loadClientData(client.id))} />
-        )}
 
         {SDAI_VIEWS.includes(view) && (
           <div className="flex flex-col gap-4">
@@ -3279,8 +3210,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                 onSubmitBateriaPainel={submitBateriaPainel}
                 onSubmitFonteAuxiliar={submitFonteAuxiliar}
                 onDeleteFonteAuxiliar={(id) => setConfirmState({ title: 'Excluir fonte auxiliar', message: 'Excluir esta fonte auxiliar? Essa ação não pode ser desfeita.', onConfirm: () => deleteFonteAuxiliar(id) })}
-                onSubmitRede={submitRedeDispositivo}
-                onDeleteRede={(id) => setConfirmState({ title: 'Excluir dispositivo de rede', message: 'Excluir este dispositivo de rede? Essa ação não pode ser desfeita.', onConfirm: () => deleteRedeDispositivo(id) })}
                 onSubmitCalibracao={submitCalibracaoDevice}
                 onSubmitEtiqueta={submitEtiquetaComplementar}
                 onInspectDevice={openInspectModal} />
@@ -3642,19 +3571,11 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
     { label: 'Resolvido', value: corretivaCounts.Resolvido, color: 'var(--status-ok)' },
   ].filter((d) => d.value > 0);
 
-  // Gráfico "Falhas mais comuns" agrupa pela categoria unificada (falha_categoria),
-  // não pelo texto livre. Corretivas antigas/sem categoria caem em "Não classificado"
-  // (o script backfill_falha_categoria.sql drena esse balde). As corretivas de item
-  // não cadastrado não têm dispositivo/categoria por natureza — vão pra um rótulo
-  // próprio, "Item não cadastrado", pra não inflar o "Não classificado".
-  // Categoria "diagnostico" (desabilitação/teste — não é defeito) fica fora.
-  const rotuloDiagnostico = rotuloCategoria(CATEGORIA_DIAGNOSTICO);
-  const ROTULO_ITEM_NAO_CADASTRADO = 'Item não cadastrado';
-  const falhaCategoriaLinhas = [
-    ...corretivas.map((r) => ({ cat: rotuloCategoria(r.falhaCategoria) })),
-    ...semCadastroCorretivaItems.map(() => ({ cat: ROTULO_ITEM_NAO_CADASTRADO })),
-  ].filter((r) => r.cat !== rotuloDiagnostico);
-  const falhaData = sortDesc(countBy(falhaCategoriaLinhas, (r) => r.cat, 'Não classificado')).slice(0, 10);
+  const falhaComSemCadastro = [
+    ...corretivas,
+    ...semCadastroCorretivaItems.map((it) => ({ falha: it.descricao || (it.atividadeDados || {}).nomeItem || 'Sem falha' })),
+  ];
+  const falhaData = sortDesc(countBy(falhaComSemCadastro, (r) => r.falha, 'Sem falha')).slice(0, 10);
 
   // ---- Resumo de Visitas: o que mais é feito nas visitas (Manutenção/Inspeção/Atividades) ----
   let resumoPreventivaCadastrada = 0, resumoPreventivaSemCadastro = 0;
@@ -3772,7 +3693,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
                     <SimplePieChart data={corretivaStatusData} size={196} />
                   </div>
                 </ChartCard>
-                <ChartCard title="Falhas mais comuns" subtitle="Top 10 por categoria"><SimpleBarChart data={falhaData} /></ChartCard>
+                <ChartCard title="Falhas mais comuns" subtitle="Top 10 tipos de falha"><SimpleBarChart data={falhaData} /></ChartCard>
               </div>
             )}
           </div>
@@ -3985,7 +3906,6 @@ const COMPLEMENTAR_TABS = [
   { key: 'chama', label: 'Detector de Chama' },
   { key: 'gas', label: 'Detector de Gás' },
   { key: 'termo', label: 'Termovelocimétrico' },
-  { key: 'rede', label: 'Rede' },
   { key: 'baterias_painel', label: 'Baterias de Painel' },
   { key: 'fontes_auxiliares', label: 'Fontes Auxiliares' },
 ];
@@ -4025,7 +3945,7 @@ function papelSinalLabel(papel) {
 
 function ComplementaresView({
   data, canEdit, onSubmitBateriaPainel, onSubmitFonteAuxiliar, onDeleteFonteAuxiliar,
-  onSubmitRede, onDeleteRede, onSubmitCalibracao, onSubmitEtiqueta, onInspectDevice,
+  onSubmitCalibracao, onSubmitEtiqueta, onInspectDevice,
 }) {
   const [tab, setTab] = useState('beam');
   const grupo1Devices = (data.devices || []).filter((d) => complementarGroupFor(d.categoriaFuncional) === tab);
@@ -4048,11 +3968,6 @@ function ComplementaresView({
         <div key={tab} className="fade-in-up">
           <ComplementarGrupo1List data={data} devices={grupo1Devices} canEdit={canEdit} showCalibracao={tab === 'gas'}
             onInspectDevice={onInspectDevice} onSubmitCalibracao={onSubmitCalibracao} onSubmitEtiqueta={onSubmitEtiqueta} />
-        </div>
-      )}
-      {tab === 'rede' && (
-        <div key="rede" className="fade-in-up">
-          <RedeList data={data} canEdit={canEdit} onSubmit={onSubmitRede} onDelete={onDeleteRede} />
         </div>
       )}
       {tab === 'baterias_painel' && (
@@ -4309,94 +4224,6 @@ function FontesAuxiliaresList({ data, canEdit, onSubmit, onDelete }) {
       {modalState && (
         <Modal title={modalState.mode === 'create' ? 'Nova fonte auxiliar' : 'Editar fonte auxiliar'} onClose={() => setModalState(null)}>
           <FonteAuxiliarForm initial={modalState.initial}
-            onSubmit={(values) => { onSubmit(modalState.mode, modalState.initial, values); setModalState(null); }}
-            onCancel={() => setModalState(null)} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function RedeForm({ initial, panels, onSubmit, onCancel }) {
-  const [v, setV] = useState({
-    painelId: initial?.panelId || (panels[0]?.id || ''),
-    tipo: initial?.tipo || 'rede_conversor',
-    etiqueta: initial?.etiqueta || '',
-    modelo: initial?.modelo || '',
-    nextMaintenance: initial?.nextMaintenance || '',
-  });
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); if (v.painelId) onSubmit(v); }}>
-      <Field label="Painel *">
-        <select className={inputCls} value={v.painelId} onChange={(e) => setV({ ...v, painelId: e.target.value })} required>
-          <option value="">Selecione...</option>
-          {panels.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Tipo *">
-        <select className={inputCls} value={v.tipo} onChange={(e) => setV({ ...v, tipo: e.target.value })}>
-          {Object.entries(REDE_TIPOS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-        </select>
-      </Field>
-      <Field label="Etiqueta / identificação"><input className={inputCls} value={v.etiqueta}
-        onChange={(e) => setV({ ...v, etiqueta: e.target.value })} placeholder="Ex.: Conversor rack CPD" /></Field>
-      <Field label="Modelo"><input className={inputCls} value={v.modelo} onChange={(e) => setV({ ...v, modelo: e.target.value })} /></Field>
-      <Field label="Próxima inspeção"><input type="date" className={inputCls} value={v.nextMaintenance}
-        onChange={(e) => setV({ ...v, nextMaintenance: e.target.value })} /></Field>
-      <FormActions>
-        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button variant="primary" type="submit">Salvar</Button>
-      </FormActions>
-    </form>
-  );
-}
-
-function RedeList({ data, canEdit, onSubmit, onDelete }) {
-  const [modalState, setModalState] = useState(null);
-  const list = data.redeDispositivos || [];
-  const panelName = (id) => (data.panels || []).find((p) => p.id === id)?.name || '—';
-
-  if ((data.panels || []).length === 0) {
-    return <EmptyState icon={Zap} title="Nenhum painel cadastrado" description="Cadastre um painel na aba Painéis pra vincular um dispositivo de rede." />;
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {canEdit && (
-        <div>
-          <Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Novo dispositivo de rede</Button>
-        </div>
-      )}
-      {list.length === 0 ? (
-        <EmptyState icon={Zap} title="Nenhum dispositivo de rede cadastrado" description="Conversores de mídia e placas de rede vinculados a um painel."
-          actionLabel={canEdit ? 'Novo dispositivo de rede' : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
-      ) : (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {list.map((r) => (
-            <div key={r.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>
-                  {REDE_TIPOS[r.tipo] || 'Rede'}{r.etiqueta ? ` — ${r.etiqueta}` : ''}
-                </span>
-                {canEdit && (
-                  <div className="flex gap-1 flex-shrink-0">
-                    <IconButton title="Editar" onClick={() => setModalState({ mode: 'edit', initial: r })}><Pencil size={14} /></IconButton>
-                    <IconButton title="Excluir" danger onClick={() => onDelete(r.id)}><Trash2 size={14} /></IconButton>
-                  </div>
-                )}
-              </div>
-              <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Painel: {panelName(r.panelId)}{r.modelo ? ` · ${r.modelo}` : ''}<br />
-                {r.lastInspection ? `Última inspeção: ${formatDateBR(r.lastInspection)}` : 'Sem inspeção registrada'}
-                {r.nextInspection ? ` · Próxima: ${formatDateBR(r.nextInspection)}` : ''}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {modalState && (
-        <Modal title={modalState.mode === 'create' ? 'Novo dispositivo de rede' : 'Editar dispositivo de rede'} onClose={() => setModalState(null)}>
-          <RedeForm initial={modalState.initial} panels={data.panels || []}
             onSubmit={(values) => { onSubmit(modalState.mode, modalState.initial, values); setModalState(null); }}
             onCancel={() => setModalState(null)} />
         </Modal>
@@ -5799,13 +5626,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       },
     });
 
-    const rotuloDiagnostico = rotuloCategoria(CATEGORIA_DIAGNOSTICO);
-    const falhaData = sortDesc(countBy(
-      manutencoes
-        .map((r) => ({ cat: rotuloCategoria(r.falhaCategoria) }))
-        .filter((r) => r.cat !== rotuloDiagnostico),
-      (r) => r.cat, 'Não classificado',
-    )).slice(0, 10);
+    const falhaData = sortDesc(countBy(manutencoes, (r) => r.falha, 'Sem motivo')).slice(0, 10);
     const motivoBarImg = falhaData.length ? await renderChartImage({
       type: 'bar',
       data: {
@@ -5816,7 +5637,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
         responsive: false,
         indexAxis: 'y',
         plugins: {
-          title: { display: true, text: 'Falhas por categoria', font: { size: 20, weight: 'bold' } },
+          title: { display: true, text: 'Motivos de falha mais comuns', font: { size: 20, weight: 'bold' } },
           legend: { display: false },
         },
         scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
@@ -7398,25 +7219,10 @@ function PageStyles() {
       @keyframes modal-panel-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
       .modal-backdrop-in { animation: modal-backdrop-in .15s ease-out; }
       .modal-panel-in { animation: modal-panel-in .18s cubic-bezier(0.16, 1, 0.3, 1); }
-
-      /* ---- Lista "Relatórios" (visão do cliente): entrada em stagger + hover/press sutil ---- */
-      /* Frequência: baixa (cliente consulta de vez em quando) -> movimento discreto é ok.        */
-      /* Só transform/opacity animados; durações alinhadas ao resto do app (<=280ms, mesma curva).*/
-      .rvt-report-group { animation: fade-in-up .26s ease-out backwards; animation-delay: calc(var(--i, 0) * 45ms); }
-      .rvt-report-card { transition: transform .16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .16s ease; }
-      .rvt-report-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -12px rgba(0,0,0,0.45); }
-      .rvt-report-chevron { transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1); }
-      .rvt-report-card[data-open="true"] .rvt-report-chevron { transform: rotate(90deg); }
-      .rvt-report-cta { transition: transform .12s ease; }
-      .rvt-report-cta:active { transform: scale(0.97); }
-
       @media (prefers-reduced-motion: reduce) {
         .skeleton { animation: none; opacity: 0.7; }
         .fade-in-up { animation: none; }
         .modal-backdrop-in, .modal-panel-in { animation: none; }
-        .rvt-report-group { animation: none; }
-        .rvt-report-card, .rvt-report-chevron, .rvt-report-cta { transition: none; }
-        .rvt-report-card:hover { transform: none; }
       }
       .status-pill {
         font-size: 11px; font-family: 'IBM Plex Mono', monospace; padding: 3px 8px;
@@ -7573,7 +7379,6 @@ function Root() {
   }
 
   function persistClients(next) {
-    if (supabase) return; // cada cliente é gravado individualmente na tabela
     (async () => { try { await window.storage.set(CLIENTS_KEY, JSON.stringify(next), false); } catch (e) { console.error(e); } })();
   }
   function updateClients(mutator) {
@@ -7583,26 +7388,15 @@ function Root() {
   async function createClient(values) {
     const id = uid();
     const newClient = { id, name: values.name, address: values.address || '', contact: values.contact || '', branding: {}, user: null };
-    if (supabase) {
-      try { await upsertCliente(newClient); }
-      catch (e) { console.error(e); return; }
-    }
     updateClients((prev) => [...prev, newClient]);
     try { await window.storage.set(clientDataKey(id), JSON.stringify(emptyData()), false); } catch (e) { console.error(e); }
   }
   function updateClient(id, patch) {
     updateClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-    if (supabase) {
-      const cur = (clients || []).find((c) => c.id === id);
-      if (cur) upsertCliente({ ...cur, ...patch }).catch((e) => console.error(e));
-    }
   }
   function deleteClient(id) {
     updateClients((prev) => prev.filter((c) => c.id !== id));
-    (async () => {
-      try { if (supabase) await deleteCliente(id); } catch (e) { console.error(e); }
-      try { await window.storage.delete(clientDataKey(id), false); } catch (e) { /* ignore */ }
-    })();
+    (async () => { try { await window.storage.delete(clientDataKey(id), false); } catch (e) { /* ignore */ } })();
     if (activeClientId === id) { setActiveClientId(null); setAuthedClientId(null); clearLastClientId(); }
   }
 

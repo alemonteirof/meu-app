@@ -4,56 +4,6 @@ function legacyKey(clienteId) {
   return `pci-dados-cliente-${clienteId}`;
 }
 
-// ---- Clientes (lista multi-tenant) — fonte de verdade migrada do kv_store 'pci-clientes-v1' ----
-
-function rowToCliente(r) {
-  return {
-    id: r.id,
-    name: r.nome,
-    address: r.endereco || '',
-    contact: r.contato || '',
-    branding: {
-      logoData: r.logo_data || null,
-      coverColor: r.cover_color || null,
-      coverImageData: r.cover_image_data || null,
-      bgColor: r.bg_color || null,
-    },
-    user: null,
-  };
-}
-
-function clienteToRow(c) {
-  return {
-    id: c.id,
-    nome: c.name,
-    endereco: c.address || null,
-    contato: c.contact || null,
-    logo_data: c.branding?.logoData || null,
-    cover_color: c.branding?.coverColor || null,
-    cover_image_data: c.branding?.coverImageData || null,
-    bg_color: c.branding?.bgColor || null,
-  };
-}
-
-export async function listClientes() {
-  const { data, error } = await supabase
-    .from('clientes').select('*').order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data || []).map(rowToCliente);
-}
-
-export async function upsertCliente(client) {
-  const { data, error } = await supabase
-    .from('clientes').upsert(clienteToRow(client)).select().single();
-  if (error) throw error;
-  return rowToCliente(data);
-}
-
-export async function deleteCliente(id) {
-  const { error } = await supabase.from('clientes').delete().eq('id', id);
-  if (error) throw error;
-}
-
 export const DEVICE_TYPE_LABELS = {
   fumaca: 'Detector de fumaça',
   calor: 'Detector de calor',
@@ -78,15 +28,6 @@ export const FUNCTIONAL_CATEGORIES = [
 ];
 export const FUNCTIONAL_CATEGORY_MAP = Object.fromEntries(FUNCTIONAL_CATEGORIES.map((c) => [c.value, c.label]));
 
-// ---- Dispositivos de Rede (Conversor / Placa) — complementares vinculados a um painel,
-// sem laço. Gravados na própria tabela `dispositivos` (painel_id setado, laco_id nulo),
-// mesmo shape de NAC — então já entram no pipeline normal de Atendimentos/Inspeções. ----
-export const REDE_TIPOS = {
-  rede_conversor: 'Conversor de Mídia',
-  rede_placa: 'Placa de Rede',
-};
-export const REDE_TIPO_MAP = REDE_TIPOS;
-
 export const PAPEL_SINAL_OPTIONS = [
   { value: 'falha', label: 'Falha' },
   { value: 'alarme', label: 'Alarme' },
@@ -102,8 +43,6 @@ const METODO_POR_TIPO = {
   acionador: 'Acionamento 5x seguidas (teste de esforço)',
   saida: 'Comando pela central',
   rele: 'Multímetro + "jump" nos comandos',
-  rede_conversor: 'Verificação de comunicação (LEDs de status) e reaperto dos conectores',
-  rede_placa: 'Verificação de comunicação (LEDs de status) e reaperto dos conectores',
 };
 
 const METODO_POR_CATEGORIA_FUNCIONAL = {
@@ -262,15 +201,11 @@ export async function addOutroToVisita(rvtId, descricao, fotos, atividade, ativi
 // Categoria "Diagnóstico" dentro do Outro: cria 1 Corretiva (Aguardando) por dispositivo
 // selecionado + registra 1 item "Outro" (atividade=diagnostico) na visita, pro Dashboard
 // contar como atividade da visita além de contar como Corretiva normal.
-export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, dataAgendamento, dispositivoLabels, fotos }) {
+export async function createDiagnosticoOutro({ rvtId, tecnico, dispositivoIds, falha, dataAgendamento, dispositivoLabels, fotos }) {
   const atendimentosGerados = [];
-  for (const alvo of alvos) {
+  for (const dispositivoId of dispositivoIds) {
     const a = await createAtendimento({
-      dispositivoId: alvo.kind === 'dispositivo' ? alvo.id : null,
-      bateriaPainelId: alvo.kind === 'bateria_painel' ? alvo.id : null,
-      fonteAuxiliarId: alvo.kind === 'fonte_auxiliar' ? alvo.id : null,
-      clienteId,
-      falha, falhaCodigo, falhaMarca, falhaCategoria, status: 'aguardando', tecnico, rvtId, fotos,
+      dispositivoId, falha, status: 'aguardando', tecnico, rvtId, fotos,
       dataAgendamento, descritivo: 'Corretiva gerada a partir de Diagnóstico em visita',
     });
     atendimentosGerados.push(a);
@@ -282,43 +217,20 @@ export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId,
   return atendimentosGerados;
 }
 
-export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento }) {
-  const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId });
-  const hoje = new Date().toISOString().slice(0, 10);
+export async function createAtendimento({ dispositivoId, falha, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento }) {
   const { data, error } = await supabase.from('atendimentos').insert({
-    dispositivo_id: dispositivoId || null, bateria_painel_id: bateriaPainelId || null, fonte_auxiliar_id: fonteAuxiliarId || null,
-    cliente_id: clienteIdFinal, falha: falha || null, status: status || 'aguardando',
-    falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null, falha_categoria: falhaCategoria || null,
+    dispositivo_id: dispositivoId, falha: falha || null, status: status || 'aguardando',
     tecnico: tecnico || null, descritivo: descritivo || null, origem_inspecao_id: origemInspecaoId || null,
     fotos: fotos || [], data_agendamento: dataAgendamento || null,
   }).select().single();
   if (error) throw error;
 
-  if (dispositivoId) {
-    await supabase.from('dispositivos').update({ ultima_manutencao: hoje }).eq('id', dispositivoId);
-  } else if (bateriaPainelId) {
-    await supabase.from('baterias_painel').update({ data_inspecao: hoje }).eq('id', bateriaPainelId);
-  } else if (fonteAuxiliarId) {
-    await supabase.from('fontes_auxiliares').update({ data_inspecao: hoje }).eq('id', fonteAuxiliarId);
-  }
+  await supabase.from('dispositivos')
+    .update({ ultima_manutencao: new Date().toISOString().slice(0, 10) })
+    .eq('id', dispositivoId);
 
   await addItemToVisita(rvtId, { atendimentoId: data.id });
   return data;
-}
-
-/** cliente_id p/ atendimentos/inspecoes: usa o passado; senão deriva do alvo (dispositivo/bateria/fonte). */
-async function resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId }) {
-  if (clienteId) return clienteId;
-  const alvo = dispositivoId
-    ? { tabela: 'dispositivos', id: dispositivoId }
-    : bateriaPainelId
-      ? { tabela: 'baterias_painel', id: bateriaPainelId }
-      : fonteAuxiliarId
-        ? { tabela: 'fontes_auxiliares', id: fonteAuxiliarId }
-        : null;
-  if (!alvo) return null;
-  const { data } = await supabase.from(alvo.tabela).select('cliente_id').eq('id', alvo.id).single();
-  return data?.cliente_id || null;
 }
 
 async function selectAllRows(builderFactory) {
@@ -335,19 +247,16 @@ async function selectAllRows(builderFactory) {
   return { data: all, error: null };
 }
 export async function createInspecao({
-  dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, tecnico, resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede,
-  observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
+  dispositivoId, tecnico, resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede,
+  observacoes, falha, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
 }) {
   const dataFinal = dataInspecao || new Date().toISOString().slice(0, 10);
-  const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId });
 
   const { data: inspecao, error } = await supabase.from('inspecoes').insert({
-    dispositivo_id: dispositivoId || null, bateria_painel_id: bateriaPainelId || null, fonte_auxiliar_id: fonteAuxiliarId || null,
-    cliente_id: clienteIdFinal, tecnico: tecnico || null, resultado_teste: resultadoTeste || null,
+    dispositivo_id: dispositivoId, tecnico: tecnico || null, resultado_teste: resultadoTeste || null,
     aparencia: aparencia || null, comunicacao_local: comunicacaoLocal || null,
     comunicacao_rede: comunicacaoRede || null, observacoes: observacoes || null,
-    falha: falha || null, falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null,
-    falha_categoria: falhaCategoria || null, metodo: metodo || null, data_inspecao: dataFinal,
+    falha: falha || null, metodo: metodo || null, data_inspecao: dataFinal,
     proxima_inspecao: proximaInspecao || null, fotos: fotos || [],
   }).select().single();
   if (error) throw error;
@@ -357,42 +266,27 @@ export async function createInspecao({
   let atendimento = null;
   if (falha && falha.trim()) {
     atendimento = await createAtendimento({
-      dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId: clienteIdFinal,
-      falha, falhaCodigo, falhaMarca, falhaCategoria, status: 'aguardando', origemInspecaoId: inspecao.id, rvtId,
+      dispositivoId, falha, status: 'aguardando', origemInspecaoId: inspecao.id, rvtId,
       descritivo: 'Corretiva gerada automaticamente por falha na inspeção',
     });
   }
 
-  if (dispositivoId) {
-    await supabase.from('dispositivos')
-      .update({
-        ultima_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null,
-        resultado_teste: resultadoTeste || null, aparencia: aparencia || null,
-        comunicacao_local: comunicacaoLocal || null, comunicacao_rede: comunicacaoRede || null,
-      })
-      .eq('id', dispositivoId);
-  } else if (bateriaPainelId) {
-    await supabase.from('baterias_painel')
-      .update({ data_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null })
-      .eq('id', bateriaPainelId);
-  } else if (fonteAuxiliarId) {
-    await supabase.from('fontes_auxiliares')
-      .update({ data_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null })
-      .eq('id', fonteAuxiliarId);
-  }
+  await supabase.from('dispositivos')
+    .update({
+      ultima_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null,
+      resultado_teste: resultadoTeste || null, aparencia: aparencia || null,
+      comunicacao_local: comunicacaoLocal || null, comunicacao_rede: comunicacaoRede || null,
+    })
+    .eq('id', dispositivoId);
 
   return { inspecao, atendimento };
 }
 
-// Escopo por `atendimentos.cliente_id` (coluna denormalizada) — não mais pelo INNER JOIN
-// com dispositivos, pra que atendimentos de Bateria/Fonte (dispositivo_id nulo) também voltem.
-const ATENDIMENTO_EMBEDS = 'dispositivos(id, etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome)), baterias_painel(id, paineis(nome)), fontes_auxiliares(id, nome), rvt_itens(rvt_id)';
-
 export async function listAtendimentos(clienteId) {
   const { data, error } = await supabase
     .from('atendimentos')
-    .select(`*, ${ATENDIMENTO_EMBEDS}`)
-    .eq('cliente_id', clienteId)
+    .select('*, dispositivos!inner(id, etiqueta, endereco, cliente_id, modelo, lacos(nome, paineis(nome)), paineis(nome)), rvt_itens(rvt_id)')
+    .eq('dispositivos.cliente_id', clienteId)
     .order('data_registro', { ascending: false });
   if (error) throw error;
   return data;
@@ -401,8 +295,8 @@ export async function listAtendimentos(clienteId) {
 export async function listInspecoes(clienteId) {
   const { data, error } = await supabase
     .from('inspecoes')
-    .select(`*, ${ATENDIMENTO_EMBEDS}`)
-    .eq('cliente_id', clienteId)
+    .select('*, dispositivos!inner(id, etiqueta, endereco, cliente_id, modelo, lacos(nome, paineis(nome)), paineis(nome)), rvt_itens(rvt_id)')
+    .eq('dispositivos.cliente_id', clienteId)
     .order('data_inspecao', { ascending: false });
   if (error) throw error;
   return data;
@@ -413,11 +307,10 @@ export async function listVisitas(clienteId) {
     .from('rvts')
     .select(`
       id, data_visita, tecnico, painel_id,
-      assinatura_cliente, assinatura_cliente_tipo, assinatura_cliente_data,
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
-        atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ) ),
-        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ) )
+        atendimentos ( id, falha, tipo, status, descritivo, dispositivo_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) ),
+        inspecoes ( id, falha, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ) )
       )
     `)
     .eq('cliente_id', clienteId)
@@ -508,7 +401,6 @@ export async function loadClientData(clienteId) {
 
   const panels = paineis.map((p) => ({
     id: p.id, name: p.nome, location: p.localizacao || '', model: p.modelo || '',
-    marca: p.marca || '',
     installDate: p.data_instalacao || '', notes: p.observacoes || '',
   }));
 
@@ -527,18 +419,8 @@ export async function loadClientData(clienteId) {
     lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
   }));
 
-  const nacs = dispositivos.filter((d) => !d.laco_id && d.painel_id && !REDE_TIPOS[d.tipo_modulo]).map((d) => ({
+  const nacs = dispositivos.filter((d) => !d.laco_id && d.painel_id).map((d) => ({
     id: d.id, panelId: d.painel_id, name: d.etiqueta || '', description: d.descricao || '',
-    nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
-    operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
-    localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
-    lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
-  }));
-
-  // Dispositivos de Rede (Conversor / Placa) — dispositivos com painel_id e tipo_modulo rede_*
-  const redeDispositivos = dispositivos.filter((d) => !d.laco_id && d.painel_id && REDE_TIPOS[d.tipo_modulo]).map((d) => ({
-    id: d.id, panelId: d.painel_id, tipo: d.tipo_modulo, tipoLabel: REDE_TIPOS[d.tipo_modulo],
-    etiqueta: d.etiqueta || '', modelo: d.modelo || '', description: d.descricao || '',
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
     operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
     localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
@@ -557,38 +439,7 @@ export async function loadClientData(clienteId) {
     if (devices.some((d) => d.id === dispositivoId)) return 'devices';
     if (nacs.some((n) => n.id === dispositivoId)) return 'nacs';
     if (gasDetectors.some((g) => g.id === dispositivoId)) return 'gasDetectors';
-    if (redeDispositivos.some((r) => r.id === dispositivoId)) return 'redeDispositivos';
     return 'devices';
-  }
-
-  // Rótulos de alvo de um atendimento/inspeção — cobre dispositivo, Bateria de Painel e Fonte Auxiliar.
-  function alvoLabelInfo(r) {
-    if (r.dispositivos) {
-      return {
-        deviceId: r.dispositivo_id, categoria: categoriaFor(r.dispositivo_id),
-        etiqueta: r.dispositivos.etiqueta || r.dispositivos.endereco || '',
-        endereco: r.dispositivos.endereco || '',
-        laco: r.dispositivos.lacos?.nome || '',
-        painel: r.dispositivos.paineis?.nome || r.dispositivos.lacos?.paineis?.nome || '',
-        equipamento: r.dispositivos.modelo || '',
-      };
-    }
-    if (r.baterias_painel) {
-      const nomePainel = r.baterias_painel.paineis?.nome || '';
-      return {
-        deviceId: r.bateria_painel_id, categoria: 'bateriaPainel',
-        etiqueta: `Bateria de Painel${nomePainel ? ` — ${nomePainel}` : ''}`,
-        endereco: '', laco: '', painel: nomePainel, equipamento: '',
-      };
-    }
-    if (r.fontes_auxiliares) {
-      return {
-        deviceId: r.fonte_auxiliar_id, categoria: 'fonteAuxiliar',
-        etiqueta: `Fonte Auxiliar${r.fontes_auxiliares.nome ? ` — ${r.fontes_auxiliares.nome}` : ''}`,
-        endereco: '', laco: '', painel: '', equipamento: '',
-      };
-    }
-    return { deviceId: r.dispositivo_id || null, categoria: 'devices', etiqueta: '', endereco: '', laco: '', painel: '', equipamento: '' };
   }
 
   const [atendimentosNovos, inspecoesNovos, visitasNovas] = await Promise.all([
@@ -596,15 +447,15 @@ export async function loadClientData(clienteId) {
   ]);
 
   const indicadorNovos = [
-    ...atendimentosNovos.map((a) => {
-      const al = alvoLabelInfo(a);
-      return {
-      id: `novo-at-${a.id}`, tipo: 'manutencao', deviceId: al.deviceId,
-      categoria: al.categoria,
-      etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
-      equipamento: al.equipamento, area: '',
-      falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaCategoria: a.falha_categoria || '',
-      descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+    ...atendimentosNovos.map((a) => ({
+      id: `novo-at-${a.id}`, tipo: 'manutencao', deviceId: a.dispositivo_id,
+      categoria: categoriaFor(a.dispositivo_id),
+      etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || '',
+      endereco: a.dispositivos?.endereco || '',
+      laco: a.dispositivos?.lacos?.nome || '',
+      painel: a.dispositivos?.paineis?.nome || a.dispositivos?.lacos?.paineis?.nome || '',
+      equipamento: a.dispositivos?.modelo || '', area: '',
+      falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
       explanacao: '', dataDiagnostico: (a.data_registro || '').slice(0, 10),
       dataIntervencao1: (a.data_registro || '').slice(0, 10),
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
@@ -612,17 +463,16 @@ export async function loadClientData(clienteId) {
       solucao: '', fotos: a.fotos || [], dataAgendamento: a.data_agendamento || '',
       origemRvt: a.rvt_itens?.[0]?.rvt_id ? `novo-rvt-${a.rvt_itens[0].rvt_id}` : '',
       origemNovo: true,
-      };
-    }),
-    ...inspecoesNovos.map((i) => {
-      const al = alvoLabelInfo(i);
-      return {
-      id: `novo-insp-${i.id}`, tipo: 'inspecao', deviceId: al.deviceId,
-      categoria: al.categoria,
-      etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
-      equipamento: al.equipamento, area: '',
-      falha: i.falha || '', falhaCodigo: i.falha_codigo || '', falhaCategoria: i.falha_categoria || '',
-      descritivo: i.observacoes || i.resultado_teste || '', status: 'Resolvido',
+    })),
+    ...inspecoesNovos.map((i) => ({
+      id: `novo-insp-${i.id}`, tipo: 'inspecao', deviceId: i.dispositivo_id,
+      categoria: categoriaFor(i.dispositivo_id),
+      etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || '',
+      endereco: i.dispositivos?.endereco || '',
+      laco: i.dispositivos?.lacos?.nome || '',
+      painel: i.dispositivos?.paineis?.nome || i.dispositivos?.lacos?.paineis?.nome || '',
+      equipamento: i.dispositivos?.modelo || '', area: '',
+      falha: i.falha || '', descritivo: i.observacoes || i.resultado_teste || '', status: 'Resolvido',
       explanacao: '', dataDiagnostico: i.data_inspecao || '',
       dataIntervencao1: i.data_inspecao || '',
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
@@ -630,8 +480,7 @@ export async function loadClientData(clienteId) {
       solucao: '', fotos: i.fotos || [],
       origemRvt: i.rvt_itens?.[0]?.rvt_id ? `novo-rvt-${i.rvt_itens[0].rvt_id}` : '',
       origemNovo: true,
-      };
-    }),
+    })),
   ];
 
   const rvtNovos = visitasNovas.map((v) => ({
@@ -647,23 +496,25 @@ export async function loadClientData(clienteId) {
       }
       if (it.atendimentos) {
         const a = it.atendimentos;
-        const al = alvoLabelInfo(a);
-        return { id: `novo-item-${it.id}`, deviceId: al.deviceId, categoria: al.categoria, tipo: 'manutencao',
-          etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
-          equipamento: al.equipamento, area: '',
-          falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaMarca: a.falha_marca || '', falhaCategoria: a.falha_categoria || '',
-          descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+        return { id: `novo-item-${it.id}`, deviceId: a.dispositivo_id, categoria: categoriaFor(a.dispositivo_id), tipo: 'manutencao',
+          etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || '',
+          endereco: a.dispositivos?.endereco || '',
+          laco: a.dispositivos?.lacos?.nome || '',
+          painel: a.dispositivos?.paineis?.nome || a.dispositivos?.lacos?.paineis?.nome || '',
+          equipamento: a.dispositivos?.modelo || '', area: '',
+          falha: a.falha || '', descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
           dataAgendamento: a.data_agendamento || '',
           explanacao: '', dataIntervencao: v.data_visita, solucao: '', fotos: a.fotos || [] };
       }
       if (it.inspecoes) {
         const i = it.inspecoes;
-        const al = alvoLabelInfo(i);
-        return { id: `novo-item-${it.id}`, deviceId: al.deviceId, categoria: al.categoria, tipo: 'inspecao',
-          etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
-          equipamento: al.equipamento, area: '',
-          falha: i.falha || '', falhaCodigo: i.falha_codigo || '', falhaMarca: i.falha_marca || '', falhaCategoria: i.falha_categoria || '',
-          descritivo: i.resultado_teste || '', status: 'Resolvido',
+        return { id: `novo-item-${it.id}`, deviceId: i.dispositivo_id, categoria: categoriaFor(i.dispositivo_id), tipo: 'inspecao',
+          etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || '',
+          endereco: i.dispositivos?.endereco || '',
+          laco: i.dispositivos?.lacos?.nome || '',
+          painel: i.dispositivos?.paineis?.nome || i.dispositivos?.lacos?.paineis?.nome || '',
+          equipamento: i.dispositivos?.modelo || '', area: '',
+          falha: i.falha || '', descritivo: i.resultado_teste || '', status: 'Resolvido',
           explanacao: '', dataIntervencao: i.data_inspecao, solucao: '', fotos: i.fotos || [] };
       }
       return null;
@@ -671,7 +522,7 @@ export async function loadClientData(clienteId) {
   }));
 
   return {
-    panels, loops, nacs, devices, gasDetectors, redeDispositivos,
+    panels, loops, nacs, devices, gasDetectors,
     bateriasPainel, fontesAuxiliares, combateConjuntos, combateSubitens, combateComponentes, combateBaterias, combateCilindros,
     pumpDevices: legacy.pumpDevices || [],
     maintenanceLog: legacy.maintenanceLog || [],
@@ -691,7 +542,7 @@ export function saveClientData(clienteId, data) {
   return next;
 }
 
-const TIPOS_MODULO_VALIDOS = ['fumaca', 'calor', 'acionador', 'saida', 'rele', 'entrada', 'entrada_duplo', 'modulo_saida', 'detector_gas', 'rede_conversor', 'rede_placa', 'outro'];
+const TIPOS_MODULO_VALIDOS = ['fumaca', 'calor', 'acionador', 'saida', 'rele', 'entrada', 'entrada_duplo', 'modulo_saida', 'detector_gas', 'outro'];
 
 async function doSaveClientData(clienteId, data) {
   // Monta os dispositivos e VALIDA antes de tocar no banco — se algo estiver fora do esperado,
@@ -716,12 +567,6 @@ async function doSaveClientData(clienteId, data) {
       tipo_modulo: 'detector_gas', categoria_funcional: g.type || 'Detector de Gás',
       proxima_inspecao: g.nextMaintenance || null, ultima_manutencao: g.lastMaintenance || null,
     })),
-    ...(data.redeDispositivos || []).map((r) => ({
-      id: r.id, cliente_id: clienteId, laco_id: null, painel_id: r.panelId || null,
-      etiqueta: r.etiqueta || null, descricao: r.description || null, modelo: r.modelo || null,
-      tipo_modulo: r.tipo || 'rede_conversor',
-      proxima_inspecao: r.nextMaintenance || null, ultima_manutencao: r.lastMaintenance || null,
-    })),
   ];
   const invalido = dispositivosRows.find((r) => !TIPOS_MODULO_VALIDOS.includes(r.tipo_modulo));
   if (invalido) {
@@ -745,8 +590,7 @@ async function doSaveClientData(clienteId, data) {
   // ---- Painéis: upsert (nunca apaga tudo primeiro) + remove só os que saíram da lista ----
   const panelRows = (data.panels || []).map((p) => ({
     id: p.id, cliente_id: clienteId, nome: p.name, localizacao: p.location || null,
-    modelo: p.model || null, marca: p.marca || null,
-    data_instalacao: p.installDate || null, observacoes: p.notes || null,
+    modelo: p.model || null, data_instalacao: p.installDate || null, observacoes: p.notes || null,
   }));
   if (panelRows.length) {
     const { error } = await supabase.from('paineis').upsert(panelRows);
@@ -933,12 +777,9 @@ async function doSaveClientData(clienteId, data) {
   }
 }
 
-export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, falhaCategoria, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
+export async function updateAtendimento(id, { falha, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
   const patch = {};
   if (falha !== undefined) patch.falha = falha || null;
-  if (falhaCodigo !== undefined) patch.falha_codigo = falhaCodigo || null;
-  if (falhaMarca !== undefined) patch.falha_marca = falhaMarca || null;
-  if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (status !== undefined) patch.status = status;
   if (descritivo !== undefined) patch.descritivo = descritivo || null;
   if (fotos !== undefined) patch.fotos = fotos;
@@ -955,7 +796,7 @@ export async function deleteAtendimento(id) {
   if (error) throw error;
 }
 
-export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, proximaInspecao, fotos, dispositivoId }) {
+export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, metodo, proximaInspecao, fotos, dispositivoId }) {
   const patch = {};
   if (resultadoTeste !== undefined) patch.resultado_teste = resultadoTeste || null;
   if (aparencia !== undefined) patch.aparencia = aparencia || null;
@@ -963,9 +804,6 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
   if (comunicacaoRede !== undefined) patch.comunicacao_rede = comunicacaoRede || null;
   if (observacoes !== undefined) patch.observacoes = observacoes || null;
   if (falha !== undefined) patch.falha = falha || null;
-  if (falhaCodigo !== undefined) patch.falha_codigo = falhaCodigo || null;
-  if (falhaMarca !== undefined) patch.falha_marca = falhaMarca || null;
-  if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (metodo !== undefined) patch.metodo = metodo || null;
   if (proximaInspecao !== undefined) patch.proxima_inspecao = proximaInspecao || null;
   if (fotos !== undefined) patch.fotos = fotos;
@@ -987,17 +825,6 @@ export async function updateOutroItem(rvtItemId, descricao, fotos, atividade, at
   if (atividade !== undefined) patch.outro_atividade = atividade || null;
   if (atividadeDados !== undefined) patch.outro_atividade_dados = atividadeDados || {};
   const { error } = await supabase.from('rvt_itens').update(patch).eq('id', rvtItemId);
-  if (error) throw error;
-}
-
-/** Assinatura de aprovação do cliente para 1 registro de visita (rvt).
-    `tipo` = 'desenho' (valor = base64 PNG) ou 'texto' (valor = nome digitado). */
-export async function salvarAssinaturaVisita(rvtId, { tipo, valor }) {
-  const { error } = await supabase.from('rvts').update({
-    assinatura_cliente: valor,
-    assinatura_cliente_tipo: tipo,
-    assinatura_cliente_data: new Date().toISOString(),
-  }).eq('id', rvtId);
   if (error) throw error;
 }
 

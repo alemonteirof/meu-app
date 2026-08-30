@@ -6,9 +6,7 @@ import {
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
-  salvarAssinaturaVisita,
 } from './supabaseAdapter';
-import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA } from './lib/falhasPorMarca';
 
 const ATIVIDADE_LABELS = {
   reuniao: 'Reunião',
@@ -59,14 +57,6 @@ function formatDateBR(dateStr) {
   return `${d}/${m}/${y}`;
 }
 
-const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-// Data por extenso, usada só na visão "Relatórios" do cliente (mais amigável que dd/mm/aaaa).
-function formatDateLong(dateStr) {
-  if (!dateStr) return '—';
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return `${d} de ${MESES_PT[m - 1]} de ${y}`;
-}
-
 function statusColor(status) {
   if (status === 'Resolvido') return 'var(--status-ok)';
   if (status === 'Andamento') return 'var(--status-warn, #f59f00)';
@@ -74,12 +64,8 @@ function statusColor(status) {
   return 'var(--text-secondary)';
 }
 
-const MAX_FOTO_BYTES = 8 * 1024 * 1024; // 8 MB por foto — fotos vão em base64 na linha do banco
-
 function filesToBase64(fileList) {
   return Promise.all(Array.from(fileList).map((file) => new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) { reject(new Error(`"${file.name}" não é uma imagem.`)); return; }
-    if (file.size > MAX_FOTO_BYTES) { reject(new Error(`"${file.name}": ${(file.size / 1048576).toFixed(1)} MB. Limite de 8 MB por foto — reduza a resolução.`)); return; }
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
@@ -89,16 +75,10 @@ function filesToBase64(fileList) {
 
 function FotosField({ fotos, setFotos }) {
   const inputRef = useRef(null);
-  const [erroFoto, setErroFoto] = useState('');
   async function handleChange(e) {
     if (!e.target.files || e.target.files.length === 0) return;
-    setErroFoto('');
-    try {
-      const novas = await filesToBase64(e.target.files);
-      setFotos((prev) => [...prev, ...novas]);
-    } catch (err) {
-      setErroFoto(err.message || 'Não foi possível anexar a foto.');
-    }
+    const novas = await filesToBase64(e.target.files);
+    setFotos((prev) => [...prev, ...novas]);
     e.target.value = '';
   }
   return (
@@ -114,7 +94,6 @@ function FotosField({ fotos, setFotos }) {
       >
         + Anexar foto
       </button>
-      {erroFoto && <p style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 6 }}>{erroFoto}</p>}
       {fotos.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
           {fotos.map((f, idx) => (
@@ -155,7 +134,6 @@ function buildDeviceOptions(data) {
         label: `${complementarTipo} — ${d.etiquetaComplementar || d.description || 'Sem etiqueta'} — ${papelSinalLabelAt(d.papelSinal)} (${d.address})`,
         type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
         panelId: null, panelName: 'Dispositivos Complementares',
-        panelMarca: panel ? panel.marca || '' : '',
         loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
       });
       return;
@@ -164,7 +142,6 @@ function buildDeviceOptions(data) {
       id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
       type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
-      panelMarca: panel ? panel.marca || '' : '',
       loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
     });
   });
@@ -173,7 +150,6 @@ function buildDeviceOptions(data) {
     options.push({
       id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 'saida',
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
-      panelMarca: panel ? panel.marca || '' : '',
       loopId: null, loopName: null,
     });
   });
@@ -184,54 +160,7 @@ function buildDeviceOptions(data) {
       loopId: null, loopName: null,
     });
   });
-  // --- Complementares mantíveis: Rede (é dispositivo de verdade), Bateria de Painel e Fonte
-  //     Auxiliar (tabelas próprias — id prefixado bp:/fa: e roteado no submit por decodeAlvo). ---
-  (data.redeDispositivos || []).forEach((r) => {
-    const panel = (data.panels || []).find((p) => p.id === r.panelId);
-    options.push({
-      id: r.id,
-      label: `Rede — ${r.tipoLabel || 'Dispositivo'}${r.etiqueta ? ` — ${r.etiqueta}` : ''}${panel ? ' · ' + panel.name : ''}`,
-      type: r.tipo, kind: 'dispositivo', complementarSemCodigo: true,
-      panelId: panel ? panel.id : null, panelName: 'Dispositivos Complementares',
-      panelMarca: '', loopId: null, loopName: null,
-    });
-  });
-  (data.bateriasPainel || []).forEach((b) => {
-    const panel = (data.panels || []).find((p) => p.id === b.panelId);
-    options.push({
-      id: `bp:${b.id}`, label: `Bateria de Painel${panel ? ' — ' + panel.name : ''}`,
-      type: 'bateria_painel', kind: 'bateria_painel', complementarSemCodigo: true,
-      panelId: panel ? panel.id : null, panelName: 'Dispositivos Complementares',
-      panelMarca: '', loopId: null, loopName: null,
-    });
-  });
-  (data.fontesAuxiliares || []).forEach((f) => {
-    options.push({
-      id: `fa:${f.id}`, label: `Fonte Auxiliar${f.nome ? ' — ' + f.nome : ''}`,
-      type: 'fonte_auxiliar', kind: 'fonte_auxiliar', complementarSemCodigo: true,
-      panelId: null, panelName: 'Dispositivos Complementares',
-      panelMarca: '', loopId: null, loopName: null,
-    });
-  });
   return options;
-}
-
-/** Decodifica o id de opção do seletor no alvo real de um atendimento/inspeção.
-    `bp:<id>` → Bateria de Painel, `fa:<id>` → Fonte Auxiliar, senão dispositivo. */
-function decodeAlvo(optionId) {
-  if (typeof optionId === 'string' && optionId.startsWith('bp:')) return { kind: 'bateria_painel', id: optionId.slice(3) };
-  if (typeof optionId === 'string' && optionId.startsWith('fa:')) return { kind: 'fonte_auxiliar', id: optionId.slice(3) };
-  return { kind: 'dispositivo', id: optionId };
-}
-
-/** { dispositivoId, bateriaPainelId, fonteAuxiliarId } a partir do id de opção. */
-function idsPorAlvo(optionId) {
-  const a = decodeAlvo(optionId);
-  return {
-    dispositivoId: a.kind === 'dispositivo' ? a.id : null,
-    bateriaPainelId: a.kind === 'bateria_painel' ? a.id : null,
-    fonteAuxiliarId: a.kind === 'fonte_auxiliar' ? a.id : null,
-  };
 }
 
 /** Lista unificada de itens de Combate a Incêndio pra vistoria em massa: sub-itens dos
@@ -524,187 +453,6 @@ function DeviceSingleSelect({ options, selectedId, setSelectedId, label }) {
   );
 }
 
-/* ------------------------------------------------------------------ *
- * Campo "Falha" travado por marca (Hochiki / Notifier)
- * ------------------------------------------------------------------ */
-
-const emptyFalha = () => ({ codigo: '', categoria: '', marca: '', detalhe: '' });
-
-/** Texto legível gravado em `falha` (todos os consumidores atuais mostram essa string):
-    rótulo PT da falha catalogada, ou o texto livre digitado no modo "Outro". */
-function falhaTexto(v) {
-  if (!v) return '';
-  if (v.codigo) {
-    const f = getFalhaPorCodigo(v.codigo);
-    return f ? f.pt : '';
-  }
-  return v.detalhe || '';
-}
-
-/** Uma corretiva está "classificada" quando dá pra jogá-la numa categoria do card
-    "Falhas mais comuns": ou veio da lista catalogada (tem código, logo tem categoria),
-    ou o técnico escolheu uma categoria à mão no modo "Outro". Sem isso a corretiva
-    cai em "Não classificado" — o que essa trava evita na origem. */
-function falhaClassificada(sel) {
-  const v = sel || {};
-  return !!(v.codigo || v.categoria);
-}
-
-/** Reidrata o objeto do FalhaSelect a partir de um registro do banco
-    (atendimento/inspeção de listVisitas). Registro legado sem código -> modo "Outro". */
-function falhaSelFromRecord(row) {
-  const r = row || {};
-  const codigo = r.falha_codigo || '';
-  if (codigo) {
-    const f = getFalhaPorCodigo(codigo);
-    return { codigo, categoria: r.falha_categoria || (f ? f.categoria : ''), marca: r.falha_marca || '', detalhe: '' };
-  }
-  return { codigo: '', categoria: '', marca: r.falha_marca || '', detalhe: r.falha || '' };
-}
-
-/** Alvo de um atendimento/inspeção já salvo (embeds de listVisitas): dispositivo, Bateria
-    de Painel ou Fonte Auxiliar. Na edição o alvo é fixo (só leitura) — não se move corretiva
-    entre um dispositivo e uma bateria. */
-function alvoDeRegistro(r) {
-  if (r?.bateria_painel_id) {
-    const nome = r.baterias_painel?.paineis?.nome || '';
-    return { alvoKind: 'bateria_painel', alvoLabel: `Bateria de Painel${nome ? ` — ${nome}` : ''}` };
-  }
-  if (r?.fonte_auxiliar_id) {
-    return { alvoKind: 'fonte_auxiliar', alvoLabel: `Fonte Auxiliar${r.fontes_auxiliares?.nome ? ` — ${r.fontes_auxiliares.nome}` : ''}` };
-  }
-  return { alvoKind: 'dispositivo', alvoLabel: '' };
-}
-
-/** Marca única dos painéis dos dispositivos selecionados — só retorna se todos
-    convergem numa marca conhecida; senão '' (o seletor cai no campo "Outro"). */
-function marcaDeDispositivos(ids, deviceOptions) {
-  const selecionados = (ids || []).map((id) => (deviceOptions || []).find((o) => o.id === id)).filter(Boolean);
-  // Complementar (bateria/fonte/rede) não tem código de evento de painel — cai sempre
-  // no modo "Outro" do FalhaSelect (texto livre + categoria obrigatória).
-  if (selecionados.some((o) => o.complementarSemCodigo)) return '';
-  const marcas = new Set(selecionados.map((o) => normalizarMarca(o.panelMarca)).filter(Boolean));
-  return marcas.size === 1 ? [...marcas][0] : '';
-}
-
-/** Combobox de falha com busca bilíngue (PT — EN), lista travada pela marca do painel.
-    Sempre oferece "Outro (descrever)" -> textarea livre (codigo/categoria nulos). */
-function FalhaSelect({ marca, value, onChange, label = 'Falha', hint }) {
-  const v = value || emptyFalha();
-  const lista = falhasParaMarca(marca);
-  const marcaOk = lista.length > 0;
-  const marcaNorm = normalizarMarca(marca);
-  const selecionada = v.codigo ? getFalhaPorCodigo(v.codigo) : null;
-  const [modoOutro, setModoOutro] = useState(() => !v.codigo && !!v.detalhe);
-  const [trocando, setTrocando] = useState(false);
-  const [query, setQuery] = useState('');
-
-  const emOutro = !marcaOk || modoOutro;
-  const q = query.trim().toLowerCase();
-  const filtrada = q
-    ? lista.filter((f) => f.pt.toLowerCase().includes(q) || f.en.toLowerCase().includes(q))
-    : lista;
-
-  function escolher(f) {
-    onChange({ codigo: f.codigo, categoria: f.categoria, marca: marcaNorm, detalhe: '' });
-    setTrocando(false);
-    setModoOutro(false);
-    setQuery('');
-  }
-  function limpar() {
-    onChange(emptyFalha());
-    setTrocando(false);
-    setModoOutro(false);
-    setQuery('');
-  }
-  function setDetalhe(texto) {
-    onChange({ codigo: '', categoria: v.categoria || '', marca: marcaNorm || '', detalhe: texto });
-  }
-  function setCategoria(cat) {
-    onChange({ codigo: '', categoria: cat, marca: marcaNorm || '', detalhe: v.detalhe || '' });
-  }
-
-  return (
-    <Field label={label}>
-      {hint && <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '-2px 0 6px' }}>{hint}</p>}
-
-      {emOutro ? (
-        <>
-          {selecionada && (
-            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-              Falha catalogada anterior: <strong>{selecionada.pt}</strong>. Edite abaixo para substituir por texto livre.
-            </p>
-          )}
-          <textarea
-            style={{ ...inputStyle, minHeight: 50 }}
-            placeholder="Descreva a falha encontrada"
-            value={v.detalhe || ''}
-            onChange={(e) => setDetalhe(e.target.value)}
-          />
-          {(v.detalhe || '').trim() && (
-            <div style={{ marginTop: 6 }}>
-              <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
-                Categoria da falha <span style={{ color: '#8B2F2F' }}>(obrigatória em corretiva)</span>
-              </label>
-              <select style={inputStyle} value={v.categoria || ''} onChange={(e) => setCategoria(e.target.value)}>
-                <option value="">Selecione a categoria...</option>
-                {Object.entries(CATEGORIAS_FALHA).map(([chave, rotulo]) => (
-                  <option key={chave} value={chave}>{rotulo}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {!marcaOk ? (
-            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-              Painel sem marca Hochiki/Notifier definida (ou dispositivos de marcas diferentes) — descreva a falha livremente.
-            </p>
-          ) : (
-            <button type="button" onClick={() => { setModoOutro(false); setDetalhe(''); }}
-              style={{ ...smallBtnStyle, marginTop: 6 }}>
-              ← Voltar para a lista {marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki'}
-            </button>
-          )}
-        </>
-      ) : selecionada && !trocando ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)' }}>
-          <span style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1, minWidth: 160 }}>
-            {selecionada.pt} <span style={{ color: 'var(--text-secondary)' }}>— {selecionada.en}</span>
-          </span>
-          <button type="button" onClick={() => setTrocando(true)} style={smallBtnStyle}>Trocar</button>
-          <button type="button" onClick={limpar} style={smallBtnStyle}>Limpar</button>
-        </div>
-      ) : (
-        <>
-          <input
-            style={inputStyle}
-            placeholder={`Buscar falha ${marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki'} (português ou inglês)...`}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginTop: 6 }}>
-            {filtrada.slice(0, 120).map((f) => (
-              <div key={f.codigo} onClick={() => escolher(f)}
-                style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                {f.pt} <span style={{ color: 'var(--text-secondary)' }}>— {f.en}</span>
-              </div>
-            ))}
-            {filtrada.length === 0 && (
-              <div style={{ padding: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma falha da lista bate com a busca.</div>
-            )}
-            <div onClick={() => { setModoOutro(true); setTrocando(false); }}
-              style={{ padding: '7px 10px', fontSize: 13, cursor: 'pointer', color: '#8B2F2F', fontWeight: 600 }}>
-              + Outro (descrever)
-            </div>
-          </div>
-          {selecionada && (
-            <button type="button" onClick={() => setTrocando(false)} style={{ ...smallBtnStyle, marginTop: 6 }}>Cancelar troca</button>
-          )}
-        </>
-      )}
-    </Field>
-  );
-}
-
 /** Mesmo padrão do DeviceMultiSelect, só que pra itens de Combate a Incêndio — agrupa
     por "grupo" (Casa de Bombas, Hidrante, Fluxostato, Cilindro etc.) já calculado. */
 function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
@@ -773,10 +521,9 @@ function itemsFromVisita(v) {
     }
     if (it.atendimentos) {
       const a = it.atendimentos;
-      const al = alvoDeRegistro(a);
       return {
         id: it.id, tipo: 'atendimento', dispositivoId: a.dispositivo_id || null,
-        etiqueta: al.alvoLabel || a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
+        etiqueta: a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
         endereco: a.dispositivos?.endereco || '',
         falha: a.falha || '', descritivo: a.descritivo || '',
         status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : '',
@@ -785,10 +532,9 @@ function itemsFromVisita(v) {
     }
     if (it.inspecoes) {
       const i = it.inspecoes;
-      const al = alvoDeRegistro(i);
       return {
         id: it.id, tipo: 'inspecao', dispositivoId: i.dispositivo_id || null,
-        etiqueta: al.alvoLabel || i.dispositivos?.etiqueta || i.dispositivos?.endereco || 'Dispositivo',
+        etiqueta: i.dispositivos?.etiqueta || i.dispositivos?.endereco || 'Dispositivo',
         endereco: i.dispositivos?.endereco || '',
         falha: i.falha || '',
         descritivo: [i.resultado_teste, i.metodo].filter(Boolean).join(' · '),
@@ -801,164 +547,6 @@ function itemsFromVisita(v) {
 
 function RvtFieldLabelLocal({ children }) {
   return <p style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 600, marginBottom: 2, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
-}
-
-/** Data/hora "dd/mm/aaaa às HH:MM" a partir de um ISO/timestamptz — reaproveita formatDateBR
-    para a parte da data e só acrescenta a hora local. */
-function formatDateTimeBR(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${formatDateBR(ymd)} às ${hh}:${mm}`;
-}
-
-/** Campo de assinatura de aprovação do cliente para 1 visita (rvt).
-    Dois modos alternáveis: desenho no canvas (mouse + touch) ou nome digitado.
-    O formulário de captura fica fora da impressão (no-print); depois de confirmada,
-    a assinatura é exibida somente-leitura e entra na impressão. */
-function SignatureField({ visita }) {
-  const [confirmada, setConfirmada] = useState(
-    visita?.assinatura_cliente
-      ? { tipo: visita.assinatura_cliente_tipo || 'texto', valor: visita.assinatura_cliente, data: visita.assinatura_cliente_data }
-      : null,
-  );
-  const [modo, setModo] = useState('desenho'); // 'desenho' | 'texto'
-  const [nome, setNome] = useState('');
-  const [temTraco, setTemTraco] = useState(false);
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState('');
-  const canvasRef = useRef(null);
-  const desenhandoRef = useRef(false);
-
-  const pontoNoCanvas = (e) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const src = e.touches && e.touches[0] ? e.touches[0] : e;
-    return {
-      x: (src.clientX - rect.left) * (canvas.width / rect.width),
-      y: (src.clientY - rect.top) * (canvas.height / rect.height),
-    };
-  };
-
-  const iniciarTraco = (e) => {
-    e.preventDefault();
-    const ctx = canvasRef.current.getContext('2d');
-    const { x, y } = pontoNoCanvas(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    desenhandoRef.current = true;
-  };
-  const moverTraco = (e) => {
-    if (!desenhandoRef.current) return;
-    e.preventDefault();
-    const ctx = canvasRef.current.getContext('2d');
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#1a1a1a';
-    const { x, y } = pontoNoCanvas(e);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    if (!temTraco) setTemTraco(true);
-  };
-  const terminarTraco = () => { desenhandoRef.current = false; };
-
-  const limparCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-    setTemTraco(false);
-  };
-
-  const confirmar = async () => {
-    setErro('');
-    const tipo = modo === 'desenho' ? 'desenho' : 'texto';
-    let valor;
-    if (tipo === 'desenho') {
-      if (!temTraco) { setErro('Desenhe a assinatura antes de confirmar.'); return; }
-      valor = canvasRef.current.toDataURL('image/png');
-    } else {
-      if (!nome.trim()) { setErro('Digite o nome completo antes de confirmar.'); return; }
-      valor = nome.trim();
-    }
-    setSalvando(true);
-    try {
-      await salvarAssinaturaVisita(visita.id, { tipo, valor });
-      setConfirmada({ tipo, valor, data: new Date().toISOString() });
-    } catch {
-      setErro('Não foi possível salvar a assinatura. Tente novamente.');
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  if (confirmada) {
-    return (
-      <div className="rvt-summary-card rounded-lg p-4" style={{ background: 'var(--surface-raised)' }}>
-        <RvtFieldLabelLocal>Assinatura do cliente — aprovação do serviço</RvtFieldLabelLocal>
-        {confirmada.tipo === 'desenho' ? (
-          <img
-            src={confirmada.valor}
-            alt="Assinatura do cliente"
-            style={{ display: 'block', width: '100%', maxWidth: 360, height: 'auto', background: '#fff', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}
-          />
-        ) : (
-          <p style={{ fontFamily: '"Segoe Script", "Brush Script MT", "Snell Roundhand", cursive', fontSize: 26, color: 'var(--text-primary)', margin: '6px 0 2px' }}>
-            {confirmada.valor}
-          </p>
-        )}
-        <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
-          Confirmada em {formatDateTimeBR(confirmada.data)}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rvt-summary-card rounded-lg p-4 no-print" style={{ background: 'var(--surface-raised)' }}>
-      <RvtFieldLabelLocal>Assinatura do cliente — aprovação do serviço</RvtFieldLabelLocal>
-      <div style={{ display: 'flex', gap: 8, margin: '6px 0 10px', flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => { setModo('desenho'); setErro(''); }} style={tabBtnStyle(modo === 'desenho')}>Desenhar</button>
-        <button type="button" onClick={() => { setModo('texto'); setErro(''); }} style={tabBtnStyle(modo === 'texto')}>Digitar nome</button>
-      </div>
-
-      {modo === 'desenho' ? (
-        <div>
-          <canvas
-            ref={canvasRef}
-            width={600}
-            height={180}
-            onMouseDown={iniciarTraco}
-            onMouseMove={moverTraco}
-            onMouseUp={terminarTraco}
-            onMouseLeave={terminarTraco}
-            onTouchStart={iniciarTraco}
-            onTouchMove={moverTraco}
-            onTouchEnd={terminarTraco}
-            style={{ display: 'block', width: '100%', maxWidth: 600, height: 180, background: '#fff', borderRadius: 6, border: '1px solid var(--border)', touchAction: 'none', cursor: 'crosshair' }}
-          />
-          <button type="button" onClick={limparCanvas} style={{ ...smallBtnStyle, marginTop: 8 }}>Limpar</button>
-        </div>
-      ) : (
-        <input
-          type="text"
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          placeholder="Nome completo de quem aprova"
-          style={inputStyle}
-        />
-      )}
-
-      {erro && <p style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 8 }}>{erro}</p>}
-
-      <div style={{ marginTop: 10 }}>
-        <button type="button" onClick={confirmar} disabled={salvando} style={{ ...btnStyle, opacity: salvando ? 0.7 : 1 }}>
-          {salvando ? 'Salvando...' : 'Confirmar assinatura'}
-        </button>
-      </div>
-    </div>
-  );
 }
 
 /** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, print-area
@@ -1093,8 +681,6 @@ function VisitaPrintView({ visitas, client, onBack }) {
             );
           })}
 
-          {!isPeriodo && <SignatureField visita={visitas[0]} />}
-
           <div className="rvt-footer-band">
             <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
             <p style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -1170,15 +756,10 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
   if (editForm.kind === 'atendimento') {
     return (
       <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
-        {(editForm.alvoKind || 'dispositivo') === 'dispositivo'
-          ? <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
-          : <Field label="Alvo"><div style={{ ...inputStyle, opacity: 0.75 }}>{editForm.alvoLabel}</div></Field>}
-        <FalhaSelect
-          label="Falha (deixe em branco para preventiva)"
-          marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
-          value={editForm.falhaSel}
-          onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
-        />
+        <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
+        <Field label="Falha (deixe em branco para preventiva)">
+          <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
+        </Field>
         <Field label="Status">
           <select style={inputStyle} value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
             <option value="aguardando">Aguardando</option>
@@ -1200,9 +781,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
   // inspecao
   return (
     <div style={{ ...cardStyle, marginTop: 8, padding: 10 }}>
-      {(editForm.alvoKind || 'dispositivo') === 'dispositivo'
-        ? <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
-        : <Field label="Alvo"><div style={{ ...inputStyle, opacity: 0.75 }}>{editForm.alvoLabel}</div></Field>}
+      <DeviceSingleSelect options={deviceOptions} selectedId={editForm.dispositivoId} setSelectedId={(id) => setEditForm({ ...editForm, dispositivoId: id })} />
       <div className="grid-2-mobile-safe">
         <Field label="Funcionamento (resultado do teste)">
           <select style={inputStyle} value={editForm.resultadoTeste} onChange={(e) => setEditForm({ ...editForm, resultadoTeste: e.target.value })}>
@@ -1228,12 +807,9 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
       <Field label="Observações">
         <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.observacoes} onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })} />
       </Field>
-      <FalhaSelect
-        label="Falha (se preenchida, cria/mantém corretiva)"
-        marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
-        value={editForm.falhaSel}
-        onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
-      />
+      <Field label="Falha (se preenchida, cria/mantém corretiva)">
+        <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.falha} onChange={(e) => setEditForm({ ...editForm, falha: e.target.value })} />
+      </Field>
       <Field label="Próxima inspeção">
         <input type="date" style={inputStyle} value={editForm.proximaInspecao} onChange={(e) => setEditForm({ ...editForm, proximaInspecao: e.target.value })} />
       </Field>
@@ -1250,7 +826,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, deviceOptions, 
     a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
     grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
     agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit, reportMode = false }) {
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, deviceOptions, savingEdit }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
@@ -1289,38 +865,20 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
   }
 
   return (
-    <div style={cardStyle} className={reportMode ? 'rvt-report-card' : undefined} data-open={reportMode ? expanded : undefined}>
+    <div style={cardStyle}>
       <button type="button" onClick={onToggleExpand} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 8, padding: 0, width: '100%', textAlign: 'left' }}>
-        <span className={reportMode ? 'rvt-report-chevron' : undefined} style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0, marginTop: 2, display: 'inline-block' }}>
-          {reportMode ? '▸' : (expanded ? '▾' : '▸')}
-        </span>
+        <span style={{ fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0, marginTop: 2 }}>{expanded ? '▾' : '▸'}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          {reportMode ? (
-            <>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 15 }}>
-                Relatório de {formatDateLong(visita.data_visita)}
-              </div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
-                {painel ? `${painel.name} · ` : ''}{itens.length} {itens.length === 1 ? 'serviço registrado' : 'serviços registrados'}
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
-                {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
-              </div>
-            </>
-          )}
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
+            {formatDateBR(visita.data_visita)} · {visita.tecnico || 'sem técnico'}{painel ? ` · ${painel.name}` : ''}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {itens.length} item(ns){nManutencao > 0 && ` · ${nManutencao} manutenção(ões)`}{nInspecao > 0 && ` · ${nInspecao} inspeção(ões)`}{nOutro > 0 && ` · ${nOutro} outro(s)`}
+          </div>
         </div>
       </button>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-        <button type="button" onClick={() => onVerImprimir(visita)} className={reportMode ? 'rvt-report-cta' : undefined}
-          style={reportMode ? { ...btnStyle, padding: '7px 18px' } : smallBtnStyle}>
-          {reportMode ? 'Ver relatório' : 'Ver / Imprimir'}
-        </button>
+        <button type="button" onClick={() => onVerImprimir(visita)} style={smallBtnStyle}>Ver / Imprimir</button>
         {canEdit && (
           <button type="button" onClick={onToggleExpand} style={smallBtnStyle}>Editar</button>
         )}
@@ -1532,10 +1090,7 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
   );
 }
 
-export default function AtendimentosNovo({ data, client, clientId, canEdit: canEditProp, onRefresh, reportMode = false }) {
-  // reportMode: usado pelo menu "Relatórios" (acesso do cliente/visualizador). Mostra só
-  // a lista/impressão de relatórios de visita, sem os fluxos de criação/edição.
-  const canEdit = reportMode ? false : canEditProp;
+export default function AtendimentosNovo({ data, client, clientId, canEdit, onRefresh }) {
   const deviceOptions = buildDeviceOptions(data);
   const panelOptions = data.panels || [];
 
@@ -1623,30 +1178,25 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }
 }
 
-  const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '' });
+  const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
   const [atFotos, setAtFotos] = useState([]);
   const [savingAtendimento, setSavingAtendimento] = useState(false);
   async function submitAtendimento(e) {
     e.preventDefault();
     if (atForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
-    if (atForm.falha.trim() && !falhaClassificada(atForm.falhaSel)) {
-      setMsg('Selecione a falha na lista ou escolha uma categoria antes de salvar a corretiva.'); return;
-    }
     setSavingAtendimento(true);
     try {
       const novosItens = [];
-      for (const optId of atForm.dispositivoIds) {
+      for (const dispositivoId of atForm.dispositivoIds) {
         const result = await createAtendimento({
-          ...idsPorAlvo(optId), clienteId: clientId,
-          falha: atForm.falha, status: atForm.status, descritivo: atForm.descritivo,
-          falhaCodigo: atForm.falhaSel?.codigo || null, falhaMarca: atForm.falhaSel?.marca || null, falhaCategoria: atForm.falhaSel?.categoria || null,
+          dispositivoId, falha: atForm.falha, status: atForm.status, descritivo: atForm.descritivo,
           tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
         });
-        const label = deviceOptions.find((o) => o.id === optId)?.label || '';
+        const label = deviceOptions.find((o) => o.id === dispositivoId)?.label || '';
         novosItens.push({ tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos });
       }
       setItensVisita((prev) => [...prev, ...novosItens]);
-      setAtForm({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '' });
+      setAtForm({ dispositivoIds: [], falha: '', status: 'aguardando', descritivo: '' });
       setAtFotos([]);
       if (onRefresh) onRefresh();
       setMsg(`${novosItens.length} item(ns) adicionado(s) à visita.`);
@@ -1660,7 +1210,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
   const [inspForm, setInspForm] = useState({
     dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
-    comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '', falhaSel: emptyFalha(),
+    comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '',
     proximaInspecao: '',
   });
   const [inspFotos, setInspFotos] = useState([]);
@@ -1671,21 +1221,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   async function submitInspecao(e) {
     e.preventDefault();
     if (inspForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
-    if (inspForm.falha.trim() && !falhaClassificada(inspForm.falhaSel)) {
-      setMsg('A falha vai gerar corretiva — selecione-a na lista ou escolha uma categoria antes de salvar.'); return;
-    }
     setSavingInspecao(true);
     try {
       const novosItens = [];
       let corretivasGeradas = 0;
-      for (const optId of inspForm.dispositivoIds) {
-        const device = deviceOptions.find((o) => o.id === optId);
+      for (const dispositivoId of inspForm.dispositivoIds) {
+        const device = deviceOptions.find((o) => o.id === dispositivoId);
         const result = await createInspecao({
-          ...idsPorAlvo(optId), clienteId: clientId,
-          tecnico: visita.tecnico, resultadoTeste: inspForm.resultadoTeste, aparencia: inspForm.aparencia,
+          dispositivoId, tecnico: visita.tecnico, resultadoTeste: inspForm.resultadoTeste, aparencia: inspForm.aparencia,
           comunicacaoLocal: inspForm.comunicacaoLocal, comunicacaoRede: inspForm.comunicacaoRede,
           observacoes: inspForm.observacoes, falha: inspForm.falha, metodo: getMetodoTeste(device),
-          falhaCodigo: inspForm.falhaSel?.codigo || null, falhaMarca: inspForm.falhaSel?.marca || null, falhaCategoria: inspForm.falhaSel?.categoria || null,
           dataInspecao: visita.data_visita, proximaInspecao: inspForm.proximaInspecao, rvtId: visita.id, fotos: inspFotos,
         });
         if (result.atendimento) corretivasGeradas += 1;
@@ -1697,7 +1242,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       setItensVisita((prev) => [...prev, ...novosItens]);
       setInspForm({
         dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
-        comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '', falhaSel: emptyFalha(),
+        comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '',
         proximaInspecao: '',
       });
       setInspFotos([]);
@@ -1720,7 +1265,6 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   const [outroFinalidade, setOutroFinalidade] = useState('');
   const [outroDiagDispositivoIds, setOutroDiagDispositivoIds] = useState([]);
   const [outroDiagFalha, setOutroDiagFalha] = useState('');
-  const [outroDiagFalhaSel, setOutroDiagFalhaSel] = useState(emptyFalha());
   const [outroDiagAgendamento, setOutroDiagAgendamento] = useState('');
   const [outroItemNome, setOutroItemNome] = useState('');
   const [outroItemTipoManutencao, setOutroItemTipoManutencao] = useState('corretiva');
@@ -1730,7 +1274,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   function limparFormOutro() {
     setOutroTexto(''); setOutroFotos([]); setOutroAtividade('');
     setOutroComQuem(''); setOutroFinalidade('');
-    setOutroDiagDispositivoIds([]); setOutroDiagFalha(''); setOutroDiagFalhaSel(emptyFalha()); setOutroDiagAgendamento('');
+    setOutroDiagDispositivoIds([]); setOutroDiagFalha(''); setOutroDiagAgendamento('');
     setOutroItemNome(''); setOutroItemTipoManutencao('corretiva'); setOutroItemStatus('aguardando');
   }
 
@@ -1741,13 +1285,10 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       if (outroAtividade === 'diagnostico') {
         if (outroDiagDispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo pro diagnóstico.'); return; }
         if (!outroDiagFalha.trim()) { setMsg('Descreva a falha encontrada no diagnóstico.'); return; }
-        if (!falhaClassificada(outroDiagFalhaSel)) { setMsg('Selecione a falha na lista ou escolha uma categoria — o diagnóstico gera corretiva.'); return; }
         const labels = outroDiagDispositivoIds.map((id) => deviceOptions.find((o) => o.id === id)?.label || '');
         const criados = await createDiagnosticoOutro({
-          rvtId: visita.id, tecnico: visita.tecnico, clienteId: clientId,
-          alvos: outroDiagDispositivoIds.map(decodeAlvo),
+          rvtId: visita.id, tecnico: visita.tecnico, dispositivoIds: outroDiagDispositivoIds,
           falha: outroDiagFalha.trim(), dataAgendamento: outroDiagAgendamento,
-          falhaCodigo: outroDiagFalhaSel.codigo || null, falhaMarca: outroDiagFalhaSel.marca || null, falhaCategoria: outroDiagFalhaSel.categoria || null,
           dispositivoLabels: labels, fotos: outroFotos,
         });
         setItensVisita((prev) => [
@@ -1851,13 +1392,13 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {} });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
+      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, falha: a.falha || '', status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
-        kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, ...alvoDeRegistro(i), resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
+        kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
         comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
-        observacoes: i.observacoes || '', falha: i.falha || '', falhaSel: falhaSelFromRecord(i), proximaInspecao: i.proxima_inspecao || '',
+        observacoes: i.observacoes || '', falha: i.falha || '', proximaInspecao: i.proxima_inspecao || '',
         fotos: i.fotos || [],
       });
     } else {
@@ -1871,28 +1412,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }
   async function saveEditItem() {
     if (!editForm) return;
-    if ((editForm.kind === 'atendimento' || editForm.kind === 'inspecao')
-      && (editForm.falha || '').trim() && !falhaClassificada(editForm.falhaSel)) {
-      setMsg('Selecione a falha na lista ou escolha uma categoria antes de salvar.'); return;
-    }
     setSavingEditItem(true);
     try {
-      // O alvo (dispositivo x bateria x fonte) é fixo na edição — só repassa dispositivoId quando o alvo é dispositivo.
-      const alvoDispositivo = (editForm.alvoKind || 'dispositivo') === 'dispositivo';
       if (editForm.kind === 'atendimento') {
-        await updateAtendimento(editForm.id, {
-          falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos,
-          ...(alvoDispositivo ? { dispositivoId: editForm.dispositivoId } : {}),
-          falhaCodigo: editForm.falhaSel?.codigo || null, falhaMarca: editForm.falhaSel?.marca || null, falhaCategoria: editForm.falhaSel?.categoria || null,
-        });
+        await updateAtendimento(editForm.id, { falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos, dispositivoId: editForm.dispositivoId });
       } else if (editForm.kind === 'inspecao') {
         await updateInspecao(editForm.id, {
           resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,
           comunicacaoLocal: editForm.comunicacaoLocal, comunicacaoRede: editForm.comunicacaoRede,
           observacoes: editForm.observacoes, falha: editForm.falha, proximaInspecao: editForm.proximaInspecao,
-          falhaCodigo: editForm.falhaSel?.codigo || null, falhaMarca: editForm.falhaSel?.marca || null, falhaCategoria: editForm.falhaSel?.categoria || null,
-          fotos: editForm.fotos,
-          ...(alvoDispositivo ? { dispositivoId: editForm.dispositivoId } : {}),
+          fotos: editForm.fotos, dispositivoId: editForm.dispositivoId,
         });
       } else if (editForm.kind === 'outro') {
         await updateOutroItem(editForm.rvtItemId, editForm.descricao, editForm.fotos, editForm.atividade, editForm.atividadeDados);
@@ -1928,25 +1457,21 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
   return (
     <div>
-      {!reportMode && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-          <button onClick={() => setSubAba('dispositivos')} style={tabBtnStyle(subAba === 'dispositivos')}>Visitas (SDAI)</button>
-          <button onClick={() => setSubAba('combate')} style={tabBtnStyle(subAba === 'combate')}>Visitas (Sistemas de Combate)</button>
-        </div>
-      )}
-      {!reportMode && subAba === 'combate' && (
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button onClick={() => setSubAba('dispositivos')} style={tabBtnStyle(subAba === 'dispositivos')}>Visitas (SDAI)</button>
+        <button onClick={() => setSubAba('combate')} style={tabBtnStyle(subAba === 'combate')}>Visitas (Sistemas de Combate)</button>
+      </div>
+      {subAba === 'combate' && (
         <div key="combate" className="fade-in-up">
           <VisitaCombateView data={data} clientId={clientId} canEdit={canEdit} onRefresh={onRefresh} />
         </div>
       )}
-      {(reportMode || subAba === 'dispositivos') && (
+      {subAba === 'dispositivos' && (
     <div key="dispositivos" className="fade-in-up">
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>{reportMode ? 'Relatórios de visita técnica' : 'Visitas técnicas'}</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Visitas técnicas</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          {reportMode
-            ? 'Consulte, visualize e imprima os relatórios das visitas técnicas realizadas.'
-            : 'Uma visita pode reunir manutenções, inspeções e outros itens (reuniões, ajustes).'}
+          Uma visita pode reunir manutenções, inspeções e outros itens (reuniões, ajustes).
         </p>
       </div>
 
@@ -1956,7 +1481,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         </div>
       )}
 
-            {!reportMode && (!visita ? (
+            {!visita ? (
         !agendarSDAIMode ? (
           <div key="start" className="fade-in-up" style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             <form onSubmit={iniciarVisita} style={{ ...cardStyle, maxWidth: 420, flex: '1 1 320px' }}>
@@ -2028,12 +1553,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
             <form key="manutencao" className="fade-in-up" onSubmit={submitAtendimento} style={{ ...cardStyle, marginBottom: 16 }}>
               <DeviceMultiSelect options={deviceOptions} selectedIds={atForm.dispositivoIds}
                 setSelectedIds={(next) => setAtForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
-              <FalhaSelect
-                label="Falha (deixe em branco para preventiva)"
-                marca={marcaDeDispositivos(atForm.dispositivoIds, deviceOptions)}
-                value={atForm.falhaSel}
-                onChange={(next) => setAtForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
-              />
+              <Field label="Falha (deixe em branco para preventiva)">
+                <textarea style={{ ...inputStyle, minHeight: 60 }} value={atForm.falha} onChange={(e) => setAtForm({ ...atForm, falha: e.target.value })} />
+              </Field>
               <Field label="Status">
                 <select style={inputStyle} value={atForm.status} onChange={(e) => setAtForm({ ...atForm, status: e.target.value })}>
                   <option value="aguardando">Aguardando</option>
@@ -2089,12 +1611,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               <Field label="Observações">
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.observacoes} onChange={(e) => setInspForm({ ...inspForm, observacoes: e.target.value })} />
               </Field>
-              <FalhaSelect
-                label="Falha (se preenchida, cria corretiva automática em todos os selecionados)"
-                marca={marcaDeDispositivos(inspForm.dispositivoIds, deviceOptions)}
-                value={inspForm.falhaSel}
-                onChange={(next) => setInspForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
-              />
+              <Field label="Falha (se preenchida, cria corretiva automática em todos os selecionados)">
+                <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.falha} onChange={(e) => setInspForm({ ...inspForm, falha: e.target.value })} />
+              </Field>
               <Field label="Próxima inspeção">
                 <input type="date" style={inputStyle} value={inspForm.proximaInspecao} onChange={(e) => setInspForm({ ...inspForm, proximaInspecao: e.target.value })} />
               </Field>
@@ -2133,12 +1652,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               {outroAtividade === 'diagnostico' && (
                 <>
                   <DeviceMultiSelect options={deviceOptions} selectedIds={outroDiagDispositivoIds} setSelectedIds={setOutroDiagDispositivoIds} />
-                  <FalhaSelect
-                    label="Falha encontrada"
-                    marca={marcaDeDispositivos(outroDiagDispositivoIds, deviceOptions)}
-                    value={outroDiagFalhaSel}
-                    onChange={(next) => { setOutroDiagFalhaSel(next); setOutroDiagFalha(falhaTexto(next)); }}
-                  />
+                  <Field label="Falha encontrada">
+                    <textarea style={{ ...inputStyle, minHeight: 60 }} value={outroDiagFalha} onChange={(e) => setOutroDiagFalha(e.target.value)} />
+                  </Field>
                   <Field label="Data de agendamento da manutenção">
                     <input type="date" style={inputStyle} value={outroDiagAgendamento} onChange={(e) => setOutroDiagAgendamento(e.target.value)} />
                   </Field>
@@ -2201,48 +1717,35 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
             </div>
           </div>
         </div>
-      ))}
+      )}
 
       <div style={{ marginTop: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-          <h3 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{reportMode ? 'Relatórios disponíveis' : 'Visitas anteriores'}</h3>
-          {reportMode && !loadingVisitas && (
-            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              {visitasFiltradas.length} {visitasFiltradas.length === 1 ? 'relatório' : 'relatórios'}
-            </span>
-          )}
-        </div>
+        <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Visitas anteriores</h3>
 
         <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-          {!reportMode && (
-            <>
-              <div style={{ minWidth: 160 }}>
-                <span style={labelStyle}>Técnico</span>
-                <input style={inputStyle} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} placeholder="Buscar técnico..." />
-              </div>
-              <div style={{ minWidth: 160 }}>
-                <span style={labelStyle}>Painel</span>
-                <select style={inputStyle} value={filtroPainelId} onChange={(e) => setFiltroPainelId(e.target.value)}>
-                  <option value="">Todos os painéis</option>
-                  {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-            </>
-          )}
+          <div style={{ minWidth: 160 }}>
+            <span style={labelStyle}>Técnico</span>
+            <input style={inputStyle} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} placeholder="Buscar técnico..." />
+          </div>
+          <div style={{ minWidth: 160 }}>
+            <span style={labelStyle}>Painel</span>
+            <select style={inputStyle} value={filtroPainelId} onChange={(e) => setFiltroPainelId(e.target.value)}>
+              <option value="">Todos os painéis</option>
+              {panelOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           <div style={{ minWidth: 140 }}>
-            <span style={labelStyle}>{reportMode ? 'De (data)' : 'De'}</span>
+            <span style={labelStyle}>De</span>
             <input type="date" style={inputStyle} value={filtroDataDe} onChange={(e) => setFiltroDataDe(e.target.value)} />
           </div>
           <div style={{ minWidth: 140 }}>
-            <span style={labelStyle}>{reportMode ? 'Até (data)' : 'Até'}</span>
+            <span style={labelStyle}>Até</span>
             <input type="date" style={inputStyle} value={filtroDataAte} onChange={(e) => setFiltroDataAte(e.target.value)} />
           </div>
         </div>
 
         <div style={{ ...cardStyle, marginBottom: 16 }}>
-          <span style={{ ...labelStyle, marginBottom: 8 }}>
-            {reportMode ? 'Baixar um período inteiro em PDF (relatórios agrupados por dia)' : 'Imprimir período (várias visitas de uma vez, agrupadas por dia)'}
-          </span>
+          <span style={{ ...labelStyle, marginBottom: 8 }}>Imprimir período (várias visitas de uma vez, agrupadas por dia)</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
             <div style={{ minWidth: 140 }}>
               <span style={labelStyle}>De</span>
@@ -2252,9 +1755,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               <span style={labelStyle}>Até</span>
               <input type="date" style={inputStyle} value={periodoAte} onChange={(e) => setPeriodoAte(e.target.value)} />
             </div>
-            <button type="button" onClick={imprimirPeriodo} className={reportMode ? 'rvt-report-cta' : undefined} style={btnStyle}>
-              {reportMode ? 'Gerar PDF do período' : 'Gerar impressão do período'}
-            </button>
+            <button type="button" onClick={imprimirPeriodo} style={btnStyle}>Gerar impressão do período</button>
           </div>
         </div>
 
@@ -2268,17 +1769,15 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
             ))}
           </div>
         )}
-        <div style={{ display: 'grid', gap: reportMode ? 12 : 18 }}>
-          {!loadingVisitas && diasVisitas.map((dia, idx) => (
-            <div key={dia} className={reportMode ? 'rvt-report-group' : undefined} style={reportMode ? { '--i': Math.min(idx, 6) } : undefined}>
-              {!reportMode && (
-                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  {formatDateBR(dia)}
-                </p>
-              )}
+        <div style={{ display: 'grid', gap: 18 }}>
+          {!loadingVisitas && diasVisitas.map((dia) => (
+            <div key={dia}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {formatDateBR(dia)}
+              </p>
               <div style={{ display: 'grid', gap: 10 }}>
                 {visitasFiltradas.filter((v) => v.data_visita === dia).map((v) => (
-                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit} deviceOptions={deviceOptions} reportMode={reportMode}
+                  <VisitaCard key={v.id} visita={v} panelOptions={panelOptions} canEdit={canEdit} deviceOptions={deviceOptions}
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
                     onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])} onReopen={reabrirVisita}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
@@ -2287,13 +1786,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               </div>
             </div>
           ))}
-          {!loadingVisitas && diasVisitas.length === 0 && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-              {reportMode
-                ? 'Nenhum relatório por aqui ainda. Assim que uma visita técnica for concluída, o relatório aparece nesta lista.'
-                : 'Nenhuma visita encontrada.'}
-            </p>
-          )}
+          {!loadingVisitas && diasVisitas.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhuma visita encontrada.</p>}
         </div>
       </div>
     </div>
