@@ -718,6 +718,7 @@ async function doSaveClientData(clienteId, data) {
     })),
     ...(data.redeDispositivos || []).map((r) => ({
       id: r.id, cliente_id: clienteId, laco_id: null, painel_id: r.panelId || null,
+      endereco: r.etiqueta || REDE_TIPOS[r.tipo] || 'Rede',
       etiqueta: r.etiqueta || null, descricao: r.description || null, modelo: r.modelo || null,
       tipo_modulo: r.tipo || 'rede_conversor',
       proxima_inspecao: r.nextMaintenance || null, ultima_manutencao: r.lastMaintenance || null,
