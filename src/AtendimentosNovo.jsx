@@ -8,7 +8,7 @@ import {
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
   salvarAssinaturaVisita,
 } from './supabaseAdapter';
-import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca } from './lib/falhasPorMarca';
+import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA } from './lib/falhasPorMarca';
 
 const ATIVIDADE_LABELS = {
   reuniao: 'Reunião',
@@ -494,6 +494,15 @@ function falhaTexto(v) {
   return v.detalhe || '';
 }
 
+/** Uma corretiva está "classificada" quando dá pra jogá-la numa categoria do card
+    "Falhas mais comuns": ou veio da lista catalogada (tem código, logo tem categoria),
+    ou o técnico escolheu uma categoria à mão no modo "Outro". Sem isso a corretiva
+    cai em "Não classificado" — o que essa trava evita na origem. */
+function falhaClassificada(sel) {
+  const v = sel || {};
+  return !!(v.codigo || v.categoria);
+}
+
 /** Reidrata o objeto do FalhaSelect a partir de um registro do banco
     (atendimento/inspeção de listVisitas). Registro legado sem código -> modo "Outro". */
 function falhaSelFromRecord(row) {
@@ -549,7 +558,10 @@ function FalhaSelect({ marca, value, onChange, label = 'Falha', hint }) {
     setQuery('');
   }
   function setDetalhe(texto) {
-    onChange({ codigo: '', categoria: '', marca: marcaNorm || '', detalhe: texto });
+    onChange({ codigo: '', categoria: v.categoria || '', marca: marcaNorm || '', detalhe: texto });
+  }
+  function setCategoria(cat) {
+    onChange({ codigo: '', categoria: cat, marca: marcaNorm || '', detalhe: v.detalhe || '' });
   }
 
   return (
@@ -569,6 +581,19 @@ function FalhaSelect({ marca, value, onChange, label = 'Falha', hint }) {
             value={v.detalhe || ''}
             onChange={(e) => setDetalhe(e.target.value)}
           />
+          {(v.detalhe || '').trim() && (
+            <div style={{ marginTop: 6 }}>
+              <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
+                Categoria da falha <span style={{ color: '#8B2F2F' }}>(obrigatória em corretiva)</span>
+              </label>
+              <select style={inputStyle} value={v.categoria || ''} onChange={(e) => setCategoria(e.target.value)}>
+                <option value="">Selecione a categoria...</option>
+                {Object.entries(CATEGORIAS_FALHA).map(([chave, rotulo]) => (
+                  <option key={chave} value={chave}>{rotulo}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {!marcaOk ? (
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
               Painel sem marca Hochiki/Notifier definida (ou dispositivos de marcas diferentes) — descreva a falha livremente.
@@ -1538,6 +1563,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   async function submitAtendimento(e) {
     e.preventDefault();
     if (atForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
+    if (atForm.falha.trim() && !falhaClassificada(atForm.falhaSel)) {
+      setMsg('Selecione a falha na lista ou escolha uma categoria antes de salvar a corretiva.'); return;
+    }
     setSavingAtendimento(true);
     try {
       const novosItens = [];
@@ -1576,6 +1604,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   async function submitInspecao(e) {
     e.preventDefault();
     if (inspForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
+    if (inspForm.falha.trim() && !falhaClassificada(inspForm.falhaSel)) {
+      setMsg('A falha vai gerar corretiva — selecione-a na lista ou escolha uma categoria antes de salvar.'); return;
+    }
     setSavingInspecao(true);
     try {
       const novosItens = [];
@@ -1642,6 +1673,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       if (outroAtividade === 'diagnostico') {
         if (outroDiagDispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo pro diagnóstico.'); return; }
         if (!outroDiagFalha.trim()) { setMsg('Descreva a falha encontrada no diagnóstico.'); return; }
+        if (!falhaClassificada(outroDiagFalhaSel)) { setMsg('Selecione a falha na lista ou escolha uma categoria — o diagnóstico gera corretiva.'); return; }
         const labels = outroDiagDispositivoIds.map((id) => deviceOptions.find((o) => o.id === id)?.label || '');
         const criados = await createDiagnosticoOutro({
           rvtId: visita.id, tecnico: visita.tecnico, dispositivoIds: outroDiagDispositivoIds,
@@ -1770,6 +1802,10 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }
   async function saveEditItem() {
     if (!editForm) return;
+    if ((editForm.kind === 'atendimento' || editForm.kind === 'inspecao')
+      && (editForm.falha || '').trim() && !falhaClassificada(editForm.falhaSel)) {
+      setMsg('Selecione a falha na lista ou escolha uma categoria antes de salvar.'); return;
+    }
     setSavingEditItem(true);
     try {
       if (editForm.kind === 'atendimento') {

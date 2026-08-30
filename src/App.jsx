@@ -3606,12 +3606,16 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
   ].filter((d) => d.value > 0);
 
   // Gráfico "Falhas mais comuns" agrupa pela categoria unificada (falha_categoria),
-  // não pelo texto livre. Registros antigos/sem código caem em "Não classificado".
+  // não pelo texto livre. Corretivas antigas/sem categoria caem em "Não classificado"
+  // (o script backfill_falha_categoria.sql drena esse balde). As corretivas de item
+  // não cadastrado não têm dispositivo/categoria por natureza — vão pra um rótulo
+  // próprio, "Item não cadastrado", pra não inflar o "Não classificado".
   // Categoria "diagnostico" (desabilitação/teste — não é defeito) fica fora.
   const rotuloDiagnostico = rotuloCategoria(CATEGORIA_DIAGNOSTICO);
+  const ROTULO_ITEM_NAO_CADASTRADO = 'Item não cadastrado';
   const falhaCategoriaLinhas = [
     ...corretivas.map((r) => ({ cat: rotuloCategoria(r.falhaCategoria) })),
-    ...semCadastroCorretivaItems.map(() => ({ cat: rotuloCategoria('') })),
+    ...semCadastroCorretivaItems.map(() => ({ cat: ROTULO_ITEM_NAO_CADASTRADO })),
   ].filter((r) => r.cat !== rotuloDiagnostico);
   const falhaData = sortDesc(countBy(falhaCategoriaLinhas, (r) => r.cat, 'Não classificado')).slice(0, 10);
 
