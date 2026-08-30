@@ -1111,10 +1111,18 @@ function VisitaPrintView({ visitas, client, onBack }) {
     "Outro → Manutenção de item não cadastrado". Cria uma corretiva real contra o
     equipamento escolhido (dispositivo / Bateria de Painel / Fonte Auxiliar), com a
     data da visita, e some com o item "Outro". */
+function categoriaSugerida(texto) {
+  const t = (texto || '').toLowerCase();
+  if (/bateria|nobreak|no-break|fonte/.test(t)) return 'alimentacao';
+  if (/conversor|fibra|rede|switch|placa de rede/.test(t)) return 'rede_paineis';
+  return '';
+}
+
 function ConverterParaManutencao({ editForm, dados, onConvert, deviceOptions, saving }) {
+  const textoBase = dados.nomeItem || editForm.descricao || '';
   const [alvo, setAlvo] = useState('');
-  const [falha, setFalha] = useState(dados.nomeItem || editForm.descricao || '');
-  const [categoria, setCategoria] = useState('');
+  const [falha, setFalha] = useState(textoBase);
+  const [categoria, setCategoria] = useState(() => categoriaSugerida(textoBase));
   const bloqueado = saving || !alvo || !categoria;
   return (
     <div style={{ marginTop: 10, padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)' }}>
