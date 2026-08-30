@@ -6,7 +6,8 @@ import {
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
-  salvarAssinaturaVisita,
+  salvarAssinaturaVisita, listAssinaturaAuditoria,
+  getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
 } from './supabaseAdapter';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA } from './lib/falhasPorMarca';
 
@@ -815,13 +816,24 @@ function formatDateTimeBR(iso) {
 }
 
 /** Campo de assinatura de aprovação do cliente para 1 visita (rvt).
-    Dois modos alternáveis: desenho no canvas (mouse + touch) ou nome digitado.
+    Modos: desenho no canvas (mouse + touch), nome digitado, ou reutilizar a
+    "assinatura salva" do usuário logado (pra não redesenhar toda visita).
     O formulário de captura fica fora da impressão (no-print); depois de confirmada,
-    a assinatura é exibida somente-leitura e entra na impressão. */
+    a assinatura + trilha de auditoria são exibidas somente-leitura e entram na impressão.
+
+    Auditoria: a atribuição (login/uid/data) e o log append-only são gravados por
+    trigger no Postgres (`assinatura_auditoria`) usando auth.uid()/auth.jwt() —
+    não dá pra forjar pelo app. */
 function SignatureField({ visita }) {
   const [confirmada, setConfirmada] = useState(
     visita?.assinatura_cliente
-      ? { tipo: visita.assinatura_cliente_tipo || 'texto', valor: visita.assinatura_cliente, data: visita.assinatura_cliente_data }
+      ? {
+          tipo: visita.assinatura_cliente_tipo || 'texto',
+          valor: visita.assinatura_cliente,
+          data: visita.assinatura_cliente_data,
+          login: visita.assinatura_cliente_login || null,
+          origem: visita.assinatura_cliente_origem || visita.assinatura_cliente_tipo || null,
+        }
       : null,
   );
   const [modo, setModo] = useState('desenho'); // 'desenho' | 'texto'
@@ -829,8 +841,25 @@ function SignatureField({ visita }) {
   const [temTraco, setTemTraco] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const [salva, setSalva] = useState(null);        // assinatura salva do usuário
+  const [guardar, setGuardar] = useState(true);    // salvar esta assinatura p/ reutilizar
+  const [auditoria, setAuditoria] = useState([]);
+  const [verAuditoria, setVerAuditoria] = useState(false);
   const canvasRef = useRef(null);
   const desenhandoRef = useRef(false);
+
+  useEffect(() => {
+    let vivo = true;
+    getAssinaturaSalva().then((s) => { if (vivo) setSalva(s); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!confirmada || !visita?.id) return;
+    let vivo = true;
+    listAssinaturaAuditoria(visita.id).then((a) => { if (vivo) setAuditoria(a); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [confirmada, visita?.id]);
 
   const pontoNoCanvas = (e) => {
     const canvas = canvasRef.current;
@@ -871,27 +900,48 @@ function SignatureField({ visita }) {
     setTemTraco(false);
   };
 
-  const confirmar = async () => {
+  const gravar = async ({ tipo, valor, origem }) => {
     setErro('');
-    const tipo = modo === 'desenho' ? 'desenho' : 'texto';
-    let valor;
-    if (tipo === 'desenho') {
-      if (!temTraco) { setErro('Desenhe a assinatura antes de confirmar.'); return; }
-      valor = canvasRef.current.toDataURL('image/png');
-    } else {
-      if (!nome.trim()) { setErro('Digite o nome completo antes de confirmar.'); return; }
-      valor = nome.trim();
-    }
     setSalvando(true);
     try {
-      await salvarAssinaturaVisita(visita.id, { tipo, valor });
-      setConfirmada({ tipo, valor, data: new Date().toISOString() });
-    } catch {
-      setErro('Não foi possível salvar a assinatura. Tente novamente.');
+      const res = await salvarAssinaturaVisita(visita.id, { tipo, valor, origem });
+      setConfirmada({ tipo, valor, data: res.data, login: res.login, origem: res.origem });
+      if (guardar && origem !== 'salva') {
+        try { await salvarAssinaturaSalva({ tipo, valor }); setSalva({ tipo, valor }); } catch { /* não bloqueia a visita */ }
+      }
+    } catch (e) {
+      setErro(e?.message || 'Não foi possível salvar a assinatura. Tente novamente.');
     } finally {
       setSalvando(false);
     }
   };
+
+  const confirmar = () => {
+    setErro('');
+    const tipo = modo === 'desenho' ? 'desenho' : 'texto';
+    if (tipo === 'desenho') {
+      if (!temTraco) { setErro('Desenhe a assinatura antes de confirmar.'); return; }
+      gravar({ tipo, valor: canvasRef.current.toDataURL('image/png'), origem: 'desenho' });
+    } else {
+      if (!nome.trim()) { setErro('Digite o nome completo antes de confirmar.'); return; }
+      gravar({ tipo, valor: nome.trim(), origem: 'texto' });
+    }
+  };
+
+  const usarSalva = () => {
+    if (!salva || salvando) return;
+    gravar({ tipo: salva.tipo, valor: salva.valor, origem: 'salva' });
+  };
+
+  const removerSalva = async () => {
+    try { await apagarAssinaturaSalva(); setSalva(null); } catch { /* ignora */ }
+  };
+
+  const origemLabel = (o) => (
+    o === 'salva' ? 'assinatura salva do usuário'
+      : o === 'texto' ? 'nome digitado no dispositivo'
+        : 'desenho no dispositivo'
+  );
 
   if (confirmada) {
     return (
@@ -911,6 +961,40 @@ function SignatureField({ visita }) {
         <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
           Confirmada em {formatDateTimeBR(confirmada.data)}
         </p>
+        {confirmada.login && (
+          <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            Assinada pelo login <strong>{confirmada.login}</strong>
+            {confirmada.origem ? ` · ${origemLabel(confirmada.origem)}` : ''}
+          </p>
+        )}
+
+        {auditoria.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setVerAuditoria((v) => !v)}
+              className="no-print"
+              style={{ ...smallBtnStyle, fontSize: 11 }}
+            >
+              {verAuditoria ? 'Ocultar' : 'Ver'} trilha de auditoria ({auditoria.length})
+            </button>
+            <div className={verAuditoria ? '' : 'no-print'} style={{ marginTop: 6, display: verAuditoria ? 'block' : undefined }}>
+              <RvtFieldLabelLocal>Trilha de auditoria da assinatura</RvtFieldLabelLocal>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0', fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                {auditoria.map((ev) => (
+                  <li key={ev.id} style={{ padding: '3px 0', borderTop: '1px solid var(--border)', wordBreak: 'break-word' }}>
+                    <strong>{formatDateTimeBR(ev.criado_em)}</strong> — {ev.evento}
+                    {' · '}login <strong>{ev.assinado_por_email || '—'}</strong>
+                    {' · '}{origemLabel(ev.assinatura_origem)}
+                    {ev.assinatura_hash ? (
+                      <><br /><span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>verificação SHA-256: {ev.assinatura_hash.slice(0, 24)}…</span></>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -918,6 +1002,26 @@ function SignatureField({ visita }) {
   return (
     <div className="rvt-summary-card rounded-lg p-4 no-print" style={{ background: 'var(--surface-raised)' }}>
       <RvtFieldLabelLocal>Assinatura do cliente — aprovação do serviço</RvtFieldLabelLocal>
+
+      {salva && (
+        <div style={{ margin: '8px 0 12px', padding: 10, borderRadius: 8, border: '1px dashed var(--border)', background: 'var(--surface)' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-primary)', margin: 0 }}>
+            Você tem uma assinatura salva neste login.
+          </p>
+          {salva.tipo === 'desenho' ? (
+            <img src={salva.valor} alt="Assinatura salva" style={{ display: 'block', width: '100%', maxWidth: 240, height: 'auto', background: '#fff', borderRadius: 6, border: '1px solid var(--border)', margin: '6px 0' }} />
+          ) : (
+            <p style={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive', fontSize: 22, color: 'var(--text-primary)', margin: '4px 0' }}>{salva.valor}</p>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+            <button type="button" onClick={usarSalva} disabled={salvando} style={{ ...btnStyle, padding: '7px 16px', opacity: salvando ? 0.7 : 1 }}>
+              {salvando ? 'Salvando...' : 'Usar assinatura salva'}
+            </button>
+            <button type="button" onClick={removerSalva} style={smallBtnStyle}>Remover salva</button>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, margin: '6px 0 10px', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => { setModo('desenho'); setErro(''); }} style={tabBtnStyle(modo === 'desenho')}>Desenhar</button>
         <button type="button" onClick={() => { setModo('texto'); setErro(''); }} style={tabBtnStyle(modo === 'texto')}>Digitar nome</button>
@@ -951,6 +1055,11 @@ function SignatureField({ visita }) {
       )}
 
       {erro && <p style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 8 }}>{erro}</p>}
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={guardar} onChange={(e) => setGuardar(e.target.checked)} />
+        {salva ? 'Atualizar minha assinatura salva com esta' : 'Salvar esta assinatura neste login para reutilizar'}
+      </label>
 
       <div style={{ marginTop: 10 }}>
         <button type="button" onClick={confirmar} disabled={salvando} style={{ ...btnStyle, opacity: salvando ? 0.7 : 1 }}>

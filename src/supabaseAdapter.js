@@ -434,6 +434,7 @@ export async function listVisitas(clienteId) {
     .select(`
       id, data_visita, tecnico, painel_id,
       assinatura_cliente, assinatura_cliente_tipo, assinatura_cliente_data,
+      assinatura_cliente_login, assinatura_cliente_user_id, assinatura_cliente_origem,
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
         atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ) ),
@@ -1012,13 +1013,76 @@ export async function updateOutroItem(rvtItemId, descricao, fotos, atividade, at
 }
 
 /** Assinatura de aprovação do cliente para 1 registro de visita (rvt).
-    `tipo` = 'desenho' (valor = base64 PNG) ou 'texto' (valor = nome digitado). */
-export async function salvarAssinaturaVisita(rvtId, { tipo, valor }) {
-  const { error } = await supabase.from('rvts').update({
+    `tipo` = 'desenho' (valor = base64 PNG) ou 'texto' (valor = nome digitado).
+    `origem` = 'desenho' | 'texto' | 'salva' (assinatura reaproveitada do usuário).
+
+    A ATRIBUIÇÃO (login/uid/data) e a trilha de auditoria são gravadas por trigger
+    no Postgres (`log_assinatura_rvt` → tabela append-only `assinatura_auditoria`),
+    usando `auth.uid()`/`auth.jwt()` do servidor — o app não consegue forjar.
+    A checagem de sessão aqui é só p/ dar mensagem melhor antes de tentar. */
+export async function salvarAssinaturaVisita(rvtId, { tipo, valor, origem }) {
+  let login = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    login = data?.user?.email ?? null;
+  } catch { /* sessão indisponível */ }
+  if (!login) throw new Error('Sessão expirada. Faça login novamente para assinar.');
+  const { data, error } = await supabase.from('rvts').update({
     assinatura_cliente: valor,
     assinatura_cliente_tipo: tipo,
-    assinatura_cliente_data: new Date().toISOString(),
-  }).eq('id', rvtId);
+    assinatura_cliente_origem: origem || tipo,
+  }).eq('id', rvtId)
+    .select('assinatura_cliente_login, assinatura_cliente_data, assinatura_cliente_origem')
+    .single();
+  if (error) throw error;
+  return {
+    login: data?.assinatura_cliente_login || login,
+    data: data?.assinatura_cliente_data || new Date().toISOString(),
+    origem: data?.assinatura_cliente_origem || origem || tipo,
+  };
+}
+
+/** Trilha de auditoria (append-only) de uma assinatura de RVT. */
+export async function listAssinaturaAuditoria(rvtId) {
+  const { data, error } = await supabase
+    .from('assinatura_auditoria')
+    .select('id, evento, assinatura_tipo, assinatura_origem, assinatura_hash, assinado_por_email, criado_em')
+    .eq('rvt_id', rvtId)
+    .order('criado_em', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+/** Assinatura salva do usuário logado — pra não redesenhar toda vez.
+    RLS garante que cada um só enxerga/edita a própria linha. */
+export async function getAssinaturaSalva() {
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u?.user?.id;
+  if (!uid) return null;
+  const { data, error } = await supabase
+    .from('assinaturas_salvas')
+    .select('tipo, valor, atualizado_em')
+    .eq('user_id', uid)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function salvarAssinaturaSalva({ tipo, valor }) {
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u?.user?.id;
+  if (!uid) throw new Error('Sessão expirada. Faça login novamente.');
+  const { error } = await supabase.from('assinaturas_salvas').upsert({
+    user_id: uid, tipo, valor, atualizado_em: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function apagarAssinaturaSalva() {
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u?.user?.id;
+  if (!uid) return;
+  const { error } = await supabase.from('assinaturas_salvas').delete().eq('user_id', uid);
   if (error) throw error;
 }
 
