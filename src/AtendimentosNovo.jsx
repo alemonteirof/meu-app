@@ -1884,7 +1884,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     const raw = (v.rvt_itens || []).find((it) => it.id === item.id);
     if (!raw) return;
     if (raw.outro_descricao || raw.outro_atividade) {
-      setEditForm({ kind: 'outro', rvtItemId: raw.id, descricao: raw.outro_descricao || '', fotos: raw.outro_fotos || [],
+      setEditForm({ kind: 'outro', rvtItemId: raw.id, rvtId: v.id, descricao: raw.outro_descricao || '', fotos: raw.outro_fotos || [],
         atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {},
         visitaData: v.data_visita, visitaTecnico: v.tecnico || '' });
     } else if (raw.atendimentos) {
@@ -1957,7 +1957,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     try {
       const dados = editForm.atividadeDados || {};
       await converterOutroParaAtendimento({
-        rvtItemId: editForm.rvtItemId, dataRegistro: editForm.visitaData,
+        rvtId: editForm.rvtId, rvtItemId: editForm.rvtItemId, dataRegistro: editForm.visitaData,
         alvo: decodeAlvo(alvoOptionId), clienteId: clientId,
         falha: (falha || dados.nomeItem || editForm.descricao || '').trim(),
         falhaCategoria,

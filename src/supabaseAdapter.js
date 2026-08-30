@@ -308,22 +308,20 @@ export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteA
 }
 
 /** Converte um item de visita "Outro → Manutenção de item não cadastrado" numa Corretiva
-    de verdade contra um alvo (dispositivo / Bateria de Painel / Fonte Auxiliar), SEM criar
-    um novo item de visita — religa o mesmo rvt_itens ao atendimento novo e limpa os campos
-    "outro". A data do atendimento fica a da visita (dataRegistro). */
-export async function converterOutroParaAtendimento({ rvtItemId, dataRegistro, alvo, clienteId, falha, falhaCategoria, status, descritivo, fotos, tecnico }) {
+    de verdade contra um alvo (dispositivo / Bateria de Painel / Fonte Auxiliar).
+    Cria um item de visita novo já vinculado ao atendimento (data = a da visita) e apaga
+    o item "Outro" antigo. Se o delete falhar, sobra um item duplicado — nunca um
+    atendimento órfão. */
+export async function converterOutroParaAtendimento({ rvtId, rvtItemId, dataRegistro, alvo, clienteId, falha, falhaCategoria, status, descritivo, fotos, tecnico }) {
   const at = await createAtendimento({
     dispositivoId: alvo.kind === 'dispositivo' ? alvo.id : null,
     bateriaPainelId: alvo.kind === 'bateria_painel' ? alvo.id : null,
     fonteAuxiliarId: alvo.kind === 'fonte_auxiliar' ? alvo.id : null,
     clienteId, falha: falha || null, falhaCategoria: falhaCategoria || null,
     status: status || 'aguardando', descritivo: descritivo || null, fotos: fotos || [],
-    tecnico: tecnico || null, dataRegistro,
+    tecnico: tecnico || null, dataRegistro, rvtId,
   });
-  const { error } = await supabase.from('rvt_itens').update({
-    atendimento_id: at.id,
-    outro_descricao: null, outro_atividade: null, outro_atividade_dados: null, outro_fotos: [],
-  }).eq('id', rvtItemId);
+  const { error } = await supabase.from('rvt_itens').delete().eq('id', rvtItemId);
   if (error) throw error;
   return at;
 }
