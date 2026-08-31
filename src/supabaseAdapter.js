@@ -1,4 +1,5 @@
 ﻿import { supabase } from './supabaseClient';
+import { escopoDaFalha } from './lib/falhasPorMarca';
 
 function legacyKey(clienteId) {
   return `pci-dados-cliente-${clienteId}`;
@@ -269,6 +270,7 @@ export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId,
       dispositivoId: alvo.kind === 'dispositivo' ? alvo.id : null,
       bateriaPainelId: alvo.kind === 'bateria_painel' ? alvo.id : null,
       fonteAuxiliarId: alvo.kind === 'fonte_auxiliar' ? alvo.id : null,
+      painelId: alvo.kind === 'painel' ? alvo.id : null,
       clienteId,
       falha, falhaCodigo, falhaMarca, falhaCategoria, status: 'aguardando', tecnico, rvtId, fotos,
       dataAgendamento, descritivo: 'Corretiva gerada a partir de Diagnóstico em visita',
@@ -282,13 +284,15 @@ export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId,
   return atendimentosGerados;
 }
 
-export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento, dataRegistro }) {
-  const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId });
+export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteAuxiliarId, painelId, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento, dataRegistro }) {
+  const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId, painelId });
   const hoje = new Date().toISOString().slice(0, 10);
   const { data, error } = await supabase.from('atendimentos').insert({
     dispositivo_id: dispositivoId || null, bateria_painel_id: bateriaPainelId || null, fonte_auxiliar_id: fonteAuxiliarId || null,
+    painel_id: painelId || null,
     cliente_id: clienteIdFinal, falha: falha || null, status: status || 'aguardando',
     falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null, falha_categoria: falhaCategoria || null,
+    falha_escopo: escopoDaFalha(falhaCodigo) || null,
     tecnico: tecnico || null, descritivo: descritivo || null, origem_inspecao_id: origemInspecaoId || null,
     fotos: fotos || [], data_agendamento: dataAgendamento || null,
     ...(dataRegistro ? { data_registro: dataRegistro } : {}),
@@ -317,6 +321,7 @@ export async function converterOutroParaAtendimento({ rvtId, rvtItemId, dataRegi
     dispositivoId: alvo.kind === 'dispositivo' ? alvo.id : null,
     bateriaPainelId: alvo.kind === 'bateria_painel' ? alvo.id : null,
     fonteAuxiliarId: alvo.kind === 'fonte_auxiliar' ? alvo.id : null,
+    painelId: alvo.kind === 'painel' ? alvo.id : null,
     clienteId, falha: falha || null, falhaCategoria: falhaCategoria || null,
     status: status || 'aguardando', descritivo: descritivo || null, fotos: fotos || [],
     tecnico: tecnico || null, dataRegistro, rvtId,
@@ -326,8 +331,8 @@ export async function converterOutroParaAtendimento({ rvtId, rvtItemId, dataRegi
   return at;
 }
 
-/** cliente_id p/ atendimentos/inspecoes: usa o passado; senão deriva do alvo (dispositivo/bateria/fonte). */
-async function resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId }) {
+/** cliente_id p/ atendimentos/inspecoes: usa o passado; senão deriva do alvo (dispositivo/bateria/fonte/painel). */
+async function resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId, painelId }) {
   if (clienteId) return clienteId;
   const alvo = dispositivoId
     ? { tabela: 'dispositivos', id: dispositivoId }
@@ -335,7 +340,9 @@ async function resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fon
       ? { tabela: 'baterias_painel', id: bateriaPainelId }
       : fonteAuxiliarId
         ? { tabela: 'fontes_auxiliares', id: fonteAuxiliarId }
-        : null;
+        : painelId
+          ? { tabela: 'paineis', id: painelId }
+          : null;
   if (!alvo) return null;
   const { data } = await supabase.from(alvo.tabela).select('cliente_id').eq('id', alvo.id).single();
   return data?.cliente_id || null;
@@ -367,7 +374,8 @@ export async function createInspecao({
     aparencia: aparencia || null, comunicacao_local: comunicacaoLocal || null,
     comunicacao_rede: comunicacaoRede || null, observacoes: observacoes || null,
     falha: falha || null, falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null,
-    falha_categoria: falhaCategoria || null, metodo: metodo || null, data_inspecao: dataFinal,
+    falha_categoria: falhaCategoria || null, falha_escopo: escopoDaFalha(falhaCodigo) || null,
+    metodo: metodo || null, data_inspecao: dataFinal,
     proxima_inspecao: proximaInspecao || null, fotos: fotos || [],
   }).select().single();
   if (error) throw error;
@@ -406,7 +414,7 @@ export async function createInspecao({
 
 // Escopo por `atendimentos.cliente_id` (coluna denormalizada) — não mais pelo INNER JOIN
 // com dispositivos, pra que atendimentos de Bateria/Fonte (dispositivo_id nulo) também voltem.
-const ATENDIMENTO_EMBEDS = 'dispositivos(id, etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome)), baterias_painel(id, paineis(nome)), fontes_auxiliares(id, nome), rvt_itens(rvt_id)';
+const ATENDIMENTO_EMBEDS = 'dispositivos(id, etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome)), baterias_painel(id, paineis(nome)), fontes_auxiliares(id, nome), paineis(id, nome), rvt_itens(rvt_id)';
 
 export async function listAtendimentos(clienteId) {
   const { data, error } = await supabase
@@ -437,8 +445,8 @@ export async function listVisitas(clienteId) {
       assinatura_cliente_login, assinatura_cliente_user_id, assinatura_cliente_origem,
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
-        atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ) ),
-        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ) )
+        atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
+        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) )
       )
     `)
     .eq('cliente_id', clienteId)
@@ -607,6 +615,13 @@ export async function loadClientData(clienteId) {
         deviceId: r.fonte_auxiliar_id, categoria: 'fonteAuxiliar',
         etiqueta: `Fonte Auxiliar${r.fontes_auxiliares.nome ? ` — ${r.fontes_auxiliares.nome}` : ''}`,
         endereco: '', laco: '', painel: '', equipamento: '',
+      };
+    }
+    if (r.painel_id && r.paineis) {
+      return {
+        deviceId: null, categoria: 'painel',
+        etiqueta: `Painel${r.paineis.nome ? ` — ${r.paineis.nome}` : ''}`,
+        endereco: '', laco: '', painel: r.paineis.nome || '', equipamento: '',
       };
     }
     return { deviceId: r.dispositivo_id || null, categoria: 'devices', etiqueta: '', endereco: '', laco: '', painel: '', equipamento: '' };
@@ -958,7 +973,7 @@ async function doSaveClientData(clienteId, data) {
 export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, falhaCategoria, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
   const patch = {};
   if (falha !== undefined) patch.falha = falha || null;
-  if (falhaCodigo !== undefined) patch.falha_codigo = falhaCodigo || null;
+  if (falhaCodigo !== undefined) { patch.falha_codigo = falhaCodigo || null; patch.falha_escopo = escopoDaFalha(falhaCodigo) || null; }
   if (falhaMarca !== undefined) patch.falha_marca = falhaMarca || null;
   if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (status !== undefined) patch.status = status;
@@ -985,7 +1000,7 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
   if (comunicacaoRede !== undefined) patch.comunicacao_rede = comunicacaoRede || null;
   if (observacoes !== undefined) patch.observacoes = observacoes || null;
   if (falha !== undefined) patch.falha = falha || null;
-  if (falhaCodigo !== undefined) patch.falha_codigo = falhaCodigo || null;
+  if (falhaCodigo !== undefined) { patch.falha_codigo = falhaCodigo || null; patch.falha_escopo = escopoDaFalha(falhaCodigo) || null; }
   if (falhaMarca !== undefined) patch.falha_marca = falhaMarca || null;
   if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (metodo !== undefined) patch.metodo = metodo || null;

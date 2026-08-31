@@ -26,6 +26,16 @@ export const CATEGORIAS_FALHA = {
 export const CATEGORIA_DIAGNOSTICO = 'diagnostico';
 export const ROTULO_NAO_CLASSIFICADO = 'Não classificado';
 
+// Segundo eixo, ortogonal à categoria (doc instrucoes-escopo-falha-e-painel-selecionavel.md):
+// a falha é do PAINEL em si (energia CA, rede entre painéis, watchdog, terra, laço/NAC) ou
+// de um DISPOSITIVO endereçável específico (detector sujo, endereço duplicado). Derivado
+// automaticamente do código no momento de salvar — nunca escolhido à mão. Trava a lista do
+// FalhaSelect quando o item da visita é o próprio painel.
+export const ESCOPO_FALHA = {
+  painel: 'Painel',
+  dispositivo: 'Dispositivo',
+};
+
 // ---- Hochiki (protocolo FireNET/ESP — tabela de eventos 0–73) ----
 export const FALHAS_HOCHIKI = [
   // Tier 1 — mais comuns
@@ -197,6 +207,20 @@ export const FALHAS_NOTIFIER = [
   { codigo: 'NOT-72', en: 'Drill activated', pt: 'Simulado (drill) ativado', categoria: 'diagnostico' },
 ];
 
+// Escopo por código. Regra: tudo é 'painel' por padrão; só a lista abaixo (falhas de um
+// endereço específico no laço) é 'dispositivo'. Itens de baixa confiança do doc (HOC-36/37,
+// NOT-24/41/58/59/60) ficam no default indicado lá. Mantido como Set + pós-processamento
+// pra não poluir os literais das listas acima e facilitar auditoria.
+const ESCOPO_DISPOSITIVO_HOCHIKI = new Set([
+  'HOC-02', 'HOC-05', 'HOC-06', 'HOC-08', 'HOC-09', 'HOC-10', 'HOC-11',
+  'HOC-28', 'HOC-29', 'HOC-30', 'HOC-31', 'HOC-56', 'HOC-72', 'HOC-73',
+]);
+const ESCOPO_DISPOSITIVO_NOTIFIER = new Set([
+  'NOT-08', 'NOT-09', 'NOT-24', 'NOT-25', 'NOT-31', 'NOT-40', 'NOT-44', 'NOT-45', 'NOT-58', 'NOT-71',
+]);
+FALHAS_HOCHIKI.forEach((f) => { f.escopo = ESCOPO_DISPOSITIVO_HOCHIKI.has(f.codigo) ? 'dispositivo' : 'painel'; });
+FALHAS_NOTIFIER.forEach((f) => { f.escopo = ESCOPO_DISPOSITIVO_NOTIFIER.has(f.codigo) ? 'dispositivo' : 'painel'; });
+
 /** Normaliza o valor gravado em paineis.marca. Aceita variações do texto antigo
     "Marca / Modelo" (ex.: "Hochiki FireNET", "Notifier Onyx"). Retorna
     'hochiki' | 'notifier' | '' (desconhecida). */
@@ -228,4 +252,11 @@ export function getFalhaPorCodigo(codigo) {
 /** Rótulo PT de uma categoria; cai em "Não classificado" para chave vazia/desconhecida. */
 export function rotuloCategoria(chave) {
   return CATEGORIAS_FALHA[chave] || ROTULO_NAO_CLASSIFICADO;
+}
+
+/** Escopo ('painel' | 'dispositivo') de uma falha pelo código; '' se não catalogada
+    (texto livre no modo "Outro" não tem código, logo não tem escopo derivável). */
+export function escopoDaFalha(codigo) {
+  const f = getFalhaPorCodigo(codigo);
+  return f ? f.escopo : '';
 }

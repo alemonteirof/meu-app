@@ -11,6 +11,10 @@ import {
 } from './supabaseAdapter';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA } from './lib/falhasPorMarca';
 
+/** Prefixo do id de opção sintética "o painel em si" no seletor de itens de visita
+    (mesma ideia de bp:/fa:). Só corretiva/manutenção — inspeção de painel fica fora. */
+const PAINEL_OPT_PREFIX = 'pn:';
+
 const ATIVIDADE_LABELS = {
   reuniao: 'Reunião',
   preparacao: 'Preparação',
@@ -146,6 +150,18 @@ function papelSinalLabelAt(papel) {
 
 function buildDeviceOptions(data) {
   const options = [];
+  // "O painel em si" como item selecionável — 1 opção sintética por painel, id previsível
+  // (pn:<painelId>), sem ser linha de `dispositivos`. Fica no topo do grupo do próprio painel
+  // (loopName null -> bucket "Sem laço"). Usada só em Manutenção/Corretiva.
+  (data.panels || []).forEach((p) => {
+    options.push({
+      id: `${PAINEL_OPT_PREFIX}${p.id}`,
+      label: `Painel (falha geral do sistema) — ${p.name}`,
+      type: 'painel', kind: 'painel', painelSintetico: true,
+      panelId: p.id, panelName: p.name, panelMarca: p.marca || '',
+      loopId: null, loopName: null,
+    });
+  });
   (data.devices || []).forEach((d) => {
     const loop = (data.loops || []).find((l) => l.id === d.loopId);
     const panel = loop && (data.panels || []).find((p) => p.id === loop.panelId);
@@ -222,17 +238,31 @@ function buildDeviceOptions(data) {
 function decodeAlvo(optionId) {
   if (typeof optionId === 'string' && optionId.startsWith('bp:')) return { kind: 'bateria_painel', id: optionId.slice(3) };
   if (typeof optionId === 'string' && optionId.startsWith('fa:')) return { kind: 'fonte_auxiliar', id: optionId.slice(3) };
+  if (typeof optionId === 'string' && optionId.startsWith(PAINEL_OPT_PREFIX)) return { kind: 'painel', id: optionId.slice(PAINEL_OPT_PREFIX.length) };
   return { kind: 'dispositivo', id: optionId };
 }
 
-/** { dispositivoId, bateriaPainelId, fonteAuxiliarId } a partir do id de opção. */
+/** { dispositivoId, bateriaPainelId, fonteAuxiliarId, painelId } a partir do id de opção. */
 function idsPorAlvo(optionId) {
   const a = decodeAlvo(optionId);
   return {
     dispositivoId: a.kind === 'dispositivo' ? a.id : null,
     bateriaPainelId: a.kind === 'bateria_painel' ? a.id : null,
     fonteAuxiliarId: a.kind === 'fonte_auxiliar' ? a.id : null,
+    painelId: a.kind === 'painel' ? a.id : null,
   };
+}
+
+/** Escopo de falha ('painel' | 'dispositivo' | '') implícito na seleção do seletor de itens:
+    'painel' se TODOS os ids selecionados são a opção sintética de painel; 'dispositivo' se
+    NENHUM é; '' (lista completa) se a seleção mistura os dois. */
+function escopoDaSelecao(ids) {
+  const lista = ids || [];
+  if (lista.length === 0) return '';
+  const nPainel = lista.filter((id) => typeof id === 'string' && id.startsWith(PAINEL_OPT_PREFIX)).length;
+  if (nPainel === lista.length) return 'painel';
+  if (nPainel === 0) return 'dispositivo';
+  return '';
 }
 
 /** Lista unificada de itens de Combate a Incêndio pra vistoria em massa: sub-itens dos
@@ -574,6 +604,9 @@ function alvoDeRegistro(r) {
   if (r?.fonte_auxiliar_id) {
     return { alvoKind: 'fonte_auxiliar', alvoLabel: `Fonte Auxiliar${r.fontes_auxiliares?.nome ? ` — ${r.fontes_auxiliares.nome}` : ''}` };
   }
+  if (r?.painel_id) {
+    return { alvoKind: 'painel', alvoLabel: `Painel (falha geral do sistema)${r.paineis?.nome ? ` — ${r.paineis.nome}` : ''}` };
+  }
   return { alvoKind: 'dispositivo', alvoLabel: '' };
 }
 
@@ -590,9 +623,11 @@ function marcaDeDispositivos(ids, deviceOptions) {
 
 /** Combobox de falha com busca bilíngue (PT — EN), lista travada pela marca do painel.
     Sempre oferece "Outro (descrever)" -> textarea livre (codigo/categoria nulos). */
-function FalhaSelect({ marca, value, onChange, label = 'Falha', hint }) {
+function FalhaSelect({ marca, value, onChange, label = 'Falha', hint, escopo }) {
   const v = value || emptyFalha();
-  const lista = falhasParaMarca(marca);
+  // escopo ('painel' | 'dispositivo'): quando o item da visita é o próprio painel, a lista
+  // trava nas falhas de escopo painel; num dispositivo normal, nas de escopo dispositivo.
+  const lista = falhasParaMarca(marca).filter((f) => !escopo || f.escopo === escopo);
   const marcaOk = lista.length > 0;
   const marcaNorm = normalizarMarca(marca);
   const selecionada = v.codigo ? getFalhaPorCodigo(v.codigo) : null;
@@ -777,6 +812,7 @@ function itemsFromVisita(v) {
       const al = alvoDeRegistro(a);
       return {
         id: it.id, tipo: 'atendimento', dispositivoId: a.dispositivo_id || null,
+        alvoKind: al.alvoKind, painelId: a.painel_id || null,
         etiqueta: al.alvoLabel || a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
         endereco: a.dispositivos?.endereco || '',
         falha: a.falha || '', descritivo: a.descritivo || '',
@@ -789,6 +825,7 @@ function itemsFromVisita(v) {
       const al = alvoDeRegistro(i);
       return {
         id: it.id, tipo: 'inspecao', dispositivoId: i.dispositivo_id || null,
+        alvoKind: al.alvoKind, painelId: i.painel_id || null,
         etiqueta: al.alvoLabel || i.dispositivos?.etiqueta || i.dispositivos?.endereco || 'Dispositivo',
         endereco: i.dispositivos?.endereco || '',
         falha: i.falha || '',
@@ -1329,7 +1366,10 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, devi
           : <Field label="Alvo"><div style={{ ...inputStyle, opacity: 0.75 }}>{editForm.alvoLabel}</div></Field>}
         <FalhaSelect
           label="Falha (deixe em branco para preventiva)"
-          marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
+          marca={(editForm.alvoKind === 'painel'
+            ? deviceOptions?.find((o) => o.id === `${PAINEL_OPT_PREFIX}${editForm.painelId}`)
+            : deviceOptions?.find((o) => o.id === editForm.dispositivoId))?.panelMarca || ''}
+          escopo={editForm.alvoKind === 'painel' ? 'painel' : 'dispositivo'}
           value={editForm.falhaSel}
           onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
         />
@@ -1385,6 +1425,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, devi
       <FalhaSelect
         label="Falha (se preenchida, cria/mantém corretiva)"
         marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
+        escopo="dispositivo"
         value={editForm.falhaSel}
         onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
       />
@@ -1414,6 +1455,10 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
   const [gruposAbertos, setGruposAbertos] = useState({});
 
   function grupoDoItem(it) {
+    if (it.alvoKind === 'painel') {
+      const pOpt = (deviceOptions || []).find((o) => o.id === `${PAINEL_OPT_PREFIX}${it.painelId}`);
+      return `${pOpt?.panelName || 'Painel'} — Painel (falha geral)`;
+    }
     const opt = it.dispositivoId ? (deviceOptions || []).find((o) => o.id === it.dispositivoId) : null;
     if (!opt) return 'Outros / sem dispositivo vinculado';
     return `${opt.panelName}${opt.loopName ? ' — ' + opt.loopName : ''}`;
@@ -1691,6 +1736,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   // a lista/impressão de relatórios de visita, sem os fluxos de criação/edição.
   const canEdit = reportMode ? false : canEditProp;
   const deviceOptions = buildDeviceOptions(data);
+  // Inspeção / Agendar inspeção não aceitam "o painel em si" nesta etapa — só Manutenção e Diagnóstico.
+  const deviceOptionsSemPainel = deviceOptions.filter((o) => o.kind !== 'painel');
   const panelOptions = data.panels || [];
 
   const [visita, setVisita] = useState(null);
@@ -2006,11 +2053,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         visitaData: v.data_visita, visitaTecnico: v.tecnico || '' });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
+      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, painelId: a.painel_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
-        kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, ...alvoDeRegistro(i), resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
+        kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, painelId: i.painel_id || null, ...alvoDeRegistro(i), resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
         comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
         observacoes: i.observacoes || '', falha: i.falha || '', falhaSel: falhaSelFromRecord(i), proximaInspecao: i.proxima_inspecao || '',
         fotos: i.fotos || [],
@@ -2173,7 +2220,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         ) : (
           <form key="agendar-sdai" className="fade-in-up" onSubmit={handleAgendarSDAI} style={{ ...cardStyle, maxWidth: 480 }}>
             <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
-            <DeviceMultiSelect options={deviceOptions} selectedIds={agendarSDAIIds} setSelectedIds={setAgendarSDAIIds} />
+            <DeviceMultiSelect options={deviceOptionsSemPainel} selectedIds={agendarSDAIIds} setSelectedIds={setAgendarSDAIIds} />
             <Field label="Próxima inspeção">
               <input type="date" style={inputStyle} value={agendarSDAIData} onChange={(e) => setAgendarSDAIData(e.target.value)} />
             </Field>
@@ -2216,6 +2263,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               <FalhaSelect
                 label="Falha (deixe em branco para preventiva)"
                 marca={marcaDeDispositivos(atForm.dispositivoIds, deviceOptions)}
+                escopo={escopoDaSelecao(atForm.dispositivoIds)}
                 value={atForm.falhaSel}
                 onChange={(next) => setAtForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
               />
@@ -2238,7 +2286,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
           {aba === 'inspecao' && (
             <form key="inspecao" className="fade-in-up" onSubmit={submitInspecao} style={{ ...cardStyle, marginBottom: 16 }}>
-              <DeviceMultiSelect options={deviceOptions} selectedIds={inspForm.dispositivoIds}
+              <DeviceMultiSelect options={deviceOptionsSemPainel} selectedIds={inspForm.dispositivoIds}
                 setSelectedIds={(next) => setInspForm((prev) => ({ ...prev, dispositivoIds: typeof next === 'function' ? next(prev.dispositivoIds) : next }))} />
               {(inspCategoriasUnicas.length > 0 || inspMetodosUnicos.length > 0) && (
                 <div style={{ marginBottom: 12, padding: 8, borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -2277,6 +2325,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               <FalhaSelect
                 label="Falha (se preenchida, cria corretiva automática em todos os selecionados)"
                 marca={marcaDeDispositivos(inspForm.dispositivoIds, deviceOptions)}
+                escopo={escopoDaSelecao(inspForm.dispositivoIds)}
                 value={inspForm.falhaSel}
                 onChange={(next) => setInspForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
               />
@@ -2321,6 +2370,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                   <FalhaSelect
                     label="Falha encontrada"
                     marca={marcaDeDispositivos(outroDiagDispositivoIds, deviceOptions)}
+                    escopo={escopoDaSelecao(outroDiagDispositivoIds)}
                     value={outroDiagFalhaSel}
                     onChange={(next) => { setOutroDiagFalhaSel(next); setOutroDiagFalha(falhaTexto(next)); }}
                   />
