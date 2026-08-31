@@ -7528,6 +7528,21 @@ function PageStyles() {
         .rvt-summary-card { break-inside: avoid; }
         .rvt-item-card { break-inside: avoid; page-break-inside: avoid; }
         .rvt-footer-band { break-inside: avoid; page-break-inside: avoid; break-before: avoid; }
+
+        /* O Chrome ignora break-inside:avoid quando o elemento está dentro de um
+           container flex (display:flex), e todos os cartões do RVT ficam dentro de
+           wrappers "flex flex-col". No modo impressão neutralizamos o flex vertical
+           e trocamos o gap por margens, para que cada cartão realmente não se parta
+           entre páginas. */
+        .print-area, .print-area .flex.flex-col { display: block !important; }
+        .print-area { overflow: visible !important; }
+        .print-area .flex.flex-col > * { margin-top: 12px; }
+        .print-area .flex.flex-col > *:first-child { margin-top: 0; }
+        .rvt-item-card, .rvt-summary-card {
+          -webkit-column-break-inside: avoid;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
         .no-print { display: none !important; }
         .report-group-body.collapsed { display: block !important; }
       }
