@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Download, X, Maximize2 } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, createDiagnosticoOutro, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem, converterOutroParaAtendimento,
@@ -90,6 +90,74 @@ function filesToBase64(fileList) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   })));
+}
+
+/** Extensão de arquivo a partir de um data URL de imagem (as fotos do RVT são
+    salvas em base64 via readAsDataURL). Cai para .jpg quando não dá pra saber. */
+function extDaImagem(src) {
+  const m = /^data:image\/([a-z0-9.+-]+)/i.exec(src || '');
+  if (!m) return '.jpg';
+  const t = m[1].toLowerCase();
+  if (t === 'jpeg') return '.jpg';
+  if (t === 'svg+xml') return '.svg';
+  return '.' + t;
+}
+
+/** Dispara o download de uma imagem (data URL ou URL same-origin) com o nome dado. */
+function baixarImagem(src, nome) {
+  try {
+    const a = document.createElement('a');
+    a.href = src;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (e) {
+    console.error('Falha ao baixar imagem', e);
+  }
+}
+
+/** Visualizador de foto em tela cheia: abre ao clicar numa foto do RVT.
+    "Ajustar à tela" (padrão) x "Tamanho real" (rola a imagem no tamanho anexado)
+    + botão de baixar a foto isolada. Nunca aparece na impressão (.no-print). */
+function FotoLightbox({ src, nomeArquivo, onClose }) {
+  const [real, setReal] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+
+  return (
+    <div className="no-print" onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.88)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button type="button" onClick={() => setReal((v) => !v)}
+          style={{ ...btnStyle, background: 'rgba(255,255,255,0.16)' }}>
+          <Maximize2 size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+          {real ? 'Ajustar à tela' : 'Tamanho real'}
+        </button>
+        <button type="button" onClick={() => baixarImagem(src, nomeArquivo)} style={btnStyle}>
+          <Download size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />Baixar
+        </button>
+        <button type="button" onClick={onClose}
+          style={{ ...btnStyle, background: 'rgba(255,255,255,0.16)' }}>
+          <X size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />Fechar
+        </button>
+      </div>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ overflow: 'auto', maxWidth: '96vw', maxHeight: 'calc(100vh - 130px)', borderRadius: 8, background: 'rgba(0,0,0,0.3)' }}>
+        <img src={src} alt={nomeArquivo}
+          style={real
+            ? { display: 'block', maxWidth: 'none' }
+            : { display: 'block', maxWidth: '96vw', maxHeight: 'calc(100vh - 130px)', objectFit: 'contain' }} />
+      </div>
+      <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, textAlign: 'center', wordBreak: 'break-all' }}>{nomeArquivo}</p>
+    </div>
+  );
 }
 
 function FotosField({ fotos, setFotos }) {
@@ -1118,16 +1186,32 @@ function VisitaPrintView({ visitas, client, onBack }) {
   const tecnicos = [...new Set(visitas.map((v) => v.tecnico).filter(Boolean))];
   const periodoLabel = isPeriodo ? `${formatDateBR(dias[0])} a ${formatDateBR(dias[dias.length - 1])}` : formatDateBR(dias[0]);
 
-  // Nome sugerido pelo navegador ao Imprimir/Salvar PDF (ex: "RVT - NAL - 21-07-2026").
-  // Usa "-" em vez de "/" na data porque "/" não é um caractere válido em nome de arquivo.
+  // Nome-base do RVT, usado tanto no título da aba (nome sugerido ao Salvar PDF)
+  // quanto no nome de cada foto baixada. "-" no lugar de "/" porque "/" não vale
+  // em nome de arquivo. Ex: "RVT - NAL - 21-07-2026".
+  const dataArquivo = (d) => formatDateBR(d).replace(/\//g, '-');
+  const rotuloData = isPeriodo ? `${dataArquivo(dias[0])}_a_${dataArquivo(dias[dias.length - 1])}` : dataArquivo(dias[0]);
+  const nomeCliente = (client?.name || '').replace(/[\\/:*?"<>|]/g, '-').trim();
+  const rvtNomeArquivo = `RVT${nomeCliente ? ' - ' + nomeCliente : ''} - ${rotuloData}`;
+
+  // Numeração sequencial das fotos ao longo de todo o documento (chave item#índice),
+  // pra montar o nome do arquivo "NN - RVT - Cliente - Data".
+  const fotoNums = {};
+  let _seqFoto = 0;
+  dias.forEach((dia) => {
+    visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v)).forEach((it) => {
+      (it.fotos || []).forEach((_, fi) => { _seqFoto += 1; fotoNums[`${it.id}#${fi}`] = _seqFoto; });
+    });
+  });
+  const padFoto = (n) => String(n).padStart(_seqFoto >= 10 ? 2 : 1, '0');
+
+  const [lightbox, setLightbox] = useState(null); // { src, nome } | null
+
   useEffect(() => {
     const tituloAnterior = document.title;
-    const dataArquivo = (d) => formatDateBR(d).replace(/\//g, '-');
-    const rotuloData = isPeriodo ? `${dataArquivo(dias[0])}_a_${dataArquivo(dias[dias.length - 1])}` : dataArquivo(dias[0]);
-    const nomeCliente = (client?.name || '').replace(/[\\/:*?"<>|]/g, '-').trim();
-    document.title = `RVT${nomeCliente ? ' - ' + nomeCliente : ''} - ${rotuloData}`;
+    document.title = rvtNomeArquivo;
     return () => { document.title = tituloAnterior; };
-  }, [dias.join(','), client?.name, isPeriodo]);
+  }, [rvtNomeArquivo]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -1225,9 +1309,14 @@ function VisitaPrintView({ visitas, client, onBack }) {
                         <div style={{ flex: '0 0 auto' }}>
                           <RvtFieldLabelLocal>Registro fotográfico</RvtFieldLabelLocal>
                           <div className="rvt-photo-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, maxWidth: 306 }}>
-                            {it.fotos.map((f, fi) => (
-                              <img key={fi} src={f} alt="" style={{ width: 96, height: 96, flexShrink: 0, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />
-                            ))}
+                            {it.fotos.map((f, fi) => {
+                              const nomeFoto = `${padFoto(fotoNums[`${it.id}#${fi}`])} - ${rvtNomeArquivo}${extDaImagem(f)}`;
+                              return (
+                                <img key={fi} src={f} alt={nomeFoto} title="Clique para ampliar"
+                                  onClick={() => setLightbox({ src: f, nome: nomeFoto })}
+                                  style={{ width: 96, height: 96, flexShrink: 0, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)', cursor: 'zoom-in' }} />
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1249,6 +1338,10 @@ function VisitaPrintView({ visitas, client, onBack }) {
           </div>
         </div>
       </div>
+
+      {lightbox && (
+        <FotoLightbox src={lightbox.src} nomeArquivo={lightbox.nome} onClose={() => setLightbox(null)} />
+      )}
     </div>
   );
 }
