@@ -693,9 +693,12 @@ function marcaDeDispositivos(ids, deviceOptions) {
     Sempre oferece "Outro (descrever)" -> textarea livre (codigo/categoria nulos). */
 function FalhaSelect({ marca, value, onChange, label = 'Falha', hint, escopo }) {
   const v = value || emptyFalha();
-  // escopo ('painel' | 'dispositivo'): quando o item da visita é o próprio painel, a lista
-  // trava nas falhas de escopo painel; num dispositivo normal, nas de escopo dispositivo.
-  const lista = falhasParaMarca(marca).filter((f) => !escopo || f.escopo === escopo);
+  // escopo: quando o item da visita é o PRÓPRIO painel, a lista trava nas falhas de escopo
+  // painel (painel não tem "detector sujo" etc.). Num dispositivo a lista fica completa — o
+  // painel reporta "Internal trouble", "Problema de manutenção", terra, rede... contra um
+  // endereço, e o técnico precisa poder registrar. O falha_escopo gravado continua vindo do
+  // código (escopoDaFalha no supabaseAdapter), então a contagem painel/dispositivo não muda.
+  const lista = falhasParaMarca(marca).filter((f) => escopo !== 'painel' || f.escopo === 'painel');
   const marcaOk = lista.length > 0;
   const marcaNorm = normalizarMarca(marca);
   const selecionada = v.codigo ? getFalhaPorCodigo(v.codigo) : null;
