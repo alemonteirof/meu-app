@@ -75,7 +75,7 @@ export const FALHAS_HOCHIKI = [
   // Tier 3 — menos comuns
   { codigo: 'HOC-25', en: 'Processor Watch Dog operated', pt: 'Watchdog do processador atuou', categoria: 'sistema' },
   { codigo: 'HOC-26', en: 'Bad data trouble', pt: 'Falha de dados corrompidos', categoria: 'sistema' },
-  { codigo: 'HOC-00', en: 'Internal trouble', pt: 'Problema interno', categoria: 'sistema' },
+  { codigo: 'HOC-00', en: 'Internal trouble', pt: 'Problema interno', categoria: 'dispositivo_desconectado' },
   { codigo: 'HOC-27', en: 'Unknown event trouble', pt: 'Evento de falha desconhecido', categoria: 'sistema' },
   { codigo: 'HOC-35', en: 'Sub address limit reached', pt: 'Limite de subendereços atingido', categoria: 'dispositivo_cadastro' },
   { codigo: 'HOC-34', en: 'Unexpected Loop', pt: 'Laço inesperado', categoria: 'dispositivo_cadastro' },
@@ -211,8 +211,10 @@ export const FALHAS_NOTIFIER = [
 // endereço específico no laço) é 'dispositivo'. Itens de baixa confiança do doc (HOC-36/37,
 // NOT-24/41/58/59/60) ficam no default indicado lá. Mantido como Set + pós-processamento
 // pra não poluir os literais das listas acima e facilitar auditoria.
+// HOC-00 (Internal trouble): reportado por endereço — é defeito do dispositivo, não da
+// central. Watchdog/EPROM/RAM/dados corrompidos (HOC-25/26/27/49) seguem 'painel'/sistema.
 const ESCOPO_DISPOSITIVO_HOCHIKI = new Set([
-  'HOC-02', 'HOC-05', 'HOC-06', 'HOC-08', 'HOC-09', 'HOC-10', 'HOC-11',
+  'HOC-00', 'HOC-02', 'HOC-05', 'HOC-06', 'HOC-08', 'HOC-09', 'HOC-10', 'HOC-11',
   'HOC-28', 'HOC-29', 'HOC-30', 'HOC-31', 'HOC-56', 'HOC-72', 'HOC-73',
 ]);
 const ESCOPO_DISPOSITIVO_NOTIFIER = new Set([
