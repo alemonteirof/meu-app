@@ -7549,23 +7549,17 @@ function PageStyles() {
       }
 
       /* ============================================================
-         Visual "v2" — gradiente de fundo + superfícies com leve
-         profundidade + cantos menos arredondados, aplicado ao APP
-         INTEIRO. Liga/desliga pela classe "ui-v2" no <body>
-         (const LAYOUT_VISUAL, logo antes de export default App).
-         Reverter: trocar LAYOUT_VISUAL para 'classico'. Nada aqui
-         mexe em dado, só aparência; o modo impressão tem os próprios
-         tokens e não é afetado.
+         Tema de layout "Novo" (v2) — classe "ui-v2" no <body>, ligada
+         pelo ThemeToggle (localStorage 'ccm-ui-theme'). Só aparência:
+         gradiente de fundo bem visível + brilho vinho no topo,
+         superfícies em gradiente e cantos menos arredondados. Não
+         mexe em dado; o modo impressão tem tokens próprios (@media
+         print) e não é afetado.
          ============================================================ */
       body.ui-v2 {
-        /* fundo global: use var(--bg) em qualquer lugar e vem o gradiente */
-        --bg:
-          radial-gradient(120% 60% at 50% -12%, rgba(139, 47, 47, 0.16), transparent 60%),
-          linear-gradient(180deg, #1c1717 0%, #181414 52%, #131010 100%);
-        /* cards/painéis ganham um gradiente sutil no lugar da cor chapada */
-        --surface: linear-gradient(158deg, #262020 0%, #1f1919 100%);
-        --surface-raised: linear-gradient(158deg, #322828 0%, #2a2020 100%);
-        --border: #45383a;
+        --surface: linear-gradient(160deg, #2c2121 0%, #1d1616 100%);
+        --surface-raised: linear-gradient(160deg, #3a2c2c 0%, #271d1d 100%);
+        --border: #4d3d3f;
         /* cantos bem menos arredondados (utilitários rounded-* do Tailwind) */
         --radius-sm: 0.2rem;
         --radius-md: 0.25rem;
@@ -7573,7 +7567,31 @@ function PageStyles() {
         --radius-xl: 0.4rem;
         --radius-2xl: 0.5rem;
         --radius-3xl: 0.65rem;
-        background: var(--bg);
+
+        /* fundo real do app: fica no <body>, ancorado à viewport */
+        background:
+          radial-gradient(105% 60% at 50% -6%, rgba(150, 46, 46, 0.42), transparent 66%),
+          radial-gradient(80% 50% at 100% 100%, rgba(60, 40, 55, 0.28), transparent 70%),
+          linear-gradient(180deg, #2a2020 0%, #1a1515 46%, #120f0f 100%) !important;
+        background-attachment: fixed !important;
+      }
+      /* os contêineres de tela pintam cor chapada por style inline (ou por
+         branding do cliente); no tema Novo eles ficam transparentes pra
+         deixar o gradiente do <body> aparecer. */
+      body.ui-v2 [class*="min-h-screen"],
+      body.ui-v2 .login-bg {
+        background: transparent !important;
+      }
+      /* cabeçalho fixo: barra translúcida com leve desfoque em cima do gradiente */
+      body.ui-v2 header {
+        background: rgba(22, 17, 17, 0.72) !important;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      /* profundidade sutil nos cards/painéis que usam var(--surface) */
+      body.ui-v2 [style*="var(--surface)"] {
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
+                    0 14px 30px -22px rgba(0, 0, 0, 0.75);
       }
     `}</style>
   );
