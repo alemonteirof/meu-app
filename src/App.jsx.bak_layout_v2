@@ -3131,7 +3131,6 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                   {role === 'visualizador' ? 'Somente leitura' : 'Falha ao salvar'}
                 </span>
               )}
-              <ThemeToggle />
               <IconButton title="Trocar cliente" onClick={onSwitchClient}><Building2 size={16} /></IconButton>
               {signOut && <IconButton title="Sair da conta" onClick={signOut}><LogOut size={16} /></IconButton>}
             </div>
@@ -3549,7 +3548,7 @@ function DashboardSkeleton() {
         <div className="skeleton" style={{ width: 70, height: 30, borderRadius: '8px 8px 0 0' }} />
         <div className="skeleton" style={{ width: 190, height: 30, borderRadius: '8px 8px 0 0' }} />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <div className="skeleton w-9 h-9 flex-shrink-0" />
@@ -3720,7 +3719,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
         <div key="sdai" className="flex flex-col gap-6 fade-in-up">
           <div>
             <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard label="Vencidos" value={counts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
               <StatCard label="A vencer (30 dias)" value={counts.soon} color="var(--status-warn)" icon={Clock} />
               <StatCard label="Em dia" value={counts.ok} color="var(--status-ok)" icon={CheckCircle2} />
@@ -3755,7 +3754,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
               <StatCard label="Corretivas — Aguardando" value={corretivaCounts.Aguardando} color="var(--status-danger)" icon={AlertTriangle} />
               <StatCard label="Corretivas — Andamento" value={corretivaCounts.Andamento} color="var(--status-warn)" icon={Clock} />
               <StatCard label="Corretivas — Resolvido" value={corretivaCounts.Resolvido} color="var(--status-ok)" icon={CheckCircle2} />
@@ -3818,7 +3817,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
         <div key="spci" className="flex flex-col gap-6 fade-in-up">
           <div>
             <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Prazos de inspeção</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard label="Vencidos" value={combateCounts.overdue} color="var(--status-danger)" icon={AlertTriangle} />
               <StatCard label="A vencer (30 dias)" value={combateCounts.soon} color="var(--status-warn)" icon={Clock} />
               <StatCard label="Em dia" value={combateCounts.ok} color="var(--status-ok)" icon={CheckCircle2} />
@@ -3843,7 +3842,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
               <StatCard label="Registros no período" value={combateFiltrado.length} color="var(--text-secondary)" icon={Activity} />
               <StatCard label="Aprovados" value={combateAprovados.length} color="var(--status-ok)" icon={CheckCircle2} />
               <StatCard label="Reprovados" value={combateReprovados.length} color="var(--status-danger)" icon={AlertTriangle} />
@@ -5316,7 +5315,7 @@ function IndicadorPrintView({ entries, client, onBack }) {
         </div>
 
         <div className="flex flex-col gap-5 p-4 sm:p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="rvt-summary-card rounded-lg p-3" style={{ background: 'var(--surface-raised)' }}>
             <RvtFieldLabel>Total de registros</RvtFieldLabel>
             <p className="text-sm font-medium mono" style={{ color: 'var(--text-primary)' }}>{entries.length}</p>
@@ -6490,14 +6489,14 @@ function ReportView({ data, client, filters, setFilters }) {
       </div>
 
       {reportTab === 'sdai' ? (
-        <div key="sdai" className="grid grid-cols-2 md:grid-cols-4 gap-3 no-print fade-in-up">
+        <div key="sdai" className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print fade-in-up">
           <StatCard label="Total monitorado" value={sdaiTotal} color="var(--text-secondary)" icon={ClipboardList} />
           <StatCard label="Não operantes" value={sdaiNaoOperante} color="var(--status-danger)" icon={AlertTriangle} />
           <StatCard label="Necessitam troca" value={sdaiNecessitaTroca} color="var(--status-warn)" icon={AlertTriangle} />
           <StatCard label="Com corretiva pendente" value={corretivasPendentesIds.size} color="var(--text-secondary)" icon={Activity} />
         </div>
       ) : (
-        <div key="spci" className="grid grid-cols-2 md:grid-cols-4 gap-3 no-print fade-in-up">
+        <div key="spci" className="grid grid-cols-2 sm:grid-cols-4 gap-3 no-print fade-in-up">
           <StatCard label="Total monitorado" value={spciTotal} color="var(--text-secondary)" icon={ClipboardList} />
           <StatCard label="Reprovados" value={spciReprovados} color="var(--status-danger)" icon={AlertTriangle} />
           <StatCard label="Sem inspeção registrada" value={spciSemInspecao} color="var(--status-warn)" icon={Clock} />
@@ -7547,34 +7546,6 @@ function PageStyles() {
         .no-print { display: none !important; }
         .report-group-body.collapsed { display: block !important; }
       }
-
-      /* ============================================================
-         Visual "v2" — gradiente de fundo + superfícies com leve
-         profundidade + cantos menos arredondados, aplicado ao APP
-         INTEIRO. Liga/desliga pela classe "ui-v2" no <body>
-         (const LAYOUT_VISUAL, logo antes de export default App).
-         Reverter: trocar LAYOUT_VISUAL para 'classico'. Nada aqui
-         mexe em dado, só aparência; o modo impressão tem os próprios
-         tokens e não é afetado.
-         ============================================================ */
-      body.ui-v2 {
-        /* fundo global: use var(--bg) em qualquer lugar e vem o gradiente */
-        --bg:
-          radial-gradient(120% 60% at 50% -12%, rgba(139, 47, 47, 0.16), transparent 60%),
-          linear-gradient(180deg, #1c1717 0%, #181414 52%, #131010 100%);
-        /* cards/painéis ganham um gradiente sutil no lugar da cor chapada */
-        --surface: linear-gradient(158deg, #262020 0%, #1f1919 100%);
-        --surface-raised: linear-gradient(158deg, #322828 0%, #2a2020 100%);
-        --border: #45383a;
-        /* cantos bem menos arredondados (utilitários rounded-* do Tailwind) */
-        --radius-sm: 0.2rem;
-        --radius-md: 0.25rem;
-        --radius-lg: 0.3rem;
-        --radius-xl: 0.4rem;
-        --radius-2xl: 0.5rem;
-        --radius-3xl: 0.65rem;
-        background: var(--bg);
-      }
     `}</style>
   );
 }
@@ -7754,42 +7725,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-/* Aparência do app: dois "temas" de layout selecionáveis pelo usuário.
-   'classico' -> visual atual
-   'novo'     -> gradiente de fundo + superfícies em gradiente + cantos menos arredondados
-   A escolha fica no localStorage (chave UI_THEME_KEY) e liga/desliga a classe
-   'ui-v2' no <body> (CSS correspondente em PageStyles, bloco "Visual v2").
-   Botão de troca: componente ThemeToggle, no cabeçalho. Padrão = 'classico'. */
-const UI_THEME_KEY = 'ccm-ui-theme';
-function readUiTheme() {
-  try { return localStorage.getItem(UI_THEME_KEY) === 'novo' ? 'novo' : 'classico'; }
-  catch { return 'classico'; }
-}
-function applyUiTheme(theme) {
-  document.body.classList.toggle('ui-v2', theme === 'novo');
-}
-
-function ThemeToggle() {
-  const [theme, setTheme] = useState(readUiTheme);
-  useEffect(() => { applyUiTheme(theme); }, [theme]);
-  function toggle() {
-    const next = theme === 'novo' ? 'classico' : 'novo';
-    setTheme(next);
-    try { localStorage.setItem(UI_THEME_KEY, next); } catch { /* ignore */ }
-  }
-  const isNovo = theme === 'novo';
-  return (
-    <IconButton
-      title={isNovo ? 'Aparência: Novo (clique para o Clássico)' : 'Aparência: Clássico (clique para o Novo)'}
-      onClick={toggle}
-    >
-      <Palette size={16} />
-    </IconButton>
-  );
-}
-
 export default function App() {
-  useEffect(() => { applyUiTheme(readUiTheme()); }, []);
   return (
     <ErrorBoundary>
       <PageStyles />
