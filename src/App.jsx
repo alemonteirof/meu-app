@@ -18,7 +18,6 @@ import {
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
-  MapPin,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -3967,7 +3966,6 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
 }
 
 function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, onImport, onBulkDeletePanels }) {
-  const v2 = useIsV2();
   const filtered = data.panels.filter((p) => (p.name + ' ' + (p.location || '')).toLowerCase().includes(search.toLowerCase()));
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -4014,7 +4012,7 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
           description="Cadastre o painel de detecção e alarme de incêndio. Em seguida você poderá adicionar laços (loops), circuitos de saída (NACs) e os dispositivos endereçáveis."
           actionLabel={canEdit ? 'Cadastrar painel' : undefined} onAction={canEdit ? onCreate : undefined} />
       ) : (
-        <div className={`grid gap-3 ${v2 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2'}`}>
+        <div className="grid sm:grid-cols-2 gap-3">
           {filtered.map((panel) => {
             const loops = data.loops.filter((l) => l.panelId === panel.id);
             const nacs = data.nacs.filter((n) => n.panelId === panel.id);
@@ -4024,61 +4022,10 @@ function PanelsList({ data, search, setSearch, canEdit, onOpenPanel, onCreate, o
                             ...nacs.map((n) => computeStatus(n.nextInspection)),
             ];
             const status = worstStatus(statuses);
-            const okCount = statuses.filter((s) => s.key === 'ok').length;
-            const health = statuses.length ? Math.round((okCount / statuses.length) * 100) : 100;
-            const healthColor = health >= 90 ? 'var(--status-ok)' : health >= 70 ? 'var(--status-warn)' : 'var(--status-danger)';
             const isSelected = selectedIds.includes(panel.id);
             const cls = `text-left rounded-xl p-4 flex flex-col gap-2 transition ${selectMode ? 'cursor-pointer' : 'hover:brightness-110'}`;
             const cardStyle = { background: 'var(--surface)', border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)' };
-            const miniCells = [
-              { icon: Zap, n: loops.length, l: 'Laços' },
-              { icon: Bell, n: nacs.length, l: 'NACs' },
-              { icon: Cpu, n: deviceCount, l: 'Disp.' },
-            ];
-            const content = v2 ? (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {selectMode && (
-                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(panel.id)}
-                        className="w-4 h-4 cursor-pointer flex-shrink-0 mt-1" style={{ accentColor: 'var(--accent)' }} />
-                    )}
-                    <span className="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'linear-gradient(140deg, #8B2F2F, #c25a4f)' }}>
-                      <Cpu size={18} style={{ color: '#fdeceb' }} />
-                    </span>
-                    <div className="min-w-0">
-                      <span className="font-medium text-sm block truncate" style={{ color: 'var(--text-primary)' }}>{panel.name}</span>
-                      {panel.location && (
-                        <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          <MapPin size={11} className="flex-shrink-0" />
-                          <span className="truncate">{panel.location}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <Led color={status.color} pulse={status.key === 'overdue'} />
-                </div>
-                <div className="grid grid-cols-3 gap-2 mt-1">
-                  {miniCells.map((c, i) => (
-                    <div key={i} className="rounded-md py-2 px-1 text-center" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)' }}>
-                      <div className="flex justify-center mb-0.5"><c.icon size={13} style={{ color: 'var(--text-secondary)' }} /></div>
-                      <div className="font-display text-base font-bold mono leading-none" style={{ color: 'var(--text-primary)' }}>{c.n}</div>
-                      <div className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: 'var(--text-secondary)' }}>{c.l}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-1">
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span style={{ color: 'var(--text-secondary)' }}>Saúde do painel</span>
-                    <span className="mono font-bold" style={{ color: 'var(--text-primary)' }}>{health}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-raised)' }}>
-                    <div className="h-full rounded-full" style={{ width: `${health}%`, background: healthColor }} />
-                  </div>
-                </div>
-              </>
-            ) : (
+            const content = (
               <>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
