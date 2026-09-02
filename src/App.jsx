@@ -7703,8 +7703,9 @@ function PageStyles() {
         --radius-3xl: 0.65rem;
 
         /* aproveitar a largura no desktop: o shell do app (header + main)
-           usa max-w-5xl; no tema Novo esse limite abre bem mais. */
-        --container-5xl: 1600px;
+           usa max-w-5xl; no tema Novo esse limite abre mais, mas com
+           uma folga maior nas laterais (regra de padding abaixo). */
+        --container-5xl: 1520px;
 
         /* fundo real do app: fica no <body>, ancorado à viewport */
         background:
@@ -7730,6 +7731,14 @@ function PageStyles() {
          a partir de telas médias (abaixo disso rolam na horizontal como antes). */
       @media (min-width: 900px) {
         body.ui-v2 header nav { justify-content: center; }
+      }
+      /* folga maior entre o conteúdo e as bordas da página no tema Novo
+         (o shell = elementos com max-w-5xl: cabeçalho e main). */
+      @media (min-width: 1024px) {
+        body.ui-v2 .max-w-5xl { padding-left: 2.75rem; padding-right: 2.75rem; }
+      }
+      @media (min-width: 1440px) {
+        body.ui-v2 .max-w-5xl { padding-left: 4rem; padding-right: 4rem; }
       }
       /* Cards / painéis: no tema Novo ganham um brilho no topo (leitura de
          "vidro"), borda mais quente e sombra que descola do fundo. Alvo =
