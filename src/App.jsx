@@ -7568,6 +7568,10 @@ function PageStyles() {
         --radius-2xl: 0.5rem;
         --radius-3xl: 0.65rem;
 
+        /* aproveitar a largura no desktop: o shell do app (header + main)
+           usa max-w-5xl; no tema Novo esse limite abre bem mais. */
+        --container-5xl: 1600px;
+
         /* fundo real do app: fica no <body>, ancorado à viewport */
         background:
           radial-gradient(105% 60% at 50% -6%, rgba(150, 46, 46, 0.42), transparent 66%),
@@ -7588,10 +7592,23 @@ function PageStyles() {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
       }
-      /* profundidade sutil nos cards/painéis que usam var(--surface) */
-      body.ui-v2 [style*="var(--surface)"] {
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
-                    0 14px 30px -22px rgba(0, 0, 0, 0.75);
+      /* Cards / painéis: no tema Novo ganham um brilho no topo (leitura de
+         "vidro"), borda mais quente e sombra que descola do fundo. Alvo =
+         elementos que trazem var(--surface) E var(--border) no style inline
+         (o padrão de card do app), então linhas de lista e chips não pegam. */
+      body.ui-v2 [style*="var(--surface)"][style*="var(--border)"] {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 40%),
+          linear-gradient(180deg, #2e2323 0%, #1b1515 100%) !important;
+        border-color: #4c3b3d !important;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.045) inset,
+                    0 16px 32px -22px rgba(0, 0, 0, 0.8);
+      }
+      /* superfícies "raised" (chips de destaque, cabeçalhos de seção) um tom acima */
+      body.ui-v2 [style*="var(--surface-raised)"] {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 45%),
+          linear-gradient(180deg, #3a2d2d 0%, #241c1c 100%) !important;
       }
     `}</style>
   );
