@@ -3398,6 +3398,21 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 /* ------------------------------------------------------------------ */
 
 function StatCard({ label, value, color, icon: Icon }) {
+  const v2 = useIsV2();
+  if (v2) {
+    return (
+      <div className="rounded-lg p-4 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0"
+            style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${color} 34%, transparent)` }}>
+            <Icon size={15} style={{ color }} />
+          </span>
+          <span className="font-display text-2xl font-bold mono leading-none" style={{ color: 'var(--text-primary)' }}>{value}</span>
+        </div>
+        <div className="text-xs font-medium leading-snug" style={{ color: 'var(--text-secondary)' }}>{label}</div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--surface-raised)' }}>
@@ -3415,10 +3430,27 @@ const CHART_PALETTE = ['#8B2F2F', '#C97D3A', '#4F8A6D', '#3C6E9C', '#9C5FA8', '#
 
 /** Gráfico de barras horizontais simples, em SVG/HTML puro (sem dependências externas). */
 function SimpleBarChart({ data, emptyLabel = 'Sem dados para exibir.' }) {
+  const v2 = useIsV2();
   if (!data || data.length === 0) {
     return <p className="text-xs py-6 text-center" style={{ color: 'var(--text-secondary)' }}>{emptyLabel}</p>;
   }
   const max = Math.max(...data.map((d) => d.value), 1);
+  if (v2) {
+    return (
+      <div className="flex flex-col gap-3">
+        {data.map((d, i) => (
+          <div key={i} className="grid items-center gap-x-3 gap-y-1" style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
+            <span className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={d.label}>{d.label}</span>
+            <span className="text-xs font-bold mono text-right tabular-nums" style={{ color: 'var(--text-primary)', minWidth: 24 }}>{d.value}</span>
+            <div className="rounded-full h-1.5 overflow-hidden" style={{ gridColumn: '1 / -1', background: 'var(--surface-raised)' }}>
+              <div className="h-full rounded-full"
+                style={{ width: `${Math.max((d.value / max) * 100, 2)}%`, background: d.color || 'linear-gradient(90deg, #6f2626, var(--accent))' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-2">
       {data.map((d, i) => (
@@ -3438,36 +3470,56 @@ function SimpleBarChart({ data, emptyLabel = 'Sem dados para exibir.' }) {
 
 /** Gráfico de pizza/rosca simples, em SVG puro, com legenda ao lado. */
 function SimplePieChart({ data, size = 168, emptyLabel = 'Sem dados para exibir.' }) {
+  const v2 = useIsV2();
   const total = (data || []).reduce((s, d) => s + d.value, 0);
   if (!data || data.length === 0 || total === 0) {
     return <p className="text-xs py-6 text-center" style={{ color: 'var(--text-secondary)' }}>{emptyLabel}</p>;
   }
-  const radius = size / 2 - 14;
+  const strokeW = v2 ? 16 : 26;
+  const radius = size / 2 - (v2 ? 10 : 14);
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
   return (
     <div className="flex items-center gap-5 flex-wrap">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
-        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--surface-raised)" strokeWidth="26" />
-          {data.map((d, i) => {
-            const frac = d.value / total;
-            const dash = frac * circumference;
-            const seg = (
-              <circle key={i} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={d.color || CHART_PALETTE[i % CHART_PALETTE.length]}
-                strokeWidth="26" strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset} strokeLinecap="butt" />
-            );
-            offset += dash;
-            return seg;
-          })}
-        </g>
-      </svg>
-      <div className="flex flex-col gap-1.5 min-w-[140px]">
+      <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+            <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--surface-raised)" strokeWidth={strokeW} />
+            {data.map((d, i) => {
+              const frac = d.value / total;
+              const dash = frac * circumference;
+              const seg = (
+                <circle key={i} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={d.color || CHART_PALETTE[i % CHART_PALETTE.length]}
+                  strokeWidth={strokeW} strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset} strokeLinecap="butt" />
+              );
+              offset += dash;
+              return seg;
+            })}
+          </g>
+        </svg>
+        {v2 && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="font-display text-xl font-bold mono leading-none" style={{ color: 'var(--text-primary)' }}>{total}</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-secondary)' }}>total</span>
+          </div>
+        )}
+      </div>
+      <div className={`flex flex-col gap-1.5 ${v2 ? 'flex-1 min-w-[160px]' : 'min-w-[140px]'}`}>
         {data.map((d, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
             <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: d.color || CHART_PALETTE[i % CHART_PALETTE.length] }} />
-            <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{d.label}</span>
-            <span className="mono font-medium flex-shrink-0" style={{ color: 'var(--text-primary)' }}>{d.value} ({Math.round((d.value / total) * 100)}%)</span>
+            {v2 ? (
+              <>
+                <span className="truncate flex-1" style={{ color: 'var(--text-secondary)' }}>{d.label}</span>
+                <span className="mono font-bold flex-shrink-0 tabular-nums" style={{ color: 'var(--text-primary)' }}>{d.value}</span>
+                <span className="mono flex-shrink-0 tabular-nums text-right" style={{ color: 'var(--text-secondary)', width: 34 }}>{Math.round((d.value / total) * 100)}%</span>
+              </>
+            ) : (
+              <>
+                <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{d.label}</span>
+                <span className="mono font-medium flex-shrink-0" style={{ color: 'var(--text-primary)' }}>{d.value} ({Math.round((d.value / total) * 100)}%)</span>
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -3475,12 +3527,21 @@ function SimplePieChart({ data, size = 168, emptyLabel = 'Sem dados para exibir.
   );
 }
 
-function ChartCard({ title, subtitle, children }) {
+function ChartCard({ title, subtitle, icon: Icon, children }) {
+  const v2 = useIsV2();
   return (
     <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div>
-        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{title}</p>
-        {subtitle && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{subtitle}</p>}
+      <div className={v2 && Icon ? 'flex items-start gap-2.5' : ''}>
+        {v2 && Icon && (
+          <span className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)' }}>
+            <Icon size={14} style={{ color: 'var(--accent)' }} />
+          </span>
+        )}
+        <div className="min-w-0">
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{title}</p>
+          {subtitle && <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{subtitle}</p>}
+        </div>
       </div>
       {children}
     </div>
@@ -3573,6 +3634,7 @@ function DashboardSkeleton() {
 }
 
 function Dashboard({ data, counts, attentionItems, combateCounts, combateAttentionItems, canEdit, onMaintain, onInspect, onGoPanels, clientId }) {
+  const v2 = useIsV2();
   const [painelTab, setPainelTab] = useState('sdai');
   const [dashFiltroInicio, setDashFiltroInicio] = useState('');
   const [dashFiltroFim, setDashFiltroFim] = useState('');
@@ -3766,6 +3828,23 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
               <div className="rounded-xl p-6 flex items-center gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhum registro no período/filtro selecionado.</p>
               </div>
+            ) : v2 ? (
+              <div className="flex flex-col gap-4">
+                <div className="grid sm:grid-cols-2 gap-4 items-stretch">
+                  <ChartCard title="Status das corretivas" subtitle="Distribuição atual das ordens" icon={PieChart}>
+                    <SimplePieChart data={corretivaStatusData} size={188} />
+                  </ChartCard>
+                  <ChartCard title="Resumo de visitas" subtitle="O que mais fazemos em campo" icon={PieChart}>
+                    <SimplePieChart data={resumoVisitasData} size={188} emptyLabel="Nenhuma visita no período/filtro selecionado." />
+                    {resumoSemCadastroTotal > 0 && (
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        Inclui {resumoSemCadastroTotal} manutenção(ões) em item(ns) não cadastrado(s) no sistema.
+                      </p>
+                    )}
+                  </ChartCard>
+                </div>
+                <ChartCard title="Falhas mais comuns" subtitle="Top 10 por categoria" icon={BarChart3}><SimpleBarChart data={falhaData} /></ChartCard>
+              </div>
             ) : (
               <div className="grid sm:grid-cols-2 gap-4 items-stretch">
                 <ChartCard title="Status das corretivas">
@@ -3778,6 +3857,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
             )}
           </div>
 
+          {!v2 && (
           <div>
             <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Resumo de Visitas</h3>
             <ChartCard title="O que mais fazemos nas visitas" subtitle="Manutenção, inspeção e atividades (Reunião, Preparação, Diagnóstico, Segurança do Trabalho)">
@@ -3789,6 +3869,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
               )}
             </ChartCard>
           </div>
+          )}
 
           <div>
             <h3 className="font-medium text-sm mb-3" style={{ color: 'var(--text-primary)' }}>Itens que precisam de atenção</h3>
@@ -3856,8 +3937,8 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 gap-4">
-                <ChartCard title="Resultado das vistorias"><SimplePieChart data={combateResultadoData} /></ChartCard>
-                <ChartCard title="Registros por categoria" subtitle="Onde mais aparecem"><SimpleBarChart data={combateCategoriaData} /></ChartCard>
+                <ChartCard title="Resultado das vistorias" icon={PieChart}><SimplePieChart data={combateResultadoData} /></ChartCard>
+                <ChartCard title="Registros por categoria" subtitle="Onde mais aparecem" icon={BarChart3}><SimpleBarChart data={combateCategoriaData} /></ChartCard>
               </div>
             )}
           </div>
@@ -7592,6 +7673,11 @@ function PageStyles() {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
       }
+      /* com o shell largo, as abas do menu ficavam soltas no canto: centraliza
+         a partir de telas médias (abaixo disso rolam na horizontal como antes). */
+      @media (min-width: 900px) {
+        body.ui-v2 header nav { justify-content: center; }
+      }
       /* Cards / painéis: no tema Novo ganham um brilho no topo (leitura de
          "vidro"), borda mais quente e sombra que descola do fundo. Alvo =
          elementos que trazem var(--surface) E var(--border) no style inline
@@ -7791,32 +7877,30 @@ class ErrorBoundary extends React.Component {
 
 /* Aparência do app: dois "temas" de layout selecionáveis pelo usuário.
    'classico' -> visual atual
-   'novo'     -> gradiente de fundo + superfícies em gradiente + cantos menos arredondados
-   A escolha fica no localStorage (chave UI_THEME_KEY) e liga/desliga a classe
-   'ui-v2' no <body> (CSS correspondente em PageStyles, bloco "Visual v2").
-   Botão de troca: componente ThemeToggle, no cabeçalho. Padrão = 'classico'. */
+   'novo'     -> gradiente de fundo + superfícies em gradiente + cantos menos
+                 arredondados + cards/gráficos redesenhados (a partir do
+                 protótipo). Só aparência; nada de dado muda.
+   A escolha fica no localStorage (UI_THEME_KEY) e:
+     - liga/desliga a classe 'ui-v2' no <body> (CSS no bloco "Visual v2");
+     - é exposta pelo UiThemeContext p/ componentes (StatCard, ChartCard,
+       SimplePieChart, SimpleBarChart) renderizarem a versão redesenhada.
+   Botão de troca: ThemeToggle, no cabeçalho. Padrão = 'classico'. */
 const UI_THEME_KEY = 'ccm-ui-theme';
 function readUiTheme() {
   try { return localStorage.getItem(UI_THEME_KEY) === 'novo' ? 'novo' : 'classico'; }
   catch { return 'classico'; }
 }
-function applyUiTheme(theme) {
-  document.body.classList.toggle('ui-v2', theme === 'novo');
-}
+const UiThemeContext = React.createContext({ theme: 'classico', setTheme: () => {} });
+function useUiTheme() { return React.useContext(UiThemeContext); }
+function useIsV2() { return React.useContext(UiThemeContext).theme === 'novo'; }
 
 function ThemeToggle() {
-  const [theme, setTheme] = useState(readUiTheme);
-  useEffect(() => { applyUiTheme(theme); }, [theme]);
-  function toggle() {
-    const next = theme === 'novo' ? 'classico' : 'novo';
-    setTheme(next);
-    try { localStorage.setItem(UI_THEME_KEY, next); } catch { /* ignore */ }
-  }
+  const { theme, setTheme } = useUiTheme();
   const isNovo = theme === 'novo';
   return (
     <IconButton
       title={isNovo ? 'Aparência: Novo (clique para o Clássico)' : 'Aparência: Clássico (clique para o Novo)'}
-      onClick={toggle}
+      onClick={() => setTheme(isNovo ? 'classico' : 'novo')}
     >
       <Palette size={16} />
     </IconButton>
@@ -7824,13 +7908,23 @@ function ThemeToggle() {
 }
 
 export default function App() {
-  useEffect(() => { applyUiTheme(readUiTheme()); }, []);
+  const [theme, setThemeState] = useState(readUiTheme);
+  useEffect(() => {
+    document.body.classList.toggle('ui-v2', theme === 'novo');
+    try { localStorage.setItem(UI_THEME_KEY, theme); } catch { /* ignore */ }
+  }, [theme]);
+  const ctx = React.useMemo(
+    () => ({ theme, setTheme: (t) => setThemeState(t === 'novo' ? 'novo' : 'classico') }),
+    [theme],
+  );
   return (
-    <ErrorBoundary>
-      <PageStyles />
-      <AuthGate>
-        <Root />
-      </AuthGate>
-    </ErrorBoundary>
+    <UiThemeContext.Provider value={ctx}>
+      <ErrorBoundary>
+        <PageStyles />
+        <AuthGate>
+          <Root />
+        </AuthGate>
+      </ErrorBoundary>
+    </UiThemeContext.Provider>
   );
 }
