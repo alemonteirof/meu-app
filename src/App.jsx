@@ -1,7 +1,7 @@
 ﻿import AtendimentosNovo from './AtendimentosNovo';
 import {
   loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, deleteAtendimento, updateInspecao, deleteInspecao,
-  FUNCTIONAL_CATEGORIES, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
+  functionalCategoriesForType, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
   COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
   REDE_TIPOS,
@@ -269,7 +269,8 @@ function guessDeviceTypeFromCode(code) {
   if (c.startsWith('ALK') || c.startsWith('ALO') || c.startsWith('ALN') || c.startsWith('ALG') || c === 'DIMM') return 'fumaca';
   if (c.startsWith('R2M')) return 'rele';
   if (c === 'SOM-AI' || c.startsWith('SOM')) return 'saida';
-  if (c === 'CZM' || c.startsWith('FRCME')) return 'entrada';
+  if (c === 'CZM') return 'zona';
+  if (c.startsWith('FRCME')) return 'entrada';
   return 'entrada';
 }
 
@@ -317,6 +318,7 @@ const NOTIFIER_TYPE_MAP = {
 
 function guessDeviceTypeFromNotifierCode(code) {
   const key = (code || '').trim().toUpperCase();
+  if (key === 'FZM-1' || key.startsWith('FZM')) return 'zona';
   if (NOTIFIER_TYPE_MAP[key]) return NOTIFIER_TYPE_MAP[key];
   if (key.includes('RELEASE') || key.includes('PULL') || key.includes('MANUAL')) return 'acionador';
   if (key.includes('RELAY') || key.includes('FORM C') || key.includes('ISOLAT')) return 'rele';
@@ -787,6 +789,7 @@ const DEVICE_TYPES = [
   { value: 'saida', label: 'Módulo de saída', icon: LogOut },
   { value: 'entrada', label: 'Módulo de entrada', icon: LogIn },
   { value: 'entrada_duplo', label: 'Módulo de Entrada Duplo', icon: LogIn },
+  { value: 'zona', label: 'Módulo de Zona', icon: LogIn },
   { value: 'rele', label: 'Módulo de relé', icon: ToggleLeft },
 ];
 const DEVICE_TYPE_MAP = Object.fromEntries(DEVICE_TYPES.map((t) => [t.value, t]));
@@ -1506,14 +1509,15 @@ function NacForm({ initial, onSubmit, onCancel }) {
 
 /** Campos de Categoria funcional + Papel do sinal, reaproveitados para entrada simples e para
     cada sub-endereço da entrada duplo. */
-function CategoriaFuncionalFields({ categoriaFuncional, papelSinal, onChange }) {
+function CategoriaFuncionalFields({ categoriaFuncional, papelSinal, onChange, type = 'entrada' }) {
+  const categorias = functionalCategoriesForType(type);
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Field label="Categoria funcional">
         <select className={inputCls} value={categoriaFuncional || ''}
           onChange={(e) => onChange({ categoriaFuncional: e.target.value, papelSinal: '' })}>
           <option value="">Selecione...</option>
-          {FUNCTIONAL_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          {categorias.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </Field>
       {CATEGORIAS_COM_PAPEL_SINAL.includes(categoriaFuncional) && (
@@ -1541,6 +1545,7 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
   });
 
   const isEntradaSimples = v.type === 'entrada';
+  const isZona = v.type === 'zona';
   const isEntradaDuploCreate = v.type === 'entrada_duplo' && isCreate;
   const isEntradaDuploEdit = v.type === 'entrada_duplo' && !isCreate;
 
@@ -1576,13 +1581,13 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
         </Field>
       </div>
 
-      {isEntradaSimples && (
-        <CategoriaFuncionalFields categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
+      {(isEntradaSimples || isZona) && (
+        <CategoriaFuncionalFields type={v.type} categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
           onChange={({ categoriaFuncional, papelSinal }) => setV({ ...v, categoriaFuncional, papelSinal })} />
       )}
 
       {isEntradaDuploEdit && (
-        <CategoriaFuncionalFields categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
+        <CategoriaFuncionalFields type={v.type} categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
           onChange={({ categoriaFuncional, papelSinal }) => setV({ ...v, categoriaFuncional, papelSinal })} />
       )}
 
@@ -3885,7 +3890,7 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
                   return (
                     <TrackableCard key={`${it.category}-${it.id}`} icon={it.icon} photo={it.photo} address={it.address} title={it.title} meta={it.meta}
                       status={{ ...computeStatus(it.nextInspection), lastMaintenance: it.lastMaintenance, lastInspection: it.lastInspection, operationalStatus: it.operationalStatus }}
-                      warning={(it.type === 'entrada' || it.type === 'entrada_duplo') && !it.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
+                      warning={(it.type === 'entrada' || it.type === 'entrada_duplo' || it.type === 'zona') && !it.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
                       onMaintain={canEdit && actionable ? () => onMaintain(it) : undefined} onInspect={canEdit && actionable ? () => onInspect(it) : undefined} />
                   );
                 })}
@@ -5313,7 +5318,7 @@ function PanelDetail({
                             title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                             status={{ ...computeStatus(d.nextInspection), lastMaintenance: d.lastMaintenance, lastInspection: d.lastInspection, operationalStatus: d.operationalStatus }}
                             indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
-                            warning={(d.type === 'entrada' || d.type === 'entrada_duplo') && !d.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
+                            warning={(d.type === 'entrada' || d.type === 'entrada_duplo' || d.type === 'zona') && !d.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
                             onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
                         ))}

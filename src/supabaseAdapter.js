@@ -62,6 +62,7 @@ export const DEVICE_TYPE_LABELS = {
   saida: 'Módulo de saída',
   entrada: 'Módulo de entrada',
   entrada_duplo: 'Módulo de Entrada Duplo',
+  zona: 'Módulo de Zona',
   rele: 'Módulo de relé',
 };
 
@@ -77,7 +78,25 @@ export const FUNCTIONAL_CATEGORIES = [
   { value: 'detector_chama', label: 'Detector de Chama' },
   { value: 'outro', label: 'Outro' },
 ];
-export const FUNCTIONAL_CATEGORY_MAP = Object.fromEntries(FUNCTIONAL_CATEGORIES.map((c) => [c.value, c.label]));
+// ---- Categoria funcional para Módulo de Zona (CZM / FZM-1) ----
+// Diferente do Módulo de Entrada: o módulo de zona supervisiona uma zona de detecção
+// convencional inteira. A categoria é a TAG que trava o método de teste.
+export const FUNCTIONAL_CATEGORIES_ZONA = [
+  { value: 'zona_calor', label: 'Detector de Calor' },
+  { value: 'zona_fumaca', label: 'Detector de Fumaça' },
+  { value: 'zona_chama', label: 'Detector de Chama' },
+  { value: 'zona_geral', label: 'Detectores Gerais' },
+  { value: 'zona_outro', label: 'Outro' },
+];
+
+/** Lista de categorias funcionais conforme o tipo de dispositivo. */
+export function functionalCategoriesForType(type) {
+  return type === 'zona' ? FUNCTIONAL_CATEGORIES_ZONA : FUNCTIONAL_CATEGORIES;
+}
+
+export const FUNCTIONAL_CATEGORY_MAP = Object.fromEntries(
+  [...FUNCTIONAL_CATEGORIES, ...FUNCTIONAL_CATEGORIES_ZONA].map((c) => [c.value, c.label]),
+);
 
 // ---- Dispositivos de Rede (Conversor / Placa) — complementares vinculados a um painel,
 // sem laço. Gravados na própria tabela `dispositivos` (painel_id setado, laco_id nulo),
@@ -115,12 +134,18 @@ const METODO_POR_CATEGORIA_FUNCIONAL = {
   detector_gas_outro: 'Bump Test (cilindro MultiGas/4 gases)',
   termovelocimetrico: 'Soprador térmico digital a bateria (temp. conforme detector)',
   acionador_manual: 'Acionamento 5x seguidas (teste de esforço)',
+  // Módulo de Zona (CZM / FZM-1)
+  zona_calor: 'Soprador térmico digital a bateria (temp. conforme detector)',
+  zona_fumaca: 'Spray de teste de detectores',
+  zona_chama: 'Fonte de chama em área controlada ou lanterna UV/IR',
+  zona_geral: 'Testar fumaça (spray de teste) e calor (soprador térmico) da zona',
+  zona_outro: '',
 };
 
 /** Dado um dispositivo (type, categoriaFuncional), devolve o método de teste travado. */
 export function getMetodoTeste(device) {
   if (!device) return '';
-  if (device.type === 'entrada' || device.type === 'entrada_duplo') {
+  if (device.type === 'entrada' || device.type === 'entrada_duplo' || device.type === 'zona') {
     return METODO_POR_CATEGORIA_FUNCIONAL[device.categoriaFuncional] || '';
   }
   return METODO_POR_TIPO[device.type] || '';
@@ -727,7 +752,7 @@ export function saveClientData(clienteId, data) {
   return next;
 }
 
-const TIPOS_MODULO_VALIDOS = ['fumaca', 'calor', 'acionador', 'saida', 'rele', 'entrada', 'entrada_duplo', 'modulo_saida', 'detector_gas', 'rede_conversor', 'rede_placa', 'outro'];
+const TIPOS_MODULO_VALIDOS = ['fumaca', 'calor', 'acionador', 'saida', 'rele', 'entrada', 'entrada_duplo', 'zona', 'modulo_saida', 'detector_gas', 'rede_conversor', 'rede_placa', 'outro'];
 
 async function doSaveClientData(clienteId, data) {
   // Monta os dispositivos e VALIDA antes de tocar no banco — se algo estiver fora do esperado,
