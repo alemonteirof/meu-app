@@ -239,6 +239,7 @@ function buildDeviceOptions(data) {
         id: d.id,
         label: `${complementarTipo} — ${d.etiquetaComplementar || d.description || 'Sem etiqueta'} — ${papelSinalLabelAt(d.papelSinal)} (${d.address})`,
         type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
+        nextInspection: d.nextInspection || '',
         panelId: null, panelName: 'Dispositivos Complementares',
         panelMarca: panel ? panel.marca || '' : '',
         loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
@@ -248,6 +249,7 @@ function buildDeviceOptions(data) {
     options.push({
       id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
       type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
+      nextInspection: d.nextInspection || '',
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
       panelMarca: panel ? panel.marca || '' : '',
       loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
@@ -257,6 +259,7 @@ function buildDeviceOptions(data) {
     const panel = (data.panels || []).find((p) => p.id === n.panelId);
     options.push({
       id: n.id, label: `${n.name} (NAC)${panel ? ' · ' + panel.name : ''}`, type: 'saida',
+      nextInspection: n.nextInspection || '',
       panelId: panel ? panel.id : null, panelName: panel ? panel.name : 'Sem painel',
       panelMarca: panel ? panel.marca || '' : '',
       loopId: null, loopName: null,
@@ -265,6 +268,7 @@ function buildDeviceOptions(data) {
   (data.gasDetectors || []).forEach((g) => {
     options.push({
       id: g.id, label: `${g.name} (Detector de gás)`, type: 'gasDetector',
+      nextInspection: g.nextInspection || '',
       panelId: null, panelName: 'Sem painel',
       loopId: null, loopName: null,
     });
@@ -1834,6 +1838,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   const deviceOptions = buildDeviceOptions(data);
   // Inspeção / Agendar inspeção não aceitam "o painel em si" nesta etapa — só Manutenção e Diagnóstico.
   const deviceOptionsSemPainel = deviceOptions.filter((o) => o.kind !== 'painel');
+  // "Agendar inspeção → só pendentes": mesma lista, sem quem já tem próxima inspeção agendada.
+  const deviceOptionsSemInspecao = deviceOptionsSemPainel.filter((o) => !o.nextInspection);
   const panelOptions = data.panels || [];
 
   const [visita, setVisita] = useState(null);
@@ -1857,6 +1863,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       setMsg(`Próxima inspeção agendada para ${agendarSDAIIds.length} item(ns).`);
       setAgendarSDAIIds([]);
       setAgendarSDAIMode(false);
+      if (onRefresh) onRefresh();
     } catch (err) {
       console.error(err);
       setMsg('Erro ao agendar inspeção.');
@@ -2308,15 +2315,34 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
                 Programe a próxima inspeção nos itens selecionados, sem registrar uma visita completa.
               </p>
-              <button type="button" onClick={() => setAgendarSDAIMode(true)} style={{ ...btnStyle, background: 'transparent', color: '#8B2F2F', border: '1px solid #8B2F2F' }}>
-                Selecionar itens
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button type="button" onClick={() => setAgendarSDAIMode('todos')} style={{ ...btnStyle, background: 'transparent', color: '#8B2F2F', border: '1px solid #8B2F2F' }}>
+                  Selecionar itens
+                </button>
+                <button type="button" onClick={() => setAgendarSDAIMode('pendentes')} style={{ ...btnStyle, background: 'transparent', color: '#8B2F2F', border: '1px solid #8B2F2F' }}>
+                  Itens sem Inspeção Agendada
+                </button>
+              </div>
             </div>
           </div>
         ) : (
           <form key="agendar-sdai" className="fade-in-up" onSubmit={handleAgendarSDAI} style={{ ...cardStyle, maxWidth: 480 }}>
-            <h3 style={{ fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>Agendar inspeção</h3>
-            <DeviceMultiSelect options={deviceOptionsSemPainel} selectedIds={agendarSDAIIds} setSelectedIds={setAgendarSDAIIds} />
+            <h3 style={{ fontWeight: 600, marginBottom: agendarSDAIMode === 'pendentes' ? 4 : 12, color: 'var(--text-primary)' }}>
+              {agendarSDAIMode === 'pendentes' ? 'Agendar inspeção — pendentes' : 'Agendar inspeção'}
+            </h3>
+            {agendarSDAIMode === 'pendentes' && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Mostrando só os {deviceOptionsSemInspecao.length} itens sem data de inspeção.
+                {deviceOptionsSemPainel.length - deviceOptionsSemInspecao.length > 0
+                  ? ` ${deviceOptionsSemPainel.length - deviceOptionsSemInspecao.length} já agendados foram ocultados.`
+                  : ''}
+              </p>
+            )}
+            <DeviceMultiSelect
+              options={agendarSDAIMode === 'pendentes' ? deviceOptionsSemInspecao : deviceOptionsSemPainel}
+              selectedIds={agendarSDAIIds}
+              setSelectedIds={setAgendarSDAIIds}
+            />
             <Field label="Próxima inspeção">
               <input type="date" style={inputStyle} value={agendarSDAIData} onChange={(e) => setAgendarSDAIData(e.target.value)} />
             </Field>
