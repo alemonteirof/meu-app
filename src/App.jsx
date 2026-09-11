@@ -7777,9 +7777,17 @@ function Root() {
     }
   }
   function deleteClient(id) {
+    const removed = (clients || []).find((c) => c.id === id);
     updateClients((prev) => prev.filter((c) => c.id !== id));
     (async () => {
-      try { if (supabase) await deleteCliente(id); } catch (e) { console.error(e); }
+      try {
+        if (supabase) await deleteCliente(id);
+      } catch (e) {
+        console.error(e);
+        alert(`Não foi possível excluir o cliente: ${e.message || e}`);
+        if (removed) updateClients((prev) => (prev.some((c) => c.id === id) ? prev : [...prev, removed]));
+        return;
+      }
       try { await window.storage.delete(clientDataKey(id), false); } catch (e) { /* ignore */ }
     })();
     if (activeClientId === id) { setActiveClientId(null); setAuthedClientId(null); clearLastClientId(); }
