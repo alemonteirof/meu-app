@@ -246,6 +246,18 @@ function buildDeviceOptions(data) {
       });
       return;
     }
+    if (d.type === 'sirene') {
+      options.push({
+        id: d.id,
+        label: `Sirene — ${d.description || 'Sem localização'}${panel ? ' · ' + panel.name : ''}`,
+        type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,
+        nextInspection: d.nextInspection || '',
+        panelId: null, panelName: 'Dispositivos Complementares',
+        panelMarca: panel ? panel.marca || '' : '',
+        loopId: loop ? loop.id : null, loopName: loop ? loop.name : null,
+      });
+      return;
+    }
     options.push({
       id: d.id, label: `${d.description || DEVICE_TYPE_LABELS[d.type] || 'Dispositivo'} — End. ${d.address}${panel ? ' · ' + panel.name : ''}`,
       type: d.type, categoriaFuncional: d.categoriaFuncional, papelSinal: d.papelSinal,

@@ -2,6 +2,7 @@
 import {
   loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, deleteAtendimento, updateInspecao, deleteInspecao,
   functionalCategoriesForType, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
+  FUNCTIONAL_CATEGORIES_SAIDA, SIRENE_MODELOS_POR_MARCA,
   COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
   REDE_TIPOS,
@@ -1080,18 +1081,23 @@ function allTrackableItems(data) {
   data.devices.forEach((d) => {
     const loop = data.loops.find((l) => l.id === d.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+    const complementarLabel = d.moduloPaiId
+      ? (d.type === 'sirene' ? `Sirene${d.modelo ? ' — ' + d.modelo : ''}` : (FUNCTIONAL_CATEGORY_MAP[d.categoriaFuncional] || 'Dispositivo Complementar'))
+      : null;
     items.push({
       id: d.id, category: 'devices', panelId: panel ? panel.id : null,
-      title: DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo',
+      title: complementarLabel || DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo',
       address: d.address, modelo: d.modelo || '',
-      meta: `${panel ? panel.name : '—'} · ${loop ? loop.name : '—'}${d.description ? ' · ' + d.description : ''}`,
+      meta: complementarLabel
+        ? `Dispositivo Complementar${panel ? ' · ' + panel.name : ''}`
+        : `${panel ? panel.name : '—'} · ${loop ? loop.name : '—'}${d.description ? ' · ' + d.description : ''}`,
       nextMaintenance: d.nextMaintenance, lastMaintenance: d.lastMaintenance,
       operationalStatus: d.operationalStatus || '', appearance: d.appearance || '',
       localComm: d.localComm || '', networkComm: d.networkComm || '',
       lastInspection: d.lastInspection || '', nextInspection: d.nextInspection || '',
       icon: DEVICE_TYPE_MAP[d.type]?.icon || Cpu,
       photo: photoForModelo(data, d.modelo),
-      type: d.type, categoriaFuncional: d.categoriaFuncional || '',
+      type: d.type, categoriaFuncional: categoriaFuncionalEfetiva(d, data.devices),
     });
   });
   data.nacs.forEach((n) => {
@@ -1490,14 +1496,25 @@ function LoopForm({ initial, onSubmit, onCancel }) {
   );
 }
 
-function NacForm({ initial, onSubmit, onCancel }) {
-  const [v, setV] = useState(initial || { name: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '' });
+function NacForm({ initial, marca, initialSirenes, onSubmit, onCancel }) {
+  const [v, setV] = useState(initial || { name: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '', categoriaFuncional: '' });
+  const [sirenes, setSirenes] = useState(initialSirenes || []);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit(v); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (v.name.trim()) onSubmit({ ...v, sirenesForm: v.categoriaFuncional === 'sirenes' ? sirenes : [] }); }}>
       <Field label="Nome / número do circuito (NAC) *"><input autoFocus className={inputCls} value={v.name}
         onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: NAC 1 — Sirenes 1º pavimento" required /></Field>
       <Field label="Descrição"><input className={inputCls} value={v.description}
         onChange={(e) => setV({ ...v, description: e.target.value })} placeholder="Dispositivos conectados: sirenes, strobos..." /></Field>
+      <Field label="Categoria funcional">
+        <select className={inputCls} value={v.categoriaFuncional || ''}
+          onChange={(e) => setV({ ...v, categoriaFuncional: e.target.value })}>
+          <option value="">Selecione...</option>
+          {FUNCTIONAL_CATEGORIES_SAIDA.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+      </Field>
+      {v.categoriaFuncional === 'sirenes' && (
+        <SirenesFields marca={marca} sirenes={sirenes} setSirenes={setSirenes} />
+      )}
       <MaintenanceScheduleFields values={v} setValues={setV} />
       <FormActions>
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
@@ -1533,7 +1550,7 @@ function CategoriaFuncionalFields({ categoriaFuncional, papelSinal, onChange, ty
   );
 }
 
-function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
+function DeviceForm({ initial, isCreate, marca, initialSirenes, onSubmit, onCancel }) {
   const [v, setV] = useState(initial || {
     address: '', type: 'fumaca', modelo: '', description: '', lastMaintenance: '', nextMaintenance: '', intervalMonths: '',
     categoriaFuncional: '', papelSinal: '',
@@ -1543,9 +1560,11 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
     sub1: { categoriaFuncional: '', papelSinal: '' },
     sub2: { categoriaFuncional: '', papelSinal: '' },
   });
+  const [sirenes, setSirenes] = useState(initialSirenes || []);
 
   const isEntradaSimples = v.type === 'entrada';
   const isZona = v.type === 'zona';
+  const isSaida = v.type === 'saida';
   const isEntradaDuploCreate = v.type === 'entrada_duplo' && isCreate;
   const isEntradaDuploEdit = v.type === 'entrada_duplo' && !isCreate;
 
@@ -1559,6 +1578,8 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
         categoriaFuncional: s.categoriaFuncional, papelSinal: s.papelSinal,
       }));
       onSubmit(devices);
+    } else if (isSaida) {
+      onSubmit({ ...v, sirenesForm: v.categoriaFuncional === 'sirenes' ? sirenes : [] });
     } else {
       onSubmit(v);
     }
@@ -1575,7 +1596,7 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
         </Field>
         <Field label="Tipo de dispositivo *">
           <select className={inputCls} value={v.type}
-            onChange={(e) => setV({ ...v, type: e.target.value, categoriaFuncional: '', papelSinal: '' })}>
+            onChange={(e) => { setV({ ...v, type: e.target.value, categoriaFuncional: '', papelSinal: '' }); setSirenes([]); }}>
             {DEVICE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </Field>
@@ -1584,6 +1605,21 @@ function DeviceForm({ initial, isCreate, onSubmit, onCancel }) {
       {(isEntradaSimples || isZona) && (
         <CategoriaFuncionalFields type={v.type} categoriaFuncional={v.categoriaFuncional} papelSinal={v.papelSinal}
           onChange={({ categoriaFuncional, papelSinal }) => setV({ ...v, categoriaFuncional, papelSinal })} />
+      )}
+
+      {isSaida && (
+        <>
+          <Field label="Categoria funcional">
+            <select className={inputCls} value={v.categoriaFuncional || ''}
+              onChange={(e) => setV({ ...v, categoriaFuncional: e.target.value })}>
+              <option value="">Selecione...</option>
+              {FUNCTIONAL_CATEGORIES_SAIDA.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </Field>
+          {v.categoriaFuncional === 'sirenes' && (
+            <SirenesFields marca={marca} sirenes={sirenes} setSirenes={setSirenes} />
+          )}
+        </>
       )}
 
       {isEntradaDuploEdit && (
@@ -2697,6 +2733,13 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
     }));
   }
 
+  function submitSireneCampos(deviceId, patch) {
+    updateData((prev) => ({
+      ...prev,
+      devices: prev.devices.map((d) => (d.id === deviceId ? { ...d, ...patch } : d)),
+    }));
+  }
+
   function updateData(mutator) {
     setData((prev) => {
       const next = mutator(prev);
@@ -2753,29 +2796,62 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
 
   function submitNac(values) {
-    if (modal.mode === 'create') updateData((prev) => ({ ...prev, nacs: [...prev.nacs, { id: uid(), panelId: modal.context.panelId, ...values }] }));
-    else updateData((prev) => ({ ...prev, nacs: prev.nacs.map((n) => (n.id === modal.initial.id ? { ...n, ...values } : n)) }));
+    const { sirenesForm, ...nacValues } = values;
+    if (modal.mode === 'create') {
+      const nacId = uid();
+      updateData((prev) => ({
+        ...prev,
+        nacs: [...prev.nacs, { id: nacId, panelId: modal.context.panelId, ...nacValues }],
+        devices: syncSirenes(nacId, null, nacValues.categoriaFuncional, sirenesForm, prev.devices),
+      }));
+    } else {
+      updateData((prev) => ({
+        ...prev,
+        nacs: prev.nacs.map((n) => (n.id === modal.initial.id ? { ...n, ...nacValues } : n)),
+        devices: syncSirenes(modal.initial.id, null, nacValues.categoriaFuncional, sirenesForm, prev.devices),
+      }));
+    }
     closeModal();
   }
   function deleteNac(id) {
-    updateData((prev) => ({ ...prev, nacs: prev.nacs.filter((n) => n.id !== id) }));
+    updateData((prev) => ({
+      ...prev,
+      nacs: prev.nacs.filter((n) => n.id !== id),
+      devices: prev.devices.filter((d) => d.moduloPaiId !== id),
+    }));
     setConfirmState(null);
   }
 
   function submitDevice(values) {
     if (modal.mode === 'create') {
       const arr = Array.isArray(values) ? values : [values];
-      updateData((prev) => ({
-        ...prev,
-        devices: [...prev.devices, ...arr.map((v) => ({ id: uid(), loopId: modal.context.loopId, ...v }))],
-      }));
+      updateData((prev) => {
+        let devices = prev.devices;
+        arr.forEach((v) => {
+          const { sirenesForm, ...moduloValues } = v;
+          const moduloId = uid();
+          devices = syncModuloComplementar({ loopId: modal.context.loopId, ...moduloValues }, devices, moduloId);
+          if (moduloValues.type === 'saida') {
+            devices = syncSirenes(moduloId, modal.context.loopId, moduloValues.categoriaFuncional, sirenesForm, devices);
+          }
+        });
+        return { ...prev, devices };
+      });
     } else {
-      updateData((prev) => ({ ...prev, devices: prev.devices.map((d) => (d.id === modal.initial.id ? { ...d, ...values } : d)) }));
+      updateData((prev) => {
+        const atual = prev.devices.find((d) => d.id === modal.initial.id) || modal.initial;
+        const { sirenesForm, ...moduloValues } = values;
+        let devices = syncModuloComplementar({ ...atual, ...moduloValues }, prev.devices, modal.initial.id);
+        if (moduloValues.type === 'saida') {
+          devices = syncSirenes(modal.initial.id, atual.loopId, moduloValues.categoriaFuncional, sirenesForm, devices);
+        }
+        return { ...prev, devices };
+      });
     }
     closeModal();
   }
   function deleteDevice(id) {
-    updateData((prev) => ({ ...prev, devices: prev.devices.filter((d) => d.id !== id) }));
+    updateData((prev) => ({ ...prev, devices: prev.devices.filter((d) => d.id !== id && d.moduloPaiId !== id) }));
     setConfirmState(null);
   }
 
@@ -2980,7 +3056,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
   }
 
   function deleteDevicesBulk(ids) {
-    updateData((prev) => ({ ...prev, devices: prev.devices.filter((d) => !ids.includes(d.id)) }));
+    updateData((prev) => ({ ...prev, devices: prev.devices.filter((d) => !ids.includes(d.id) && !ids.includes(d.moduloPaiId)) }));
     setConfirmState(null);
   }
 
@@ -3268,7 +3344,11 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                     context: { loopId },
                   });
                 }}
-                onEditDevice={(d) => setModal({ type: 'device', mode: 'edit', initial: d })}
+                onEditDevice={(d) => {
+                  const filho = data.devices.find((c) => c.moduloPaiId === d.id);
+                  const initial = filho ? { ...d, categoriaFuncional: filho.categoriaFuncional, papelSinal: filho.papelSinal } : d;
+                  setModal({ type: 'device', mode: 'edit', initial });
+                }}
                 onDeleteDevice={(d) => setConfirmState({ title: 'Excluir dispositivo', message: `Excluir dispositivo endereço ${d.address}?`, onConfirm: () => deleteDevice(d.id) })}
                 onMaintainDevice={(d) => openMaintainModal('devices', d, `Dispositivo ${d.address}`)}
                 onInspectDevice={(d) => openInspectModal('devices', d, `Dispositivo ${d.address}`)}
@@ -3289,6 +3369,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
                 onDeleteRede={(id) => setConfirmState({ title: 'Excluir dispositivo de rede', message: 'Excluir este dispositivo de rede? Essa ação não pode ser desfeita.', onConfirm: () => deleteRedeDispositivo(id) })}
                 onSubmitCalibracao={submitCalibracaoDevice}
                 onSubmitEtiqueta={submitEtiquetaComplementar}
+                onSubmitSireneCampos={submitSireneCampos}
                 onInspectDevice={openInspectModal} />
             )}
           </div>
@@ -3354,16 +3435,34 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
           <LoopForm initial={modal.initial} onSubmit={submitLoop} onCancel={closeModal} />
         </Modal>
       )}
-      {modal?.type === 'nac' && (
-        <Modal title={modal.mode === 'create' ? 'Novo circuito de saída (NAC)' : 'Editar circuito (NAC)'} onClose={closeModal} wide>
-          <NacForm initial={modal.initial} onSubmit={submitNac} onCancel={closeModal} />
-        </Modal>
-      )}
-      {modal?.type === 'device' && (
-        <Modal title={modal.mode === 'create' ? 'Novo dispositivo' : 'Editar dispositivo'} onClose={closeModal} wide>
-          <DeviceForm initial={modal.initial} isCreate={modal.mode === 'create'} onSubmit={submitDevice} onCancel={closeModal} />
-        </Modal>
-      )}
+      {modal?.type === 'nac' && (() => {
+        const nacPanelId = modal.mode === 'create' ? modal.context.panelId : modal.initial.panelId;
+        const nacPanel = data.panels.find((p) => p.id === nacPanelId);
+        const nacId = modal.mode === 'edit' ? modal.initial.id : null;
+        const nacSirenes = nacId
+          ? data.devices.filter((d) => d.moduloPaiId === nacId && d.type === 'sirene').map((d) => ({ id: d.id, modelo: d.modelo, localizacao: d.description }))
+          : [];
+        return (
+          <Modal title={modal.mode === 'create' ? 'Novo circuito de saída (NAC)' : 'Editar circuito (NAC)'} onClose={closeModal} wide>
+            <NacForm initial={modal.initial} marca={nacPanel?.marca || ''} initialSirenes={nacSirenes} onSubmit={submitNac} onCancel={closeModal} />
+          </Modal>
+        );
+      })()}
+      {modal?.type === 'device' && (() => {
+        const deviceLoopId = modal.mode === 'create' ? modal.context.loopId : modal.initial.loopId;
+        const deviceLoop = data.loops.find((l) => l.id === deviceLoopId);
+        const devicePanel = deviceLoop && data.panels.find((p) => p.id === deviceLoop.panelId);
+        const deviceId = modal.mode === 'edit' ? modal.initial.id : null;
+        const deviceSirenes = deviceId
+          ? data.devices.filter((d) => d.moduloPaiId === deviceId && d.type === 'sirene').map((d) => ({ id: d.id, modelo: d.modelo, localizacao: d.description }))
+          : [];
+        return (
+          <Modal title={modal.mode === 'create' ? 'Novo dispositivo' : 'Editar dispositivo'} onClose={closeModal} wide>
+            <DeviceForm initial={modal.initial} isCreate={modal.mode === 'create'} marca={devicePanel?.marca || ''} initialSirenes={deviceSirenes}
+              onSubmit={submitDevice} onCancel={closeModal} />
+          </Modal>
+        );
+      })()}
       {modal?.type === 'indicador' && (
         <Modal title={modal.mode === 'create' ? 'Novo registro do Indicador' : 'Editar registro'} onClose={closeModal} wide>
           <IndicadorForm initial={modal.initial} data={data} areaSuggestions={[...new Set((data.indicador || []).map((r) => r.area).filter(Boolean))].sort()}
@@ -4072,6 +4171,7 @@ const COMPLEMENTAR_TABS = [
   { key: 'chama', label: 'Detector de Chama' },
   { key: 'gas', label: 'Detector de Gás' },
   { key: 'termo', label: 'Termovelocimétrico' },
+  { key: 'sirenes', label: 'Sirenes' },
   { key: 'rede', label: 'Rede' },
   { key: 'baterias_painel', label: 'Baterias de Painel' },
   { key: 'fontes_auxiliares', label: 'Fontes Auxiliares' },
@@ -4083,6 +4183,120 @@ function complementarGroupFor(categoriaFuncional) {
   if (['detector_gas_hc', 'detector_gas_co2', 'detector_gas_outro'].includes(categoriaFuncional)) return 'gas';
   if (categoriaFuncional === 'termovelocimetrico') return 'termo';
   return null;
+}
+
+/** Categoria funcional "efetiva" de um módulo: a própria, ou — se ela já foi promovida a um
+    sensor complementar Tipo 1 (filho próprio) — a categoria desse filho. Usado só pra badge
+    de "categoria não definida" continuar certa depois que a categoria sai do pai. */
+function categoriaFuncionalEfetiva(d, devices) {
+  if (d.categoriaFuncional) return d.categoriaFuncional;
+  const filho = (devices || []).find((c) => c.moduloPaiId === d.id);
+  return filho ? filho.categoriaFuncional : '';
+}
+
+/** Sincroniza o sensor complementar Tipo 1 (Beam/Chama/Gás/Termovelocimétrico) de um módulo de
+    entrada como um dispositivo PRÓPRIO (vinculado via moduloPaiId), em vez de reaproveitar a
+    mesma linha do módulo. Recebe os valores crus do form (`values`, com endereço/tipo/laço/
+    categoriaFuncional/papelSinal do módulo) e o array atual de devices; devolve o array
+    atualizado já com o módulo (sem categoria/papel quando ela vira Tipo 1) e o filho
+    criado/atualizado/removido conforme o grupo da categoria escolhida. */
+// Campos que descrevem o SENSOR (não o módulo em si) — no modelo antigo (1 linha só) ficavam
+// misturados na mesma linha; na primeira divisão migram pro filho, pra não perder histórico.
+const CAMPOS_SENSOR_COMPLEMENTAR = [
+  'etiquetaComplementar', 'dataCalibracao', 'proximaCalibracao',
+  'nextMaintenance', 'lastMaintenance', 'nextInspection', 'lastInspection',
+  'operationalStatus', 'appearance', 'localComm', 'networkComm',
+];
+
+function syncModuloComplementar(moduloValues, devices, moduloId) {
+  const { categoriaFuncional, papelSinal, ...moduloResto } = moduloValues;
+  const camposSensor = {};
+  CAMPOS_SENSOR_COMPLEMENTAR.forEach((campo) => { camposSensor[campo] = moduloResto[campo]; });
+  const grupo = complementarGroupFor(categoriaFuncional);
+  const modulo = { ...moduloResto, id: moduloId };
+  const existingChild = devices.find((d) => d.moduloPaiId === moduloId);
+
+  if (!grupo) {
+    const semModulo = devices.filter((d) => d.id !== moduloId && d.moduloPaiId !== moduloId);
+    return [...semModulo, { ...modulo, categoriaFuncional, papelSinal }];
+  }
+
+  // Na primeira divisão (ainda não existe filho), o filho herda etiqueta/calibração/histórico
+  // de inspeção que o dispositivo já tinha guardado nele mesmo, do modelo antigo — evita perder dado.
+  const childData = { moduloPaiId: moduloId, loopId: modulo.loopId, type: modulo.type, address: modulo.address, subEndereco: modulo.subEndereco || '', categoriaFuncional, papelSinal };
+  CAMPOS_SENSOR_COMPLEMENTAR.forEach((campo) => {
+    childData[campo] = existingChild?.[campo] ?? camposSensor[campo] ?? '';
+  });
+  const moduloLimpo = { ...modulo, categoriaFuncional: '', papelSinal: '' };
+  CAMPOS_SENSOR_COMPLEMENTAR.forEach((campo) => { moduloLimpo[campo] = ''; });
+  const semModuloNemFilho = devices.filter((d) => d.id !== moduloId && d.moduloPaiId !== moduloId);
+  return [
+    ...semModuloNemFilho,
+    moduloLimpo,
+    { id: existingChild?.id || uid(), ...childData },
+  ];
+}
+
+/** Sincroniza as sirenes (1-pra-N) de um módulo de saída ou de uma NAC. `sirenesForm` é a lista
+    crua do form ({ id?, modelo, localizacao }) — sem `id` = sirene nova. Se `categoriaFuncional`
+    não for 'sirenes', remove todas as sirenes já vinculadas a esse pai. `loopId` é o laço do
+    módulo (null quando o pai é uma NAC, que não tem laço próprio). */
+function syncSirenes(parentId, loopId, categoriaFuncional, sirenesForm, devices) {
+  const outrasSirenes = devices.filter((d) => !(d.moduloPaiId === parentId && d.type === 'sirene'));
+  if (categoriaFuncional !== 'sirenes') return outrasSirenes;
+
+  const existentes = devices.filter((d) => d.moduloPaiId === parentId && d.type === 'sirene');
+  const novasSirenes = (sirenesForm || []).map((s) => {
+    const existente = s.id && existentes.find((d) => d.id === s.id);
+    return {
+      id: s.id || uid(), moduloPaiId: parentId, type: 'sirene', loopId: loopId || null,
+      modelo: s.modelo || '', description: s.localizacao || '', categoriaFuncional: 'sirenes',
+      nextMaintenance: existente?.nextMaintenance || '', lastMaintenance: existente?.lastMaintenance || '',
+      nextInspection: existente?.nextInspection || '', lastInspection: existente?.lastInspection || '',
+      operationalStatus: existente?.operationalStatus || '', appearance: existente?.appearance || '',
+      localComm: existente?.localComm || '', networkComm: existente?.networkComm || '',
+    };
+  });
+  return [...outrasSirenes, ...novasSirenes];
+}
+
+/** Lista editável de sirenes (modelo + localização) de um módulo de saída/NAC. `marca` trava
+    a lista de modelos disponíveis (Hochiki/VES x Notifier); sem marca definida no painel, o
+    campo de modelo fica bloqueado. */
+function SirenesFields({ marca, sirenes, setSirenes }) {
+  const modelos = SIRENE_MODELOS_POR_MARCA[marca] || [];
+  function updateSirene(idx, patch) {
+    setSirenes(sirenes.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+  function removeSirene(idx) {
+    setSirenes(sirenes.filter((_, i) => i !== idx));
+  }
+  function addSirene() {
+    setSirenes([...sirenes, { modelo: '', localizacao: '' }]);
+  }
+  return (
+    <div className="flex flex-col gap-2 mb-3">
+      <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Sirenes deste circuito</p>
+      {!marca && (
+        <p className="text-xs" style={{ color: 'var(--status-warn)' }}>
+          Defina a marca do painel (aba Painéis → editar painel) pra liberar a lista de modelos.
+        </p>
+      )}
+      {sirenes.map((s, idx) => (
+        <div key={idx} className="flex gap-2 items-start flex-wrap">
+          <select className={inputCls} style={{ flex: '1 1 200px' }} disabled={!marca}
+            value={s.modelo} onChange={(e) => updateSirene(idx, { modelo: e.target.value })}>
+            <option value="">{marca ? 'Selecione o modelo...' : 'Defina a marca do painel'}</option>
+            {modelos.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+          <input className={inputCls} style={{ flex: '1 1 200px' }} placeholder="Localização (ex.: Coluna B4)"
+            value={s.localizacao} onChange={(e) => updateSirene(idx, { localizacao: e.target.value })} />
+          <IconButton title="Remover sirene" onClick={() => removeSirene(idx)}><Trash2 size={15} /></IconButton>
+        </div>
+      ))}
+      <Button variant="secondary" type="button" onClick={addSirene}><Plus size={15} /> Adicionar sirene</Button>
+    </div>
+  );
 }
 
 function pairKeyComplementar(d) {
@@ -4112,10 +4326,11 @@ function papelSinalLabel(papel) {
 
 function ComplementaresView({
   data, canEdit, onSubmitBateriaPainel, onSubmitFonteAuxiliar, onDeleteFonteAuxiliar,
-  onSubmitRede, onDeleteRede, onSubmitCalibracao, onSubmitEtiqueta, onInspectDevice,
+  onSubmitRede, onDeleteRede, onSubmitCalibracao, onSubmitEtiqueta, onSubmitSireneCampos, onInspectDevice,
 }) {
   const [tab, setTab] = useState('beam');
-  const grupo1Devices = (data.devices || []).filter((d) => complementarGroupFor(d.categoriaFuncional) === tab);
+  const grupo1Devices = (data.devices || []).filter((d) => d.moduloPaiId && complementarGroupFor(d.categoriaFuncional) === tab);
+  const sirenes = (data.devices || []).filter((d) => d.type === 'sirene');
 
   return (
     <div className="flex flex-col gap-4">
@@ -4135,6 +4350,11 @@ function ComplementaresView({
         <div key={tab} className="fade-in-up">
           <ComplementarGrupo1List data={data} devices={grupo1Devices} canEdit={canEdit} showCalibracao={tab === 'gas'}
             onInspectDevice={onInspectDevice} onSubmitCalibracao={onSubmitCalibracao} onSubmitEtiqueta={onSubmitEtiqueta} />
+        </div>
+      )}
+      {tab === 'sirenes' && (
+        <div key="sirenes" className="fade-in-up">
+          <SireneList data={data} sirenes={sirenes} canEdit={canEdit} onInspectDevice={onInspectDevice} onSubmitSireneCampos={onSubmitSireneCampos} />
         </div>
       )}
       {tab === 'rede' && (
@@ -4246,6 +4466,83 @@ function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInsp
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Descreve o pai (módulo de saída ou NAC) de uma sirene, pra dar contexto na aba Sirenes. */
+function paiDaSirene(data, sirene) {
+  const modulo = (data.devices || []).find((d) => d.id === sirene.moduloPaiId);
+  if (modulo) {
+    const loop = (data.loops || []).find((l) => l.id === modulo.loopId);
+    const panel = loop && (data.panels || []).find((p) => p.id === loop.panelId);
+    return { label: `Módulo de saída — End. ${modulo.address}`, panelName: panel?.name || '', loopName: loop?.name || '' };
+  }
+  const nac = (data.nacs || []).find((n) => n.id === sirene.moduloPaiId);
+  if (nac) {
+    const panel = (data.panels || []).find((p) => p.id === nac.panelId);
+    return { label: `NAC — ${nac.name}`, panelName: panel?.name || '', loopName: '' };
+  }
+  return { label: 'Sem vínculo', panelName: '', loopName: '' };
+}
+
+function SireneList({ data, sirenes, canEdit, onInspectDevice, onSubmitSireneCampos }) {
+  const [editingId, setEditingId] = useState(null);
+  const [draft, setDraft] = useState({ modelo: '', localizacao: '' });
+
+  if (sirenes.length === 0) {
+    return <EmptyState icon={Bell} title="Nenhuma sirene cadastrada"
+      description="Defina a categoria funcional 'Sirenes' no cadastro do módulo de saída ou da NAC (aba Painéis) pra cadastrar as sirenes aqui." />;
+  }
+
+  const grupos = new Map();
+  sirenes.forEach((s) => {
+    const key = s.moduloPaiId || 'sem-vinculo';
+    if (!grupos.has(key)) grupos.set(key, { pai: paiDaSirene(data, s), itens: [] });
+    grupos.get(key).itens.push(s);
+  });
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      {[...grupos.values()].map((grupo) => (
+        <div key={grupo.pai.label + grupo.itens[0].id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{grupo.pai.label}</span>
+            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[grupo.pai.panelName, grupo.pai.loopName].filter(Boolean).join(' · ')}</span>
+          </div>
+          <div className="flex flex-col gap-2 mt-1">
+            {grupo.itens.map((s) => (
+              <div key={s.id} className="rounded-md p-2 flex flex-col gap-1.5" style={{ border: '1px solid var(--border)' }}>
+                {editingId === s.id ? (
+                  <div className="flex gap-2 flex-wrap">
+                    <select className={inputCls} style={{ flex: '1 1 160px' }} value={draft.modelo}
+                      onChange={(e) => setDraft({ ...draft, modelo: e.target.value })}>
+                      {Object.values(SIRENE_MODELOS_POR_MARCA).flat().map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                    <input className={inputCls} style={{ flex: '1 1 160px' }} value={draft.localizacao}
+                      onChange={(e) => setDraft({ ...draft, localizacao: e.target.value })} placeholder="Localização" />
+                    <Button variant="primary" onClick={() => { onSubmitSireneCampos(s.id, { modelo: draft.modelo, description: draft.localizacao }); setEditingId(null); }}>Salvar</Button>
+                    <Button variant="secondary" onClick={() => setEditingId(null)}>Cancelar</Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {Object.values(SIRENE_MODELOS_POR_MARCA).flat().find((m) => m.value === s.modelo)?.label || s.modelo || 'Modelo não definido'}
+                      {s.description && <span style={{ color: 'var(--text-secondary)' }}> — {s.description}</span>}
+                    </span>
+                    {canEdit && <IconButton title="Editar" onClick={() => { setEditingId(s.id); setDraft({ modelo: s.modelo || '', localizacao: s.description || '' }); }}><Pencil size={14} /></IconButton>}
+                  </div>
+                )}
+                {canEdit && (
+                  <Button variant="secondary" onClick={() => onInspectDevice('devices', s, `Sirene — ${s.description || grupo.pai.label}`)}>
+                    <ClipboardCheck size={15} /> Registrar inspeção
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -4502,7 +4799,7 @@ function RedeList({ data, canEdit, onSubmit, onDelete }) {
 
 function moduleDeviceOptions(data, moduloTipo) {
   const wantedTypes = moduloTipo === 'saida' ? ['saida', 'rele'] : ['entrada', 'entrada_duplo'];
-  return (data.devices || []).filter((d) => wantedTypes.includes(d.type)).map((d) => {
+  return (data.devices || []).filter((d) => wantedTypes.includes(d.type) && !d.moduloPaiId).map((d) => {
     const loop = data.loops.find((l) => l.id === d.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
     return {
@@ -5263,7 +5560,7 @@ function PanelDetail({
               )}
               {loops.map((loop) => {
                 const q = deviceSearch.trim().toLowerCase();
-                const allDevices = data.devices.filter((d) => d.loopId === loop.id).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
+                const allDevices = data.devices.filter((d) => d.loopId === loop.id && !d.moduloPaiId).sort((a, b) => a.address.localeCompare(b.address, undefined, { numeric: true }));
                 const devices = q
                   ? allDevices.filter((d) => `${d.address} ${d.modelo || ''} ${d.description || ''}`.toLowerCase().includes(q))
                   : allDevices;
@@ -5318,7 +5615,7 @@ function PanelDetail({
                             title={(DEVICE_TYPE_MAP[d.type]?.label || 'Dispositivo') + (d.modelo ? ` · ${d.modelo}` : '')} meta={d.description}
                             status={{ ...computeStatus(d.nextInspection), lastMaintenance: d.lastMaintenance, lastInspection: d.lastInspection, operationalStatus: d.operationalStatus }}
                             indicadorCount={(data.indicador || []).filter((r) => r.deviceId === d.id).length}
-                            warning={(d.type === 'entrada' || d.type === 'entrada_duplo' || d.type === 'zona') && !d.categoriaFuncional ? 'Categoria funcional não definida' : undefined}
+                            warning={(d.type === 'entrada' || d.type === 'entrada_duplo' || d.type === 'zona') && !categoriaFuncionalEfetiva(d, data.devices) ? 'Categoria funcional não definida' : undefined}
                             selectable={canEdit && selectMode} selected={selectedIds.includes(d.id)} onToggleSelect={() => toggleSelect(d.id)}
                             onEdit={canEdit ? () => onEditDevice(d) : undefined} onDelete={canEdit ? () => onDeleteDevice(d) : undefined} />
                         ))}
@@ -6228,7 +6525,7 @@ function compareAddress(a, b) {
 }
 
 function buildSDAIReportItems(data) {
-  const enderecaveis = (data.devices || []).map((d) => {
+  const enderecaveis = (data.devices || []).filter((d) => !d.moduloPaiId).map((d) => {
     const loop = data.loops.find((l) => l.id === d.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
     return {
@@ -6266,12 +6563,12 @@ function buildSDAIReportItems(data) {
     };
   });
 
-  const complementaresTipo1 = (data.devices || []).filter((d) => complementarGroupFor(d.categoriaFuncional)).map((d) => {
+  const complementaresTipo1 = (data.devices || []).filter((d) => d.moduloPaiId && d.type !== 'sirene').map((d) => {
     const loop = data.loops.find((l) => l.id === d.loopId);
     const panel = loop && data.panels.find((p) => p.id === loop.panelId);
     const catLabel = FUNCTIONAL_CATEGORY_MAP[d.categoriaFuncional] || d.categoriaFuncional;
     return {
-      id: `${d.id}-comp`, address: d.address, tipo: catLabel,
+      id: d.id, address: d.address, tipo: catLabel,
       localizacao: [panel?.name, loop?.name, d.etiquetaComplementar || d.description].filter(Boolean).join(' · ') || '—',
             panelId: panel?.id || null, groupLabel: panel?.name || 'Sem painel',
       loopId: loop?.id || null, loopName: loop?.name || null,
@@ -6284,6 +6581,25 @@ function buildSDAIReportItems(data) {
         { label: 'Próxima insp.', value: formatDateBR(d.nextInspection) },
       ],
       search: `${d.address} ${catLabel} ${d.etiquetaComplementar || ''} ${panel?.name || ''}`.toLowerCase(),
+    };
+  });
+  const sirenes = (data.devices || []).filter((d) => d.type === 'sirene').map((d) => {
+    const pai = paiDaSirene(data, d);
+    const modeloLabel = Object.values(SIRENE_MODELOS_POR_MARCA).flat().find((m) => m.value === d.modelo)?.label || d.modelo;
+    return {
+      id: d.id, address: null, tipo: 'Sirene',
+      localizacao: [pai.panelName, pai.label, d.description].filter(Boolean).join(' · ') || '—',
+      panelId: null, groupLabel: pai.panelName || 'Sem painel',
+      loopId: d.loopId || null, loopName: pai.loopName || null,
+      extra: [
+        { label: 'Status', value: d.operationalStatus, color: operStatusColor(d.operationalStatus) },
+        { label: 'Aparência', value: d.appearance, color: appearanceColor(d.appearance) },
+        { label: 'Com. local', value: d.localComm, color: commColor(d.localComm) },
+        { label: 'Com. rede', value: d.networkComm, color: commColor(d.networkComm) },
+        { label: 'Última insp.', value: formatDateBR(d.lastInspection) },
+        { label: 'Próxima insp.', value: formatDateBR(d.nextInspection) },
+      ],
+      search: `sirene ${modeloLabel || ''} ${d.description || ''} ${pai.label} ${pai.panelName}`.toLowerCase(),
     };
   });
   const baterias = (data.bateriasPainel || []).map((b) => {
@@ -6312,7 +6628,7 @@ function buildSDAIReportItems(data) {
     search: `fonte auxiliar ${f.nome || ''}`.toLowerCase(),
   }));
 
-  return { enderecaveis, nacs, complementares: [...complementaresTipo1, ...baterias, ...fontes] };
+  return { enderecaveis, nacs, complementares: [...complementaresTipo1, ...sirenes, ...baterias, ...fontes] };
 }
 
 function buildSPCIReportItems(data) {

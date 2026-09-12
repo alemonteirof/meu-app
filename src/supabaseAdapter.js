@@ -64,6 +64,24 @@ export const DEVICE_TYPE_LABELS = {
   entrada_duplo: 'Módulo de Entrada Duplo',
   zona: 'Módulo de Zona',
   rele: 'Módulo de relé',
+  sirene: 'Sirene',
+};
+
+// ---- Categoria funcional (módulo de saída / NAC) — trava a lista de modelo de sirene ----
+export const FUNCTIONAL_CATEGORIES_SAIDA = [
+  { value: 'sirenes', label: 'Sirenes' },
+  { value: 'saida_outro', label: 'Outro' },
+];
+
+export const SIRENE_MODELOS_POR_MARCA = {
+  hochiki: [
+    { value: 'hec3_24', label: 'HEC3-24 (Gentex/System Sensor)' },
+    { value: 'bullet', label: 'Bullet (Genérica)' },
+  ],
+  notifier: [
+    { value: 'pr2l', label: 'PR2L (System Sensor/Audio Visual)' },
+    { value: 'hrl', label: 'HRL (System Sensor/Audio)' },
+  ],
 };
 
 // ---- Categoria funcional (módulos de entrada) / método de teste ----
@@ -124,6 +142,7 @@ const METODO_POR_TIPO = {
   rele: 'Multímetro + "jump" nos comandos',
   rede_conversor: 'Verificação de comunicação (LEDs de status) e reaperto dos conectores',
   rede_placa: 'Verificação de comunicação (LEDs de status) e reaperto dos conectores',
+  sirene: 'Injeção de 24V no circuito / verificação de acionamento',
 };
 
 const METODO_POR_CATEGORIA_FUNCIONAL = {
@@ -570,11 +589,12 @@ export async function loadClientData(clienteId) {
     id: l.id, panelId: l.painel_id, name: l.nome || (l.numero ? `Laço ${l.numero}` : ''),
   }));
 
-  const devices = dispositivos.filter((d) => d.laco_id).map((d) => ({
+  const devices = dispositivos.filter((d) => d.laco_id || d.modulo_pai_id).map((d) => ({
     id: d.id, loopId: d.laco_id, address: d.endereco || '', type: d.tipo_modulo,
     modelo: d.modelo || '', description: d.etiqueta || '',
     categoriaFuncional: d.categoria_funcional || '', papelSinal: d.papel_sinal || '', subEndereco: d.sub_endereco || '',
     etiquetaComplementar: d.etiqueta_complementar || '', dataCalibracao: d.data_calibracao || '', proximaCalibracao: d.proxima_calibracao || '',
+    moduloPaiId: d.modulo_pai_id || null,
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
     operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
     localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
@@ -583,6 +603,7 @@ export async function loadClientData(clienteId) {
 
   const nacs = dispositivos.filter((d) => !d.laco_id && d.painel_id && !REDE_TIPOS[d.tipo_modulo]).map((d) => ({
     id: d.id, panelId: d.painel_id, name: d.etiqueta || '', description: d.descricao || '',
+    categoriaFuncional: d.categoria_funcional || '',
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
     operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
     localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
@@ -599,7 +620,7 @@ export async function loadClientData(clienteId) {
     lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
   }));
 
-  const gasDetectors = dispositivos.filter((d) => !d.laco_id && !d.painel_id).map((d) => ({
+  const gasDetectors = dispositivos.filter((d) => !d.laco_id && !d.painel_id && !d.modulo_pai_id).map((d) => ({
     id: d.id, name: d.etiqueta || '', modelo: d.modelo || '', location: d.descricao || '',
     type: d.categoria_funcional || '', nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
     operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
@@ -752,7 +773,7 @@ export function saveClientData(clienteId, data) {
   return next;
 }
 
-const TIPOS_MODULO_VALIDOS = ['fumaca', 'calor', 'acionador', 'saida', 'rele', 'entrada', 'entrada_duplo', 'zona', 'modulo_saida', 'detector_gas', 'rede_conversor', 'rede_placa', 'outro'];
+const TIPOS_MODULO_VALIDOS = ['fumaca', 'calor', 'acionador', 'saida', 'rele', 'entrada', 'entrada_duplo', 'zona', 'modulo_saida', 'detector_gas', 'rede_conversor', 'rede_placa', 'sirene', 'outro'];
 
 async function doSaveClientData(clienteId, data) {
   // Monta os dispositivos e VALIDA antes de tocar no banco — se algo estiver fora do esperado,
@@ -765,10 +786,12 @@ async function doSaveClientData(clienteId, data) {
       categoria_funcional: d.categoriaFuncional || null, papel_sinal: d.papelSinal || null, sub_endereco: d.subEndereco || null,
       etiqueta_complementar: d.etiquetaComplementar || null, data_calibracao: d.dataCalibracao || null, proxima_calibracao: d.proximaCalibracao || null,
       proxima_inspecao: d.nextMaintenance || null, ultima_manutencao: d.lastMaintenance || null,
+      modulo_pai_id: d.moduloPaiId || null,
     })),
     ...(data.nacs || []).map((n) => ({
       id: n.id, cliente_id: clienteId, laco_id: null, painel_id: n.panelId,
       etiqueta: n.name || null, descricao: n.description || null, tipo_modulo: 'modulo_saida',
+      categoria_funcional: n.categoriaFuncional || null,
       proxima_inspecao: n.nextMaintenance || null, ultima_manutencao: n.lastMaintenance || null,
     })),
     ...(data.gasDetectors || []).map((g) => ({
