@@ -3,7 +3,7 @@ import { ShieldAlert, Download, X, Maximize2 } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, createDiagnosticoOutro, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem, converterOutroParaAtendimento,
-  listAtendimentosAbertos, resolverAtendimentoEmVisita,
+  listAtendimentosAbertos, registrarIntervencaoAtendimento,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
@@ -398,11 +398,14 @@ function ItemResumo({ item }) {
       </div>
     );
   }
-  if (item.tipo === 'pendencia_resolvida') {
+  if (item.tipo === 'intervencao') {
     return (
       <div style={{ fontSize: 13, color: '#F1EDEA' }}>
-        <strong style={{ color: 'var(--status-ok)' }}>Pendência resolvida</strong> · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
-        {item.falha && <div style={{ color: 'var(--text-secondary)' }}>{item.falha}</div>}
+        <strong style={{ color: item.status === 'Resolvido' ? 'var(--status-ok)' : 'var(--status-warn, #f59f00)' }}>
+          Intervenção · {item.status}
+        </strong> · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
+        {item.falha && <div style={{ color: 'var(--text-secondary)' }}>Problema original: {item.falha}</div>}
+        {item.descricao && <div style={{ color: 'var(--text-secondary)' }}>O que foi feito: {item.descricao}</div>}
       </div>
     );
   }
@@ -942,6 +945,21 @@ function itemsFromVisita(v) {
         falha: i.falha || '',
         descritivo: [i.resultado_teste, i.metodo].filter(Boolean).join(' · '),
         status: 'Resolvido', fotos: i.fotos || [],
+      };
+    }
+    if (it.atendimento_intervencoes) {
+      const interv = it.atendimento_intervencoes;
+      const a = interv.atendimentos || {};
+      const al = alvoDeRegistro(a);
+      return {
+        id: it.id, tipo: 'intervencao', dispositivoId: a.dispositivo_id || null,
+        alvoKind: al.alvoKind, painelId: a.painel_id || null,
+        etiqueta: al.alvoLabel || a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
+        endereco: a.dispositivos?.endereco || '',
+        falha: a.falha || '', falhaDesde: (a.data_registro || '').slice(0, 10),
+        descritivo: interv.descricao || '', descricao: interv.descricao || '',
+        status: interv.status_resultante === 'resolvido' ? 'Resolvido' : 'Andamento',
+        fotos: interv.fotos || [],
       };
     }
     return null;
@@ -1612,7 +1630,7 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
       <div key={it.id}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}><ItemResumo item={{ ...it, dispositivoLabel: it.etiqueta, resultado: it.status }} /></div>
-          {canEdit && editingItemId !== it.id && (
+          {canEdit && it.tipo !== 'intervencao' && editingItemId !== it.id && (
             <button type="button" onClick={() => onStartEdit(visita, it)} style={{ ...smallBtnStyle, flexShrink: 0 }}>Editar item</button>
           )}
         </div>
@@ -1928,16 +1946,21 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     setVisita(null);
     setItensVisita([]);
     setPendentes([]);
-    setPendentesSelecionados([]);
+    setIntervencaoAbertaId(null);
+    setIntervencaoForm(null);
     setMsg('');
     refreshVisitas();
   }
 
-  // ---- Pendências de visitas anteriores (Aguardando/Andamento) a resolver na visita atual ----
+  // ---- Pendências de visitas anteriores (Aguardando/Andamento): registrar 1 intervenção
+  // (o que foi feito, como, fotos) contra um item aberto de qualquer visita anterior deste
+  // cliente. Nunca sobrescreve falha/descritivo/fotos do atendimento original — cada
+  // intervenção é um registro novo, e pode haver várias até uma fechar em Resolvido.
   const [pendentes, setPendentes] = useState([]);
   const [loadingPendentes, setLoadingPendentes] = useState(false);
-  const [pendentesSelecionados, setPendentesSelecionados] = useState([]);
-  const [savingPendentes, setSavingPendentes] = useState(false);
+  const [intervencaoAbertaId, setIntervencaoAbertaId] = useState(null);
+  const [intervencaoForm, setIntervencaoForm] = useState(null);
+  const [savingIntervencao, setSavingIntervencao] = useState(false);
 
   const carregarPendentes = useCallback(async () => {
     if (!clientId) return;
@@ -1956,30 +1979,44 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (visita) carregarPendentes();
   }, [visita?.id, carregarPendentes]);
 
-  function togglePendenteSelecionado(id) {
-    setPendentesSelecionados((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  function abrirIntervencao(id) {
+    setIntervencaoAbertaId(id);
+    setIntervencaoForm({ statusResultante: 'resolvido', descricao: '', fotos: [] });
+  }
+  function cancelarIntervencao() {
+    setIntervencaoAbertaId(null);
+    setIntervencaoForm(null);
   }
 
-  async function resolverPendentesSelecionados() {
-    if (pendentesSelecionados.length === 0) { setMsg('Selecione ao menos uma pendência.'); return; }
-    setSavingPendentes(true);
+  async function salvarIntervencao() {
+    if (!intervencaoForm?.descricao?.trim()) { setMsg('Descreva o que foi feito.'); return; }
+    const p = pendentes.find((x) => x.id === intervencaoAbertaId);
+    if (!p) return;
+    setSavingIntervencao(true);
     try {
-      const resolvidos = pendentes.filter((p) => pendentesSelecionados.includes(p.id));
-      for (const p of resolvidos) {
-        await resolverAtendimentoEmVisita(p.id, visita.id, visita.data_visita);
+      await registrarIntervencaoAtendimento({
+        atendimentoId: p.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
+        tecnico: visita.tecnico, statusResultante: intervencaoForm.statusResultante,
+        descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
+      });
+      setItensVisita((prev) => [...prev, {
+        tipo: 'intervencao', falha: p.falha, dispositivoLabel: labelDaPendencia(p),
+        descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
+        status: intervencaoForm.statusResultante === 'resolvido' ? 'Resolvido' : 'Andamento',
+      }]);
+      if (intervencaoForm.statusResultante === 'resolvido') {
+        setPendentes((prev) => prev.filter((x) => x.id !== p.id));
+      } else {
+        setPendentes((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'andamento' } : x)));
       }
-      setItensVisita((prev) => [...prev, ...resolvidos.map((p) => ({
-        tipo: 'pendencia_resolvida', falha: p.falha, dispositivoLabel: labelDaPendencia(p), fotos: p.fotos,
-      }))]);
-      setPendentes((prev) => prev.filter((p) => !pendentesSelecionados.includes(p.id)));
-      setPendentesSelecionados([]);
+      cancelarIntervencao();
       if (onRefresh) onRefresh();
-      setMsg(`${resolvidos.length} pendência(s) marcada(s) como resolvida(s) nesta visita.`);
+      setMsg('Intervenção registrada.');
     } catch (err) {
       console.error(err);
-      setMsg('Erro ao marcar pendências como resolvidas.');
+      setMsg('Erro ao registrar intervenção.');
     } finally {
-      setSavingPendentes(false);
+      setSavingIntervencao(false);
     }
   }
 
@@ -2007,7 +2044,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     setVisita(null);
     setItensVisita([]);
     setPendentes([]);
-    setPendentesSelecionados([]);
+    setIntervencaoAbertaId(null);
+    setIntervencaoForm(null);
     setMsg('');
     refreshVisitas();
     if (onRefresh) onRefresh();
@@ -2637,33 +2675,55 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
           {aba === 'pendentes' && (
             <div key="pendentes" className="fade-in-up" style={{ ...cardStyle, marginBottom: 16 }}>
               <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                Itens em Aguardando/Andamento de qualquer visita anterior deste cliente. Marque os que
-                foram resolvidos hoje — ficam Resolvido e passam a constar nesta visita.
+                Itens em Aguardando/Andamento de qualquer visita anterior deste cliente. Registre uma
+                intervenção (o que foi feito, como e fotos) sem alterar o relato original do problema —
+                pode registrar mais de uma ao longo do tempo até fechar como Resolvido.
               </p>
               {loadingPendentes && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Carregando pendências...</p>}
               {!loadingPendentes && pendentes.length === 0 && (
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma pendência aberta para este cliente.</p>
               )}
               {!loadingPendentes && pendentes.length > 0 && (
-                <>
-                  <div style={{ display: 'grid', gap: 6, marginBottom: 12, maxHeight: 360, overflowY: 'auto' }}>
-                    {pendentes.map((p) => (
-                      <label key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 8, borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={pendentesSelecionados.includes(p.id)} onChange={() => togglePendenteSelecionado(p.id)} style={{ marginTop: 3 }} />
-                        <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
-                          <strong style={{ color: statusColor(statusPendenciaLabel(p.status)) }}>{statusPendenciaLabel(p.status)}</strong>
-                          {' · '}{labelDaPendencia(p)}
-                          {p.data_registro && <span style={{ color: 'var(--text-secondary)' }}> · desde {formatDateBR((p.data_registro || '').slice(0, 10))}</span>}
-                          {p.falha && <div style={{ color: 'var(--text-secondary)' }}>{p.falha}</div>}
-                          {p.descritivo && <div style={{ color: 'var(--text-secondary)' }}>{p.descritivo}</div>}
+                <div style={{ display: 'grid', gap: 8, maxHeight: 480, overflowY: 'auto' }}>
+                  {pendentes.map((p) => (
+                    <div key={p.id} style={{ padding: 8, borderRadius: 8, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                        <strong style={{ color: statusColor(statusPendenciaLabel(p.status)) }}>{statusPendenciaLabel(p.status)}</strong>
+                        {' · '}{labelDaPendencia(p)}
+                        {p.data_registro && <span style={{ color: 'var(--text-secondary)' }}> · desde {formatDateBR((p.data_registro || '').slice(0, 10))}</span>}
+                        {p.falha && <div style={{ color: 'var(--text-secondary)' }}>{p.falha}</div>}
+                        {p.descritivo && <div style={{ color: 'var(--text-secondary)' }}>{p.descritivo}</div>}
+                      </div>
+                      {intervencaoAbertaId === p.id ? (
+                        <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                          <Field label="O que foi feito / como foi feito">
+                            <textarea style={{ ...inputStyle, minHeight: 60 }} value={intervencaoForm.descricao}
+                              onChange={(e) => setIntervencaoForm((f) => ({ ...f, descricao: e.target.value }))} />
+                          </Field>
+                          <Field label="Status após essa intervenção">
+                            <select style={inputStyle} value={intervencaoForm.statusResultante}
+                              onChange={(e) => setIntervencaoForm((f) => ({ ...f, statusResultante: e.target.value }))}>
+                              <option value="resolvido">Resolvido</option>
+                              <option value="andamento">Ainda em andamento</option>
+                            </select>
+                          </Field>
+                          <FotosField fotos={intervencaoForm.fotos}
+                            setFotos={(next) => setIntervencaoForm((f) => ({ ...f, fotos: typeof next === 'function' ? next(f.fotos) : next }))} />
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button type="button" onClick={salvarIntervencao} disabled={!canEdit || savingIntervencao} style={{ ...btnStyle, opacity: savingIntervencao ? 0.7 : 1 }}>
+                              {savingIntervencao ? 'Salvando...' : 'Salvar intervenção'}
+                            </button>
+                            <button type="button" onClick={cancelarIntervencao} style={smallBtnStyle}>Cancelar</button>
+                          </div>
                         </div>
-                      </label>
-                    ))}
-                  </div>
-                  <button type="button" onClick={resolverPendentesSelecionados} disabled={!canEdit || savingPendentes || pendentesSelecionados.length === 0} style={{ ...btnStyle, opacity: savingPendentes ? 0.7 : 1 }}>
-                    {savingPendentes ? 'Salvando...' : `Marcar como resolvido nesta visita (${pendentesSelecionados.length})`}
-                  </button>
-                </>
+                      ) : (
+                        <button type="button" onClick={() => abrirIntervencao(p.id)} disabled={!canEdit} style={{ ...smallBtnStyle, marginTop: 6 }}>
+                          Registrar intervenção
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

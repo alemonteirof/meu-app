@@ -285,7 +285,7 @@ export async function createVisita({ clienteId, painelId, tecnico, dataVisita })
   return data;
 }
 
-async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao, outroFotos, outroAtividade, outroAtividadeDados }) {
+async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao, outroFotos, outroAtividade, outroAtividadeDados, intervencaoId }) {
   if (!rvtId) return;
   const { error } = await supabase.from('rvt_itens').insert({
     rvt_id: rvtId, atendimento_id: atendimentoId || null,
@@ -293,6 +293,7 @@ async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescrica
     outro_fotos: outroFotos || [],
     outro_atividade: outroAtividade || null,
     outro_atividade_dados: outroAtividadeDados || {},
+    intervencao_id: intervencaoId || null,
   });
   if (error) throw error;
 }
@@ -483,14 +484,26 @@ export async function listAtendimentosAbertos(clienteId) {
   return data;
 }
 
-/** Marca uma corretiva aberta (de qualquer visita) como Resolvido a partir da
-    visita atual: atualiza o status/data de resolução na própria linha (a visita
-    de origem passa a ver "Resolvido" também) e adiciona 1 item na visita atual
-    apontando pro mesmo atendimento, pra ele aparecer no RVT/relatório de hoje. */
-export async function resolverAtendimentoEmVisita(id, rvtId, dataResolucao) {
-  const at = await updateAtendimento(id, { status: 'resolvido', resolvidoRvtId: rvtId, dataResolucao });
-  await addItemToVisita(rvtId, { atendimentoId: id });
-  return at;
+/** Registra 1 intervenção contra uma corretiva aberta (de qualquer visita) — o que
+    foi feito, como, fotos e o status que essa intervenção deixa o item (Andamento
+    ou Resolvido). Nunca sobrescreve falha/descritivo/fotos do atendimento original:
+    grava um registro novo, append-only, e só atualiza o status/data de resolução
+    "cache" no atendimento (pra filtros e pro Indicador). Pode haver várias
+    intervenções ao longo de visitas diferentes até uma delas fechar Resolvido. */
+export async function registrarIntervencaoAtendimento({ atendimentoId, clienteId, rvtId, data, tecnico, statusResultante, descricao, fotos }) {
+  const { data: interv, error } = await supabase.from('atendimento_intervencoes').insert({
+    atendimento_id: atendimentoId, cliente_id: clienteId || null, rvt_id: rvtId || null,
+    data: data || new Date().toISOString().slice(0, 10), tecnico: tecnico || null,
+    status_resultante: statusResultante, descricao, fotos: fotos || [],
+  }).select().single();
+  if (error) throw error;
+
+  await updateAtendimento(atendimentoId, {
+    status: statusResultante,
+    ...(statusResultante === 'resolvido' ? { resolvidoRvtId: rvtId, dataResolucao: data } : {}),
+  });
+  await addItemToVisita(rvtId, { intervencaoId: interv.id });
+  return interv;
 }
 
 export async function listInspecoes(clienteId) {
@@ -513,7 +526,10 @@ export async function listVisitas(clienteId) {
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
         atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
-        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) )
+        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
+        atendimento_intervencoes ( id, data, tecnico, status_resultante, descricao, fotos,
+          atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, data_registro, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) )
+        )
       )
     `)
     .eq('cliente_id', clienteId)
@@ -771,6 +787,17 @@ export async function loadClientData(clienteId) {
           falha: i.falha || '', falhaCodigo: i.falha_codigo || '', falhaMarca: i.falha_marca || '', falhaCategoria: i.falha_categoria || '',
           descritivo: i.resultado_teste || '', status: 'Resolvido',
           explanacao: '', dataIntervencao: i.data_inspecao, solucao: '', fotos: i.fotos || [] };
+      }
+      if (it.atendimento_intervencoes) {
+        const interv = it.atendimento_intervencoes;
+        const a = interv.atendimentos || {};
+        const al = alvoLabelInfo(a);
+        return { id: `novo-item-${it.id}`, deviceId: al.deviceId, categoria: al.categoria, tipo: 'intervencao',
+          etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
+          equipamento: al.equipamento, area: '',
+          falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaMarca: a.falha_marca || '', falhaCategoria: a.falha_categoria || '',
+          descritivo: interv.descricao || '', status: interv.status_resultante === 'resolvido' ? 'Resolvido' : 'Andamento',
+          explanacao: '', dataIntervencao: interv.data || v.data_visita, solucao: '', fotos: interv.fotos || [] };
       }
       return null;
     }).filter(Boolean),
