@@ -470,6 +470,29 @@ export async function listAtendimentos(clienteId) {
   return data;
 }
 
+/** Corretivas ainda abertas (Aguardando/Andamento) do cliente, de qualquer visita
+    — usado pra oferecer "resolver pendência de visita anterior" na visita atual. */
+export async function listAtendimentosAbertos(clienteId) {
+  const { data, error } = await supabase
+    .from('atendimentos')
+    .select(`*, ${ATENDIMENTO_EMBEDS}`)
+    .eq('cliente_id', clienteId)
+    .neq('status', 'resolvido')
+    .order('data_registro', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/** Marca uma corretiva aberta (de qualquer visita) como Resolvido a partir da
+    visita atual: atualiza o status/data de resolução na própria linha (a visita
+    de origem passa a ver "Resolvido" também) e adiciona 1 item na visita atual
+    apontando pro mesmo atendimento, pra ele aparecer no RVT/relatório de hoje. */
+export async function resolverAtendimentoEmVisita(id, rvtId, dataResolucao) {
+  const at = await updateAtendimento(id, { status: 'resolvido', resolvidoRvtId: rvtId, dataResolucao });
+  await addItemToVisita(rvtId, { atendimentoId: id });
+  return at;
+}
+
 export async function listInspecoes(clienteId) {
   const { data, error } = await supabase
     .from('inspecoes')
@@ -690,9 +713,10 @@ export async function loadClientData(clienteId) {
       explanacao: '', dataDiagnostico: (a.data_registro || '').slice(0, 10),
       dataIntervencao1: (a.data_registro || '').slice(0, 10),
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
-      dataSolucao: a.status === 'resolvido' ? (a.data_registro || '').slice(0, 10) : '',
+      dataSolucao: a.status === 'resolvido' ? (a.data_resolucao || a.data_registro || '').slice(0, 10) : '',
       solucao: '', fotos: a.fotos || [], dataAgendamento: a.data_agendamento || '',
       origemRvt: a.rvt_itens?.[0]?.rvt_id ? `novo-rvt-${a.rvt_itens[0].rvt_id}` : '',
+      resolvidoEmRvt: a.resolvido_rvt_id ? `novo-rvt-${a.resolvido_rvt_id}` : '',
       origemNovo: true,
       };
     }),
@@ -1018,7 +1042,7 @@ async function doSaveClientData(clienteId, data) {
   }
 }
 
-export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, falhaCategoria, status, descritivo, fotos, dispositivoId, dataAgendamento }) {
+export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, falhaCategoria, status, descritivo, fotos, dispositivoId, dataAgendamento, resolvidoRvtId, dataResolucao }) {
   const patch = {};
   if (falha !== undefined) patch.falha = falha || null;
   if (falhaCodigo !== undefined) { patch.falha_codigo = falhaCodigo || null; patch.falha_escopo = escopoDaFalha(falhaCodigo) || null; }
@@ -1029,6 +1053,8 @@ export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, fa
   if (fotos !== undefined) patch.fotos = fotos;
   if (dispositivoId !== undefined) patch.dispositivo_id = dispositivoId || null;
   if (dataAgendamento !== undefined) patch.data_agendamento = dataAgendamento || null;
+  if (resolvidoRvtId !== undefined) patch.resolvido_rvt_id = resolvidoRvtId || null;
+  if (dataResolucao !== undefined) patch.data_resolucao = dataResolucao || null;
   const { data, error } = await supabase.from('atendimentos').update(patch).eq('id', id).select().single();
   if (error) throw error;
   return data;

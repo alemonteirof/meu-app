@@ -3,6 +3,7 @@ import { ShieldAlert, Download, X, Maximize2 } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, createDiagnosticoOutro, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem, converterOutroParaAtendimento,
+  listAtendimentosAbertos, resolverAtendimentoEmVisita,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
@@ -397,6 +398,14 @@ function ItemResumo({ item }) {
       </div>
     );
   }
+  if (item.tipo === 'pendencia_resolvida') {
+    return (
+      <div style={{ fontSize: 13, color: '#F1EDEA' }}>
+        <strong style={{ color: 'var(--status-ok)' }}>Pendência resolvida</strong> · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
+        {item.falha && <div style={{ color: 'var(--text-secondary)' }}>{item.falha}</div>}
+      </div>
+    );
+  }
   if (item.tipo === 'atendimento') {
     return (
       <div style={{ fontSize: 13, color: '#F1EDEA' }}>
@@ -692,6 +701,21 @@ function alvoDeRegistro(r) {
     return { alvoKind: 'painel', alvoLabel: `Painel (falha geral do sistema)${r.paineis?.nome ? ` — ${r.paineis.nome}` : ''}` };
   }
   return { alvoKind: 'dispositivo', alvoLabel: '' };
+}
+
+/** Rótulo do alvo de uma pendência (atendimento aberto de qualquer visita, vindo
+    de listAtendimentosAbertos) — mesmos embeds de alvoDeRegistro, cobrindo também
+    o caso "dispositivo" (que alvoDeRegistro deixa em branco). */
+function labelDaPendencia(a) {
+  const al = alvoDeRegistro(a);
+  if (al.alvoKind !== 'dispositivo') return al.alvoLabel;
+  return a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo';
+}
+
+/** status bruto do banco ('aguardando'/'andamento') -> rótulo capitalizado usado na UI. */
+function statusPendenciaLabel(status) {
+  if (status === 'andamento') return 'Andamento';
+  return 'Aguardando';
 }
 
 /** Marca única dos painéis dos dispositivos selecionados — só retorna se todos
@@ -1903,8 +1927,60 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   function finalizarVisita() {
     setVisita(null);
     setItensVisita([]);
+    setPendentes([]);
+    setPendentesSelecionados([]);
     setMsg('');
     refreshVisitas();
+  }
+
+  // ---- Pendências de visitas anteriores (Aguardando/Andamento) a resolver na visita atual ----
+  const [pendentes, setPendentes] = useState([]);
+  const [loadingPendentes, setLoadingPendentes] = useState(false);
+  const [pendentesSelecionados, setPendentesSelecionados] = useState([]);
+  const [savingPendentes, setSavingPendentes] = useState(false);
+
+  const carregarPendentes = useCallback(async () => {
+    if (!clientId) return;
+    setLoadingPendentes(true);
+    try {
+      const data = await listAtendimentosAbertos(clientId);
+      setPendentes(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPendentes(false);
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    if (visita) carregarPendentes();
+  }, [visita?.id, carregarPendentes]);
+
+  function togglePendenteSelecionado(id) {
+    setPendentesSelecionados((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function resolverPendentesSelecionados() {
+    if (pendentesSelecionados.length === 0) { setMsg('Selecione ao menos uma pendência.'); return; }
+    setSavingPendentes(true);
+    try {
+      const resolvidos = pendentes.filter((p) => pendentesSelecionados.includes(p.id));
+      for (const p of resolvidos) {
+        await resolverAtendimentoEmVisita(p.id, visita.id, visita.data_visita);
+      }
+      setItensVisita((prev) => [...prev, ...resolvidos.map((p) => ({
+        tipo: 'pendencia_resolvida', falha: p.falha, dispositivoLabel: labelDaPendencia(p), fotos: p.fotos,
+      }))]);
+      setPendentes((prev) => prev.filter((p) => !pendentesSelecionados.includes(p.id)));
+      setPendentesSelecionados([]);
+      if (onRefresh) onRefresh();
+      setMsg(`${resolvidos.length} pendência(s) marcada(s) como resolvida(s) nesta visita.`);
+    } catch (err) {
+      console.error(err);
+      setMsg('Erro ao marcar pendências como resolvidas.');
+    } finally {
+      setSavingPendentes(false);
+    }
   }
 
   /** Reabre uma visita já salva (do histórico "Visitas anteriores") pra permitir
@@ -1930,6 +2006,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     await deleteVisita(visita.id);
     setVisita(null);
     setItensVisita([]);
+    setPendentes([]);
+    setPendentesSelecionados([]);
     setMsg('');
     refreshVisitas();
     if (onRefresh) onRefresh();
@@ -2388,6 +2466,9 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
             <button onClick={() => setAba('manutencao')} style={tabBtnStyle(aba === 'manutencao')}>+ Manutenção</button>
             <button onClick={() => setAba('inspecao')} style={tabBtnStyle(aba === 'inspecao')}>+ Inspeção</button>
             <button onClick={() => setAba('outro')} style={tabBtnStyle(aba === 'outro')}>+ Outro</button>
+            <button onClick={() => setAba('pendentes')} style={tabBtnStyle(aba === 'pendentes')}>
+              Pendências de visitas anteriores{pendentes.length > 0 ? ` (${pendentes.length})` : ''}
+            </button>
           </div>
 
           {aba === 'manutencao' && (
@@ -2551,6 +2632,40 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                 {savingOutro ? 'Salvando...' : 'Adicionar à visita'}
               </button>
             </form>
+          )}
+
+          {aba === 'pendentes' && (
+            <div key="pendentes" className="fade-in-up" style={{ ...cardStyle, marginBottom: 16 }}>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Itens em Aguardando/Andamento de qualquer visita anterior deste cliente. Marque os que
+                foram resolvidos hoje — ficam Resolvido e passam a constar nesta visita.
+              </p>
+              {loadingPendentes && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Carregando pendências...</p>}
+              {!loadingPendentes && pendentes.length === 0 && (
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma pendência aberta para este cliente.</p>
+              )}
+              {!loadingPendentes && pendentes.length > 0 && (
+                <>
+                  <div style={{ display: 'grid', gap: 6, marginBottom: 12, maxHeight: 360, overflowY: 'auto' }}>
+                    {pendentes.map((p) => (
+                      <label key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: 8, borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={pendentesSelecionados.includes(p.id)} onChange={() => togglePendenteSelecionado(p.id)} style={{ marginTop: 3 }} />
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                          <strong style={{ color: statusColor(statusPendenciaLabel(p.status)) }}>{statusPendenciaLabel(p.status)}</strong>
+                          {' · '}{labelDaPendencia(p)}
+                          {p.data_registro && <span style={{ color: 'var(--text-secondary)' }}> · desde {formatDateBR((p.data_registro || '').slice(0, 10))}</span>}
+                          {p.falha && <div style={{ color: 'var(--text-secondary)' }}>{p.falha}</div>}
+                          {p.descritivo && <div style={{ color: 'var(--text-secondary)' }}>{p.descritivo}</div>}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="button" onClick={resolverPendentesSelecionados} disabled={!canEdit || savingPendentes || pendentesSelecionados.length === 0} style={{ ...btnStyle, opacity: savingPendentes ? 0.7 : 1 }}>
+                    {savingPendentes ? 'Salvando...' : `Marcar como resolvido nesta visita (${pendentesSelecionados.length})`}
+                  </button>
+                </>
+              )}
+            </div>
           )}
 
           <div>
