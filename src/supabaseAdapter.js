@@ -1272,13 +1272,49 @@ export async function listCombateHistorico(clienteId) {
   return data;
 }
 
+/** Recalcula o status "cache" de um atendimento a partir do que sobrou de
+    intervenção (a mais recente) depois que uma delas foi embora — se não sobrar
+    nenhuma, o item volta pro estado aberto padrão (Aguardando). Nunca mexe em
+    falha/descritivo/fotos originais, só em status/resolvido_rvt_id/data_resolucao. */
+async function recalcularStatusAtendimento(atendimentoId) {
+  const { data: restantes } = await supabase
+    .from('atendimento_intervencoes')
+    .select('rvt_id, data, status_resultante')
+    .eq('atendimento_id', atendimentoId)
+    .order('criado_em', { ascending: false })
+    .limit(1);
+  const ultima = restantes?.[0];
+  await updateAtendimento(atendimentoId, {
+    status: ultima ? ultima.status_resultante : 'aguardando',
+    resolvidoRvtId: ultima && ultima.status_resultante === 'resolvido' ? ultima.rvt_id : null,
+    dataResolucao: ultima && ultima.status_resultante === 'resolvido' ? ultima.data : null,
+  });
+}
+
 export async function deleteVisita(rvtId) {
-  const { data: itens } = await supabase.from('rvt_itens').select('atendimento_id, inspecao_id').eq('rvt_id', rvtId);
+  const { data: itens } = await supabase.from('rvt_itens').select('atendimento_id, inspecao_id, intervencao_id').eq('rvt_id', rvtId);
   const atendimentoIds = (itens || []).map((i) => i.atendimento_id).filter(Boolean);
   const inspecaoIds = (itens || []).map((i) => i.inspecao_id).filter(Boolean);
+
+  // Atendimentos (de OUTRAS visitas) que tiveram intervenção registrada aqui —
+  // preciso saber pra recalcular o status deles depois que a intervenção sumir.
+  const intervencaoIds = (itens || []).map((i) => i.intervencao_id).filter(Boolean);
+  let atendimentosParaRecalcular = [];
+  if (intervencaoIds.length) {
+    const { data: intervs } = await supabase.from('atendimento_intervencoes').select('atendimento_id').in('id', intervencaoIds);
+    atendimentosParaRecalcular = [...new Set((intervs || []).map((i) => i.atendimento_id))].filter((id) => !atendimentoIds.includes(id));
+  }
+
   if (atendimentoIds.length) await supabase.from('atendimentos').delete().in('id', atendimentoIds);
   if (inspecaoIds.length) await supabase.from('inspecoes').delete().in('id', inspecaoIds);
   await supabase.from('rvt_itens').delete().eq('rvt_id', rvtId);
   const { error } = await supabase.from('rvts').delete().eq('id', rvtId);
   if (error) throw error;
+
+  // rvts.delete() cascateia pra atendimento_intervencoes (rvt_id on delete cascade)
+  // — a(s) intervenção(ões) registrada(s) nesta visita já foram embora. Falta só
+  // recalcular o status de quem não nasceu nesta visita (esses já foram apagados acima).
+  for (const id of atendimentosParaRecalcular) {
+    await recalcularStatusAtendimento(id);
+  }
 }
