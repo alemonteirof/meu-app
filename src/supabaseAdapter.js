@@ -518,26 +518,64 @@ export async function listInspecoes(clienteId) {
   return data;
 }
 
-export async function listVisitas(clienteId) {
+/** Intervenções (sem embed) de um conjunto de atendimentos — usado só pra "costurar" em JS
+    o `.atendimentos` de cada intervenção a partir de um atendimento já carregado em memória,
+    em vez de re-embedar o dispositivo/laço/painel de novo por SQL (ver fetchVisitasEnriquecidas). */
+async function listAtendimentoIntervencoesRaw(atendimentoIds) {
+  if (!atendimentoIds.length) return [];
   const { data, error } = await supabase
+    .from('atendimento_intervencoes')
+    .select('*')
+    .in('atendimento_id', atendimentoIds)
+    .order('data', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/** Monta as visitas (rvts) com os mesmos campos aninhados que a tela de Atendimentos/RVT espera
+    (rvt_itens.atendimentos / .inspecoes / .atendimento_intervencoes.atendimentos), mas sem usar
+    embed profundo do PostgREST pra isso — a versão antiga fazia um LEFT JOIN LATERAL por
+    atendimento/inspeção/intervenção DENTRO de cada rvt_item, repetindo o mesmo join de
+    dispositivos/laços/painéis centenas de vezes; conforme o histórico do cliente cresceu isso
+    passou a estourar o statement timeout do Postgres (ver incidente 2026-09-13: app inteiro
+    aparecia vazio). Em vez disso: busca rvts+rvt_itens de forma rasa (só os IDs de FK) e busca
+    atendimentos/inspeções/intervenções cada um em UMA query só (já com os embeds que precisam),
+    e costura tudo em JS por id — mesmo resultado, muito menos joins no banco. `atendimentos` e
+    `inspecoes` podem ser passados já carregados (loadClientData reaproveita o que já buscou). */
+async function fetchVisitasEnriquecidas(clienteId, { atendimentos, inspecoes } = {}) {
+  const atendimentosNovos = atendimentos || await listAtendimentos(clienteId);
+  const inspecoesNovos = inspecoes || await listInspecoes(clienteId);
+  const atendimentoById = new Map(atendimentosNovos.map((a) => [a.id, a]));
+  const inspecaoById = new Map(inspecoesNovos.map((i) => [i.id, i]));
+
+  const intervencoesNovas = await listAtendimentoIntervencoesRaw(atendimentosNovos.map((a) => a.id));
+  const intervencaoById = new Map(intervencoesNovas.map((iv) => [iv.id, { ...iv, atendimentos: atendimentoById.get(iv.atendimento_id) || null }]));
+
+  const { data: rvts, error } = await supabase
     .from('rvts')
     .select(`
       id, data_visita, tecnico, painel_id,
       assinatura_cliente, assinatura_cliente_tipo, assinatura_cliente_data,
       assinatura_cliente_login, assinatura_cliente_user_id, assinatura_cliente_origem,
-      rvt_itens (
-                id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
-        atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
-        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, visual, sonoro, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
-        atendimento_intervencoes ( id, data, tecnico, status_resultante, descricao, fotos,
-          atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, data_registro, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) )
-        )
-      )
+      rvt_itens ( id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados, atendimento_id, inspecao_id, intervencao_id )
     `)
     .eq('cliente_id', clienteId)
     .order('data_visita', { ascending: false });
   if (error) throw error;
-  return data;
+
+  return (rvts || []).map((v) => ({
+    ...v,
+    rvt_itens: (v.rvt_itens || []).map((it) => ({
+      ...it,
+      atendimentos: it.atendimento_id ? (atendimentoById.get(it.atendimento_id) || null) : null,
+      inspecoes: it.inspecao_id ? (inspecaoById.get(it.inspecao_id) || null) : null,
+      atendimento_intervencoes: it.intervencao_id ? (intervencaoById.get(it.intervencao_id) || null) : null,
+    })),
+  }));
+}
+
+export async function listVisitas(clienteId) {
+  return fetchVisitasEnriquecidas(clienteId);
 }
 
 export async function loadClientData(clienteId) {
@@ -715,17 +753,17 @@ export async function loadClientData(clienteId) {
     return { deviceId: r.dispositivo_id || null, categoria: 'devices', etiqueta: '', endereco: '', laco: '', painel: '', equipamento: '' };
   }
 
-  // Cada lista é isolada com catch própria: listVisitas (RVTs com embeds profundos —
-  // atendimentos/inspeções/dispositivos/laços/painéis aninhados) fica cada vez mais
-  // pesada conforme o histórico do cliente cresce e pode estourar o statement timeout
-  // do Postgres. Se qualquer uma falhar, não pode derrubar loadClientData inteiro (isso
-  // já causou a tela inteira aparecer vazia mesmo com o resto dos dados intactos) —
-  // melhor perder só aquele pedaço do histórico do que a aplicação toda.
-  const [atendimentosNovos, inspecoesNovos, visitasNovas] = await Promise.all([
+  // Cada lista é isolada com catch própria — se qualquer uma falhar, não pode derrubar
+  // loadClientData inteiro (isso já causou a tela inteira aparecer vazia mesmo com o resto
+  // dos dados intactos, incidente 2026-09-13). Melhor perder só aquele pedaço do histórico
+  // do que a aplicação toda. visitasNovas reaproveita atendimentos/inspeções já buscados
+  // (fetchVisitasEnriquecidas) em vez de re-buscar tudo de novo com embed profundo.
+  const [atendimentosNovos, inspecoesNovos] = await Promise.all([
     listAtendimentos(clienteId).catch((e) => { console.error('listAtendimentos falhou', e); return []; }),
     listInspecoes(clienteId).catch((e) => { console.error('listInspecoes falhou', e); return []; }),
-    listVisitas(clienteId).catch((e) => { console.error('listVisitas falhou', e); return []; }),
   ]);
+  const visitasNovas = await fetchVisitasEnriquecidas(clienteId, { atendimentos: atendimentosNovos, inspecoes: inspecoesNovos })
+    .catch((e) => { console.error('listVisitas falhou', e); return []; });
 
   const indicadorNovos = [
     ...atendimentosNovos.map((a) => {
