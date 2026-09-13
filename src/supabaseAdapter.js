@@ -715,8 +715,16 @@ export async function loadClientData(clienteId) {
     return { deviceId: r.dispositivo_id || null, categoria: 'devices', etiqueta: '', endereco: '', laco: '', painel: '', equipamento: '' };
   }
 
+  // Cada lista é isolada com catch própria: listVisitas (RVTs com embeds profundos —
+  // atendimentos/inspeções/dispositivos/laços/painéis aninhados) fica cada vez mais
+  // pesada conforme o histórico do cliente cresce e pode estourar o statement timeout
+  // do Postgres. Se qualquer uma falhar, não pode derrubar loadClientData inteiro (isso
+  // já causou a tela inteira aparecer vazia mesmo com o resto dos dados intactos) —
+  // melhor perder só aquele pedaço do histórico do que a aplicação toda.
   const [atendimentosNovos, inspecoesNovos, visitasNovas] = await Promise.all([
-    listAtendimentos(clienteId), listInspecoes(clienteId), listVisitas(clienteId),
+    listAtendimentos(clienteId).catch((e) => { console.error('listAtendimentos falhou', e); return []; }),
+    listInspecoes(clienteId).catch((e) => { console.error('listInspecoes falhou', e); return []; }),
+    listVisitas(clienteId).catch((e) => { console.error('listVisitas falhou', e); return []; }),
   ]);
 
   const indicadorNovos = [
