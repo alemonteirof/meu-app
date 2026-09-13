@@ -1000,6 +1000,33 @@ function itemsFromVisita(v) {
   }).filter(Boolean);
 }
 
+/** Agrupa, só para exibição/impressão do RVT, itens de "atendimento" (corretiva) que
+    foram gerados juntos para vários dispositivos ao mesmo tempo (ex: Diagnóstico em
+    visita, ou corretiva com múltiplos dispositivos selecionados) — eles compartilham
+    falha/descritivo/status/fotos idênticos. Sem isso o relatório repetia o mesmo texto
+    e as mesmas fotos uma vez por dispositivo. Não mexe nos registros no banco (cada
+    dispositivo continua com seu próprio atendimento e status individual) nem no card
+    editável de VisitaCard — só junta as etiquetas num único bloco impresso. */
+function agruparItensParaImpressao(itens) {
+  const grupos = [];
+  const porChave = new Map();
+  for (const it of itens) {
+    const chave = it.tipo === 'atendimento'
+      ? JSON.stringify([it.falha, it.descritivo, it.status, it.fotos])
+      : null;
+    if (!chave) { grupos.push({ ...it, dispositivos: [{ etiqueta: it.etiqueta, endereco: it.endereco }] }); continue; }
+    const existente = porChave.get(chave);
+    if (existente) {
+      existente.dispositivos.push({ etiqueta: it.etiqueta, endereco: it.endereco });
+    } else {
+      const grupo = { ...it, dispositivos: [{ etiqueta: it.etiqueta, endereco: it.endereco }] };
+      porChave.set(chave, grupo);
+      grupos.push(grupo);
+    }
+  }
+  return grupos;
+}
+
 function RvtFieldLabelLocal({ children }) {
   return <p style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 600, marginBottom: 2, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{children}</p>;
 }
@@ -1276,7 +1303,7 @@ function SignatureField({ visita }) {
 function VisitaPrintView({ visitas, client, onBack }) {
   const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
   const isPeriodo = dias.length > 1;
-  const todosItens = visitas.flatMap((v) => itemsFromVisita(v));
+  const todosItens = agruparItensParaImpressao(visitas.flatMap((v) => itemsFromVisita(v)));
   const totalResolvidos = todosItens.filter((it) => it.status === 'Resolvido').length;
   const tecnicos = [...new Set(visitas.map((v) => v.tecnico).filter(Boolean))];
   const periodoLabel = isPeriodo ? `${formatDateBR(dias[0])} a ${formatDateBR(dias[dias.length - 1])}` : formatDateBR(dias[0]);
@@ -1294,7 +1321,7 @@ function VisitaPrintView({ visitas, client, onBack }) {
   const fotoNums = {};
   let _seqFoto = 0;
   dias.forEach((dia) => {
-    visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v)).forEach((it) => {
+    agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v))).forEach((it) => {
       (it.fotos || []).forEach((_, fi) => { _seqFoto += 1; fotoNums[`${it.id}#${fi}`] = _seqFoto; });
     });
   });
@@ -1365,7 +1392,7 @@ function VisitaPrintView({ visitas, client, onBack }) {
           </div>
 
           {dias.map((dia) => {
-            const itensDoDia = visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v));
+            const itensDoDia = agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v)));
             return (
               <div key={dia} className="flex flex-col gap-3">
                 {isPeriodo && (
@@ -1381,12 +1408,24 @@ function VisitaPrintView({ visitas, client, onBack }) {
                     <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: '#8B2F2F', color: '#fff' }}>{i + 1}</span>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{it.etiqueta}{it.endereco ? ` · END ${it.endereco}` : ''}</p>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                          {it.dispositivos.length > 1
+                            ? `${it.dispositivos.length} dispositivos`
+                            : `${it.etiqueta}${it.endereco ? ` · END ${it.endereco}` : ''}`}
+                        </p>
                       </div>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, flexShrink: 0, fontWeight: 600, color: statusColor(it.status), border: `1px solid ${statusColor(it.status)}` }}>
                         {it.status || 'Sem status'}
                       </span>
                     </div>
+                    {it.dispositivos.length > 1 && (
+                      <div style={{ marginBottom: 6 }}>
+                        <RvtFieldLabelLocal>Dispositivos</RvtFieldLabelLocal>
+                        <p style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                          {it.dispositivos.map((d) => `${d.etiqueta}${d.endereco ? ` (END ${d.endereco})` : ''}`).join(', ')}
+                        </p>
+                      </div>
+                    )}
                     {it.falha && (
                       <div style={{ marginBottom: 6 }}>
                         <RvtFieldLabelLocal>Falha</RvtFieldLabelLocal>
