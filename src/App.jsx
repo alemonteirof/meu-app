@@ -6596,6 +6596,8 @@ function buildSDAIReportItems(data) {
         { label: 'Aparência', value: d.appearance, color: appearanceColor(d.appearance) },
         { label: 'Com. local', value: d.localComm, color: commColor(d.localComm) },
         { label: 'Com. rede', value: d.networkComm, color: commColor(d.networkComm) },
+        { label: 'Visual', value: d.visual, color: operStatusColor(d.visual) },
+        { label: 'Sonoro', value: d.sonoro, color: operStatusColor(d.sonoro) },
         { label: 'Última insp.', value: formatDateBR(d.lastInspection) },
         { label: 'Próxima insp.', value: formatDateBR(d.nextInspection) },
       ],

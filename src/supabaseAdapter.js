@@ -408,7 +408,7 @@ async function selectAllRows(builderFactory) {
 }
 export async function createInspecao({
   dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, tecnico, resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede,
-  observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
+  visual, sonoro, observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
 }) {
   const dataFinal = dataInspecao || new Date().toISOString().slice(0, 10);
   const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId });
@@ -417,7 +417,8 @@ export async function createInspecao({
     dispositivo_id: dispositivoId || null, bateria_painel_id: bateriaPainelId || null, fonte_auxiliar_id: fonteAuxiliarId || null,
     cliente_id: clienteIdFinal, tecnico: tecnico || null, resultado_teste: resultadoTeste || null,
     aparencia: aparencia || null, comunicacao_local: comunicacaoLocal || null,
-    comunicacao_rede: comunicacaoRede || null, observacoes: observacoes || null,
+    comunicacao_rede: comunicacaoRede || null, visual: visual || null, sonoro: sonoro || null,
+    observacoes: observacoes || null,
     falha: falha || null, falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null,
     falha_categoria: falhaCategoria || null, falha_escopo: escopoDaFalha(falhaCodigo) || null,
     metodo: metodo || null, data_inspecao: dataFinal,
@@ -442,6 +443,7 @@ export async function createInspecao({
         ultima_inspecao: dataFinal, proxima_inspecao: proximaInspecao || null,
         resultado_teste: resultadoTeste || null, aparencia: aparencia || null,
         comunicacao_local: comunicacaoLocal || null, comunicacao_rede: comunicacaoRede || null,
+        visual: visual || null, sonoro: sonoro || null,
       })
       .eq('id', dispositivoId);
   } else if (bateriaPainelId) {
@@ -526,7 +528,7 @@ export async function listVisitas(clienteId) {
       rvt_itens (
                 id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados,
         atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, tipo, status, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, data_agendamento, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
-        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
+        inspecoes ( id, falha, falha_codigo, falha_marca, falha_categoria, falha_escopo, resultado_teste, aparencia, comunicacao_local, comunicacao_rede, visual, sonoro, observacoes, metodo, data_inspecao, proxima_inspecao, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, fotos, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) ),
         atendimento_intervencoes ( id, data, tecnico, status_resultante, descricao, fotos,
           atendimentos ( id, falha, falha_codigo, falha_marca, falha_categoria, descritivo, dispositivo_id, bateria_painel_id, fonte_auxiliar_id, painel_id, data_registro, dispositivos ( etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome) ), baterias_painel ( id, paineis(nome) ), fontes_auxiliares ( id, nome ), paineis ( nome ) )
         )
@@ -637,6 +639,7 @@ export async function loadClientData(clienteId) {
     nextMaintenance: d.proxima_inspecao || '', lastMaintenance: d.ultima_manutencao || '',
     operationalStatus: d.resultado_teste || '', appearance: d.aparencia || '',
     localComm: d.comunicacao_local || '', networkComm: d.comunicacao_rede || '',
+    visual: d.visual || '', sonoro: d.sonoro || '',
     lastInspection: d.ultima_inspecao || '', nextInspection: d.proxima_inspecao || '',
   }));
 
@@ -1093,12 +1096,14 @@ export async function deleteAtendimento(id) {
   if (error) throw error;
 }
 
-export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, proximaInspecao, fotos, dispositivoId }) {
+export async function updateInspecao(id, { resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede, visual, sonoro, observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, proximaInspecao, fotos, dispositivoId }) {
   const patch = {};
   if (resultadoTeste !== undefined) patch.resultado_teste = resultadoTeste || null;
   if (aparencia !== undefined) patch.aparencia = aparencia || null;
   if (comunicacaoLocal !== undefined) patch.comunicacao_local = comunicacaoLocal || null;
   if (comunicacaoRede !== undefined) patch.comunicacao_rede = comunicacaoRede || null;
+  if (visual !== undefined) patch.visual = visual || null;
+  if (sonoro !== undefined) patch.sonoro = sonoro || null;
   if (observacoes !== undefined) patch.observacoes = observacoes || null;
   if (falha !== undefined) patch.falha = falha || null;
   if (falhaCodigo !== undefined) { patch.falha_codigo = falhaCodigo || null; patch.falha_escopo = escopoDaFalha(falhaCodigo) || null; }

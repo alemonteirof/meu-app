@@ -18,6 +18,12 @@ export const CATEGORIAS_FALHA = {
   rede_paineis: 'Rede entre Painéis',
   sistema: 'Sistema / Processador / Software',
   anunciador: 'Anunciador / Periférico Remoto',
+  // Catálogo próprio de sirene (avaliação manual do técnico nos campos Visual/Sonoro da
+  // inspeção, sem código de painel — ver FALHAS_SIRENE abaixo).
+  visual_defeito: 'Visual com Defeito',
+  sonoro_defeito: 'Sonoro com Defeito',
+  sem_funcionamento: 'Sem funcionamento (Total)',
+  sem_resistor: 'Sem resistor (fim de linha)',
   // não é falha real — fica fora do gráfico "falhas mais comuns", mas continua selecionável
   // porque aparece no display do painel.
   diagnostico: 'Diagnóstico / Desabilitação / Teste',
@@ -223,6 +229,17 @@ const ESCOPO_DISPOSITIVO_NOTIFIER = new Set([
 FALHAS_HOCHIKI.forEach((f) => { f.escopo = ESCOPO_DISPOSITIVO_HOCHIKI.has(f.codigo) ? 'dispositivo' : 'painel'; });
 FALHAS_NOTIFIER.forEach((f) => { f.escopo = ESCOPO_DISPOSITIVO_NOTIFIER.has(f.codigo) ? 'dispositivo' : 'painel'; });
 
+// ---- Sirene (avaliação manual do técnico — Visual/Sonoro na inspeção, sem código de painel) ----
+// Sirene é sempre item endereçável (dispositivo filho via modulo_pai_id), então escopo é
+// sempre 'dispositivo'. Catálogo separado do de código de painel (FALHAS_HOCHIKI/NOTIFIER):
+// FalhaSelect troca pra esta lista quando o dispositivo selecionado é tipo_modulo === 'sirene'.
+export const FALHAS_SIRENE = [
+  { codigo: 'SIR-01', pt: 'Visual com Defeito', en: 'Visual fault', categoria: 'visual_defeito', escopo: 'dispositivo' },
+  { codigo: 'SIR-02', pt: 'Sonoro com Defeito', en: 'Audible fault', categoria: 'sonoro_defeito', escopo: 'dispositivo' },
+  { codigo: 'SIR-03', pt: 'Sem funcionamento (Total)', en: 'No operation (total)', categoria: 'sem_funcionamento', escopo: 'dispositivo' },
+  { codigo: 'SIR-04', pt: 'Sem resistor (fim de linha)', en: 'No end-of-line resistor', categoria: 'sem_resistor', escopo: 'dispositivo' },
+];
+
 /** Normaliza o valor gravado em paineis.marca. Aceita variações do texto antigo
     "Marca / Modelo" (ex.: "Hochiki FireNET", "Notifier Onyx"). Retorna
     'hochiki' | 'notifier' | '' (desconhecida). */
@@ -248,6 +265,7 @@ export function getFalhaPorCodigo(codigo) {
   if (!codigo) return null;
   return FALHAS_HOCHIKI.find((f) => f.codigo === codigo)
     || FALHAS_NOTIFIER.find((f) => f.codigo === codigo)
+    || FALHAS_SIRENE.find((f) => f.codigo === codigo)
     || null;
 }
 

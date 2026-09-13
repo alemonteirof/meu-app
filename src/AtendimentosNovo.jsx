@@ -10,7 +10,7 @@ import {
   salvarAssinaturaVisita, listAssinaturaAuditoria,
   getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
 } from './supabaseAdapter';
-import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA } from './lib/falhasPorMarca';
+import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
 
 /** Prefixo do id de opção sintética "o painel em si" no seletor de itens de visita
     (mesma ideia de bp:/fa:). Só corretiva/manutenção — inspeção de painel fica fora. */
@@ -732,18 +732,52 @@ function marcaDeDispositivos(ids, deviceOptions) {
   return marcas.size === 1 ? [...marcas][0] : '';
 }
 
+/** true quando há seleção e TODOS os dispositivos selecionados são sirene — trava o
+    FalhaSelect no catálogo próprio de sirene (avaliação manual do técnico, sem código
+    de painel misturado). */
+function saoTodasSirenes(ids, deviceOptions) {
+  const selecionados = (ids || []).map((id) => (deviceOptions || []).find((o) => o.id === id)).filter(Boolean);
+  return selecionados.length > 0 && selecionados.every((o) => o.type === 'sirene');
+}
+
+/** Sugestão automática de categoria de falha a partir de Visual/Sonoro da inspeção de
+    sirene — sempre editável pelo técnico depois. "Sem resistor" nunca é sugerido: só
+    entra manualmente pelo FalhaSelect quando o técnico percebe o problema. */
+function sugestaoFalhaSirene(visual, sonoro) {
+  if (visual === 'Reprovado' && sonoro === 'Reprovado') return 'sem_funcionamento';
+  if (visual === 'Reprovado') return 'visual_defeito';
+  if (sonoro === 'Reprovado') return 'sonoro_defeito';
+  return null;
+}
+
+/** Aplica a sugestão de falha de sirene num objeto de formulário ({visual, sonoro,
+    falhaSel, falha}) — só preenche se a falha ainda estiver vazia (não pisa em cima de
+    escolha manual do técnico). Usado no form de Inspeção e na edição de item de Inspeção. */
+function aplicarSugestaoFalhaSirene(next) {
+  const cat = sugestaoFalhaSirene(next.visual, next.sonoro);
+  if (!cat) return next;
+  const semFalhaAinda = !(next.falhaSel?.codigo || next.falhaSel?.categoria || (next.falhaSel?.detalhe || '').trim());
+  if (!semFalhaAinda) return next;
+  const f = FALHAS_SIRENE.find((x) => x.categoria === cat);
+  if (!f) return next;
+  return { ...next, falhaSel: { codigo: f.codigo, categoria: f.categoria, marca: '', detalhe: '' }, falha: f.pt };
+}
+
 /** Combobox de falha com busca bilíngue (PT — EN), lista travada pela marca do painel.
     Sempre oferece "Outro (descrever)" -> textarea livre (codigo/categoria nulos). */
-function FalhaSelect({ marca, value, onChange, label = 'Falha', hint, escopo }) {
+function FalhaSelect({ marca, value, onChange, label = 'Falha', hint, escopo, sirene }) {
   const v = value || emptyFalha();
   // escopo: quando o item da visita é o PRÓPRIO painel, a lista trava nas falhas de escopo
   // painel (painel não tem "detector sujo" etc.). Num dispositivo a lista fica completa — o
   // painel reporta "Internal trouble", "Problema de manutenção", terra, rede... contra um
   // endereço, e o técnico precisa poder registrar. O falha_escopo gravado continua vindo do
   // código (escopoDaFalha no supabaseAdapter), então a contagem painel/dispositivo não muda.
-  const lista = falhasParaMarca(marca).filter((f) => escopo !== 'painel' || f.escopo === 'painel');
-  const marcaOk = lista.length > 0;
-  const marcaNorm = normalizarMarca(marca);
+  // sirene: avaliação manual do técnico (Visual/Sonoro), catálogo próprio — nunca mistura
+  // com o código de evento do painel Hochiki/Notifier.
+  const lista = sirene ? FALHAS_SIRENE : falhasParaMarca(marca).filter((f) => escopo !== 'painel' || f.escopo === 'painel');
+  const marcaOk = sirene ? true : lista.length > 0;
+  const marcaNorm = sirene ? '' : normalizarMarca(marca);
+  const catalogoLabel = sirene ? 'de sirene' : (marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki');
   const selecionada = v.codigo ? getFalhaPorCodigo(v.codigo) : null;
   const [modoOutro, setModoOutro] = useState(() => !v.codigo && !!v.detalhe);
   const [trocando, setTrocando] = useState(false);
@@ -811,7 +845,7 @@ function FalhaSelect({ marca, value, onChange, label = 'Falha', hint, escopo }) 
           ) : (
             <button type="button" onClick={() => { setModoOutro(false); setDetalhe(''); }}
               style={{ ...smallBtnStyle, marginTop: 6 }}>
-              ← Voltar para a lista {marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki'}
+              ← Voltar para a lista {catalogoLabel}
             </button>
           )}
         </>
@@ -827,7 +861,7 @@ function FalhaSelect({ marca, value, onChange, label = 'Falha', hint, escopo }) 
         <>
           <input
             style={inputStyle}
-            placeholder={`Buscar falha ${marcaNorm === 'notifier' ? 'Notifier' : 'Hochiki'} (português ou inglês)...`}
+            placeholder={`Buscar falha ${catalogoLabel} (português ou inglês)...`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -1524,6 +1558,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, devi
             ? deviceOptions?.find((o) => o.id === `${PAINEL_OPT_PREFIX}${editForm.painelId}`)
             : deviceOptions?.find((o) => o.id === editForm.dispositivoId))?.panelMarca || ''}
           escopo={editForm.alvoKind === 'painel' ? 'painel' : 'dispositivo'}
+          sirene={saoTodasSirenes([editForm.dispositivoId], deviceOptions)}
           value={editForm.falhaSel}
           onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
         />
@@ -1573,6 +1608,20 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, devi
           </select>
         </Field>
       </div>
+      {saoTodasSirenes([editForm.dispositivoId], deviceOptions) && (
+        <div className="grid-2-mobile-safe">
+          <Field label="Visual">
+            <select style={inputStyle} value={editForm.visual || ''} onChange={(e) => setEditForm((prev) => aplicarSugestaoFalhaSirene({ ...prev, visual: e.target.value }))}>
+              <option value="">Não avaliado</option><option>Aprovado</option><option>Reprovado</option>
+            </select>
+          </Field>
+          <Field label="Sonoro">
+            <select style={inputStyle} value={editForm.sonoro || ''} onChange={(e) => setEditForm((prev) => aplicarSugestaoFalhaSirene({ ...prev, sonoro: e.target.value }))}>
+              <option value="">Não avaliado</option><option>Aprovado</option><option>Reprovado</option>
+            </select>
+          </Field>
+        </div>
+      )}
       <Field label="Observações">
         <textarea style={{ ...inputStyle, minHeight: 50 }} value={editForm.observacoes} onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })} />
       </Field>
@@ -1580,6 +1629,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, devi
         label="Falha (se preenchida, cria/mantém corretiva)"
         marca={deviceOptions?.find((o) => o.id === editForm.dispositivoId)?.panelMarca || ''}
         escopo="dispositivo"
+        sirene={saoTodasSirenes([editForm.dispositivoId], deviceOptions)}
         value={editForm.falhaSel}
         onChange={(next) => setEditForm({ ...editForm, falhaSel: next, falha: falhaTexto(next) })}
       />
@@ -2092,7 +2142,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
   const [inspForm, setInspForm] = useState({
     dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
-    comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '', falhaSel: emptyFalha(),
+    comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', visual: 'Aprovado', sonoro: 'Aprovado',
+    observacoes: '', falha: '', falhaSel: emptyFalha(),
     proximaInspecao: '',
   });
   const [inspFotos, setInspFotos] = useState([]);
@@ -2100,6 +2151,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   const inspDevicesSelecionados = deviceOptions.filter((o) => inspForm.dispositivoIds.includes(o.id));
   const inspMetodosUnicos = [...new Set(inspDevicesSelecionados.map((d) => getMetodoTeste(d)).filter(Boolean))];
   const inspCategoriasUnicas = [...new Set(inspDevicesSelecionados.map((d) => FUNCTIONAL_CATEGORY_MAP[d.categoriaFuncional]).filter(Boolean))];
+  const inspTodosSirene = saoTodasSirenes(inspForm.dispositivoIds, deviceOptions);
   async function submitInspecao(e) {
     e.preventDefault();
     if (inspForm.dispositivoIds.length === 0) { setMsg('Selecione ao menos um dispositivo.'); return; }
@@ -2112,10 +2164,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       let corretivasGeradas = 0;
       for (const optId of inspForm.dispositivoIds) {
         const device = deviceOptions.find((o) => o.id === optId);
+        const ehSirene = device?.type === 'sirene';
         const result = await createInspecao({
           ...idsPorAlvo(optId), clienteId: clientId,
           tecnico: visita.tecnico, resultadoTeste: inspForm.resultadoTeste, aparencia: inspForm.aparencia,
           comunicacaoLocal: inspForm.comunicacaoLocal, comunicacaoRede: inspForm.comunicacaoRede,
+          visual: ehSirene ? inspForm.visual : null, sonoro: ehSirene ? inspForm.sonoro : null,
           observacoes: inspForm.observacoes, falha: inspForm.falha, metodo: getMetodoTeste(device),
           falhaCodigo: inspForm.falhaSel?.codigo || null, falhaMarca: inspForm.falhaSel?.marca || null, falhaCategoria: inspForm.falhaSel?.categoria || null,
           dataInspecao: visita.data_visita, proximaInspecao: inspForm.proximaInspecao, rvtId: visita.id, fotos: inspFotos,
@@ -2129,7 +2183,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       setItensVisita((prev) => [...prev, ...novosItens]);
       setInspForm({
         dispositivoIds: [], resultadoTeste: 'Aprovado', aparencia: 'Ótimo',
-        comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', observacoes: '', falha: '', falhaSel: emptyFalha(),
+        comunicacaoLocal: 'Conforme', comunicacaoRede: 'Conforme', visual: 'Aprovado', sonoro: 'Aprovado',
+        observacoes: '', falha: '', falhaSel: emptyFalha(),
         proximaInspecao: '',
       });
       setInspFotos([]);
@@ -2290,6 +2345,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       setEditForm({
         kind: 'inspecao', id: i.id, dispositivoId: i.dispositivo_id || null, painelId: i.painel_id || null, ...alvoDeRegistro(i), resultadoTeste: i.resultado_teste || '', aparencia: i.aparencia || '',
         comunicacaoLocal: i.comunicacao_local || '', comunicacaoRede: i.comunicacao_rede || '',
+        visual: i.visual || '', sonoro: i.sonoro || '',
         observacoes: i.observacoes || '', falha: i.falha || '', falhaSel: falhaSelFromRecord(i), proximaInspecao: i.proxima_inspecao || '',
         fotos: i.fotos || [],
       });
@@ -2322,6 +2378,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         await updateInspecao(editForm.id, {
           resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,
           comunicacaoLocal: editForm.comunicacaoLocal, comunicacaoRede: editForm.comunicacaoRede,
+          visual: editForm.visual, sonoro: editForm.sonoro,
           observacoes: editForm.observacoes, falha: editForm.falha, proximaInspecao: editForm.proximaInspecao,
           falhaCodigo: editForm.falhaSel?.codigo || null, falhaMarca: editForm.falhaSel?.marca || null, falhaCategoria: editForm.falhaSel?.categoria || null,
           fotos: editForm.fotos,
@@ -2517,6 +2574,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                 label="Falha (deixe em branco para preventiva)"
                 marca={marcaDeDispositivos(atForm.dispositivoIds, deviceOptions)}
                 escopo={escopoDaSelecao(atForm.dispositivoIds)}
+                sirene={saoTodasSirenes(atForm.dispositivoIds, deviceOptions)}
                 value={atForm.falhaSel}
                 onChange={(next) => setAtForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
               />
@@ -2572,6 +2630,20 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                   </select>
                 </Field>
               </div>
+              {inspTodosSirene && (
+                <div className="grid-2-mobile-safe">
+                  <Field label="Visual">
+                    <select style={inputStyle} value={inspForm.visual} onChange={(e) => setInspForm((prev) => aplicarSugestaoFalhaSirene({ ...prev, visual: e.target.value }))}>
+                      <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
+                    </select>
+                  </Field>
+                  <Field label="Sonoro">
+                    <select style={inputStyle} value={inspForm.sonoro} onChange={(e) => setInspForm((prev) => aplicarSugestaoFalhaSirene({ ...prev, sonoro: e.target.value }))}>
+                      <option>Aprovado</option><option>Reprovado</option><option>Não avaliado</option>
+                    </select>
+                  </Field>
+                </div>
+              )}
               <Field label="Observações">
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={inspForm.observacoes} onChange={(e) => setInspForm({ ...inspForm, observacoes: e.target.value })} />
               </Field>
@@ -2579,6 +2651,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                 label="Falha (se preenchida, cria corretiva automática em todos os selecionados)"
                 marca={marcaDeDispositivos(inspForm.dispositivoIds, deviceOptions)}
                 escopo={escopoDaSelecao(inspForm.dispositivoIds)}
+                sirene={inspTodosSirene}
                 value={inspForm.falhaSel}
                 onChange={(next) => setInspForm((prev) => ({ ...prev, falhaSel: next, falha: falhaTexto(next) }))}
               />
@@ -2624,6 +2697,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                     label="Falha encontrada"
                     marca={marcaDeDispositivos(outroDiagDispositivoIds, deviceOptions)}
                     escopo={escopoDaSelecao(outroDiagDispositivoIds)}
+                    sirene={saoTodasSirenes(outroDiagDispositivoIds, deviceOptions)}
                     value={outroDiagFalhaSel}
                     onChange={(next) => { setOutroDiagFalhaSel(next); setOutroDiagFalha(falhaTexto(next)); }}
                   />
