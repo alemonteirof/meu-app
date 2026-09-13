@@ -4245,11 +4245,16 @@ function syncSirenes(parentId, loopId, categoriaFuncional, sirenesForm, devices)
   const outrasSirenes = devices.filter((d) => !(d.moduloPaiId === parentId && d.type === 'sirene'));
   if (categoriaFuncional !== 'sirenes') return outrasSirenes;
 
+  // `endereco` é NOT NULL no banco e sirene não tem endereço próprio (não é endereçável) —
+  // herda o do módulo de saída pai (mesmo padrão do filho Tipo1); pai NAC não tem endereço, fica ''.
+  const parentDevice = devices.find((d) => d.id === parentId);
+  const address = parentDevice?.address || '';
+
   const existentes = devices.filter((d) => d.moduloPaiId === parentId && d.type === 'sirene');
   const novasSirenes = (sirenesForm || []).map((s) => {
     const existente = s.id && existentes.find((d) => d.id === s.id);
     return {
-      id: s.id || uid(), moduloPaiId: parentId, type: 'sirene', loopId: loopId || null,
+      id: s.id || uid(), moduloPaiId: parentId, type: 'sirene', loopId: loopId || null, address,
       modelo: s.modelo || '', description: s.localizacao || '', categoriaFuncional: 'sirenes',
       nextMaintenance: existente?.nextMaintenance || '', lastMaintenance: existente?.lastMaintenance || '',
       nextInspection: existente?.nextInspection || '', lastInspection: existente?.lastInspection || '',
@@ -4380,92 +4385,129 @@ function ComplementarGrupo1List({ data, devices, canEdit, showCalibracao, onInsp
   const [editingKey, setEditingKey] = useState(null);
   const [etiquetaDraft, setEtiquetaDraft] = useState('');
   const [calibForm, setCalibForm] = useState(null);
+  const [search, setSearch] = useState('');
+  const [openGroups, setOpenGroups] = useState(new Set());
 
   if (devices.length === 0) {
     return <EmptyState icon={Zap} title="Nenhum dispositivo nessa categoria"
       description="Defina a categoria funcional no cadastro do módulo de entrada (aba Painéis) pra ele aparecer aqui." />;
   }
 
-  const grupos = buildComplementarGroups(devices);
+  const grupos = buildComplementarGroups(devices).map((grupo) => {
+    const primeiro = grupo.itens[0];
+    const loop = data.loops.find((l) => l.id === primeiro.loopId);
+    const panel = loop && data.panels.find((p) => p.id === loop.panelId);
+    return { ...grupo, loopName: loop?.name || '', panelName: panel?.name || '' };
+  });
+
+  const termo = search.trim().toLowerCase();
+  const gruposFiltrados = termo
+    ? grupos.filter((grupo) => `${grupo.baseAddress} ${grupo.etiqueta} ${grupo.loopName} ${grupo.panelName}`.toLowerCase().includes(termo))
+    : grupos;
+
+  const isOpen = (key) => !!termo || gruposFiltrados.length === 1 || openGroups.has(key);
+  const toggleOpen = (key) => setOpenGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   return (
-    <div className="grid sm:grid-cols-2 gap-3">
-      {grupos.map((grupo) => {
-        const primeiro = grupo.itens[0];
-        const loop = data.loops.find((l) => l.id === primeiro.loopId);
-        const panel = loop && data.panels.find((p) => p.id === loop.panelId);
-        return (
-          <div key={grupo.key} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="mono-chip">{grupo.baseAddress}</span>
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[loop?.name, panel?.name].filter(Boolean).join(' · ')}</span>
-            </div>
-            {editingKey === grupo.key ? (
-              <div className="flex gap-2 flex-wrap">
-                <input className={inputCls} value={etiquetaDraft} onChange={(e) => setEtiquetaDraft(e.target.value)}
-                  placeholder="Etiqueta / localização" autoFocus />
-                <Button variant="primary" onClick={() => {
-                  grupo.itens.forEach((d) => onSubmitEtiqueta(d.id, etiquetaDraft));
-                  setEditingKey(null);
-                }}>Salvar</Button>
-                <Button variant="secondary" onClick={() => setEditingKey(null)}>Cancelar</Button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{grupo.etiqueta || 'Sem etiqueta'}</span>
-                {canEdit && <IconButton title="Editar etiqueta" onClick={() => { setEditingKey(grupo.key); setEtiquetaDraft(grupo.etiqueta); }}><Pencil size={14} /></IconButton>}
-              </div>
-            )}
-            <div className="flex flex-col gap-2 mt-1">
-              {grupo.itens.map((d) => {
-                const overdueCalib = showCalibracao && d.proximaCalibracao && d.proximaCalibracao < todayISO();
-                return (
-                  <div key={d.id} className="rounded-md p-2 flex flex-col gap-1.5" style={{ border: '1px solid var(--border)' }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                        {papelSinalLabel(d.papelSinal)} <span className="mono-chip" style={{ marginLeft: 4 }}>{d.address}</span>
-                      </span>
-                    </div>
-                    {showCalibracao && (
-                      calibForm?.deviceId === d.id ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <Field label="Data de calibração"><input type="date" className={inputCls} value={calibForm.dataCalibracao}
-                            onChange={(e) => setCalibForm({ ...calibForm, dataCalibracao: e.target.value })} /></Field>
-                          <Field label="Próxima calibração"><input type="date" className={inputCls} value={calibForm.proximaCalibracao}
-                            onChange={(e) => setCalibForm({ ...calibForm, proximaCalibracao: e.target.value })} /></Field>
-                          <div className="col-span-2 flex gap-2">
-                            <Button variant="primary" onClick={() => { onSubmitCalibracao(d.id, { dataCalibracao: calibForm.dataCalibracao, proximaCalibracao: calibForm.proximaCalibracao }); setCalibForm(null); }}>
-                              Salvar calibração
-                            </Button>
-                            <Button variant="secondary" onClick={() => setCalibForm(null)}>Cancelar</Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs flex items-center justify-between gap-2" style={{ color: overdueCalib ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
-                          <span>
-                            {d.dataCalibracao ? `Calibrado em ${formatDateBR(d.dataCalibracao)}` : 'Sem calibração registrada'}
-                            {d.proximaCalibracao && ` · Próxima: ${formatDateBR(d.proximaCalibracao)}`}
-                            {overdueCalib && ' · VENCIDA'}
-                          </span>
-                          {canEdit && <button type="button" className="text-xs underline flex-shrink-0"
-                            onClick={() => setCalibForm({ deviceId: d.id, dataCalibracao: d.dataCalibracao || '', proximaCalibracao: d.proximaCalibracao || '' })}>
-                            editar
-                          </button>}
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+        <input className={`${inputCls} pl-9`} placeholder="Buscar por endereço, etiqueta, laço ou painel..."
+          value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+      {gruposFiltrados.length === 0 ? (
+        <EmptyState icon={Search} title="Nenhum dispositivo encontrado" description="Ajuste os termos da busca." />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {gruposFiltrados.map((grupo) => {
+            const aberto = isOpen(grupo.key);
+            return (
+              <div key={grupo.key} className="rounded-lg overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <button type="button" onClick={() => toggleOpen(grupo.key)} className="w-full flex items-center justify-between gap-2 p-3.5"
+                  style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <span style={{ color: 'var(--text-secondary)' }}>{aberto ? '▾' : '▸'}</span>
+                    <span className="mono-chip">{grupo.baseAddress}</span>
+                    <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{grupo.etiqueta || 'Sem etiqueta'}</span>
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[grupo.loopName, grupo.panelName].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{grupo.itens.length} item(ns)</span>
+                </button>
+                {aberto && (
+                  <div className="flex flex-col gap-2 px-3.5 pb-3.5">
+                    {editingKey === grupo.key ? (
+                      <div className="flex gap-2 flex-wrap">
+                        <input className={inputCls} value={etiquetaDraft} onChange={(e) => setEtiquetaDraft(e.target.value)}
+                          placeholder="Etiqueta / localização" autoFocus />
+                        <Button variant="primary" onClick={() => {
+                          grupo.itens.forEach((d) => onSubmitEtiqueta(d.id, etiquetaDraft));
+                          setEditingKey(null);
+                        }}>Salvar</Button>
+                        <Button variant="secondary" onClick={() => setEditingKey(null)}>Cancelar</Button>
+                      </div>
+                    ) : (
+                      canEdit && (
+                        <div>
+                          <IconButton title="Editar etiqueta" onClick={() => { setEditingKey(grupo.key); setEtiquetaDraft(grupo.etiqueta); }}><Pencil size={14} /></IconButton>
                         </div>
                       )
                     )}
-                    {canEdit && (
-                      <Button variant="secondary" onClick={() => onInspectDevice('devices', d, `${grupo.etiqueta || grupo.baseAddress} — ${papelSinalLabel(d.papelSinal)}`)}>
-                        <ClipboardCheck size={15} /> Registrar inspeção
-                      </Button>
-                    )}
+                    {grupo.itens.map((d) => {
+                      const overdueCalib = showCalibracao && d.proximaCalibracao && d.proximaCalibracao < todayISO();
+                      return (
+                        <div key={d.id} className="rounded-md p-2 flex flex-col gap-1.5" style={{ border: '1px solid var(--border)' }}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                              {papelSinalLabel(d.papelSinal)} <span className="mono-chip" style={{ marginLeft: 4 }}>{d.address}</span>
+                            </span>
+                          </div>
+                          {showCalibracao && (
+                            calibForm?.deviceId === d.id ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <Field label="Data de calibração"><input type="date" className={inputCls} value={calibForm.dataCalibracao}
+                                  onChange={(e) => setCalibForm({ ...calibForm, dataCalibracao: e.target.value })} /></Field>
+                                <Field label="Próxima calibração"><input type="date" className={inputCls} value={calibForm.proximaCalibracao}
+                                  onChange={(e) => setCalibForm({ ...calibForm, proximaCalibracao: e.target.value })} /></Field>
+                                <div className="col-span-2 flex gap-2">
+                                  <Button variant="primary" onClick={() => { onSubmitCalibracao(d.id, { dataCalibracao: calibForm.dataCalibracao, proximaCalibracao: calibForm.proximaCalibracao }); setCalibForm(null); }}>
+                                    Salvar calibração
+                                  </Button>
+                                  <Button variant="secondary" onClick={() => setCalibForm(null)}>Cancelar</Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs flex items-center justify-between gap-2" style={{ color: overdueCalib ? 'var(--status-danger)' : 'var(--text-secondary)' }}>
+                                <span>
+                                  {d.dataCalibracao ? `Calibrado em ${formatDateBR(d.dataCalibracao)}` : 'Sem calibração registrada'}
+                                  {d.proximaCalibracao && ` · Próxima: ${formatDateBR(d.proximaCalibracao)}`}
+                                  {overdueCalib && ' · VENCIDA'}
+                                </span>
+                                {canEdit && <button type="button" className="text-xs underline flex-shrink-0"
+                                  onClick={() => setCalibForm({ deviceId: d.id, dataCalibracao: d.dataCalibracao || '', proximaCalibracao: d.proximaCalibracao || '' })}>
+                                  editar
+                                </button>}
+                              </div>
+                            )
+                          )}
+                          {canEdit && (
+                            <Button variant="secondary" onClick={() => onInspectDevice('devices', d, `${grupo.etiqueta || grupo.baseAddress} — ${papelSinalLabel(d.papelSinal)}`)}>
+                              <ClipboardCheck size={15} /> Registrar inspeção
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -4489,6 +4531,8 @@ function paiDaSirene(data, sirene) {
 function SireneList({ data, sirenes, canEdit, onInspectDevice, onSubmitSireneCampos }) {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState({ modelo: '', localizacao: '' });
+  const [search, setSearch] = useState('');
+  const [openGroups, setOpenGroups] = useState(new Set());
 
   if (sirenes.length === 0) {
     return <EmptyState icon={Bell} title="Nenhuma sirene cadastrada"
@@ -4502,47 +4546,85 @@ function SireneList({ data, sirenes, canEdit, onInspectDevice, onSubmitSireneCam
     grupos.get(key).itens.push(s);
   });
 
+  const modeloLabel = (m) => Object.values(SIRENE_MODELOS_POR_MARCA).flat().find((x) => x.value === m)?.label || m || '';
+  const termo = search.trim().toLowerCase();
+  const gruposFiltrados = [...grupos.entries()].map(([key, grupo]) => {
+    const itens = termo
+      ? grupo.itens.filter((s) => `${modeloLabel(s.modelo)} ${s.description || ''} ${grupo.pai.label} ${grupo.pai.panelName} ${grupo.pai.loopName}`
+          .toLowerCase().includes(termo))
+      : grupo.itens;
+    return { key, pai: grupo.pai, itens };
+  }).filter((g) => g.itens.length > 0);
+
+  const isOpen = (key) => !!termo || gruposFiltrados.length === 1 || openGroups.has(key);
+  const toggleOpen = (key) => setOpenGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   return (
-    <div className="grid sm:grid-cols-2 gap-3">
-      {[...grupos.values()].map((grupo) => (
-        <div key={grupo.pai.label + grupo.itens[0].id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{grupo.pai.label}</span>
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[grupo.pai.panelName, grupo.pai.loopName].filter(Boolean).join(' · ')}</span>
-          </div>
-          <div className="flex flex-col gap-2 mt-1">
-            {grupo.itens.map((s) => (
-              <div key={s.id} className="rounded-md p-2 flex flex-col gap-1.5" style={{ border: '1px solid var(--border)' }}>
-                {editingId === s.id ? (
-                  <div className="flex gap-2 flex-wrap">
-                    <select className={inputCls} style={{ flex: '1 1 160px' }} value={draft.modelo}
-                      onChange={(e) => setDraft({ ...draft, modelo: e.target.value })}>
-                      {Object.values(SIRENE_MODELOS_POR_MARCA).flat().map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                    <input className={inputCls} style={{ flex: '1 1 160px' }} value={draft.localizacao}
-                      onChange={(e) => setDraft({ ...draft, localizacao: e.target.value })} placeholder="Localização" />
-                    <Button variant="primary" onClick={() => { onSubmitSireneCampos(s.id, { modelo: draft.modelo, description: draft.localizacao }); setEditingId(null); }}>Salvar</Button>
-                    <Button variant="secondary" onClick={() => setEditingId(null)}>Cancelar</Button>
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+        <input className={`${inputCls} pl-9`} placeholder="Buscar sirene por modelo, localização, módulo ou laço..."
+          value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+      {gruposFiltrados.length === 0 ? (
+        <EmptyState icon={Search} title="Nenhuma sirene encontrada" description="Ajuste os termos da busca." />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {gruposFiltrados.map((grupo) => {
+            const aberto = isOpen(grupo.key);
+            return (
+              <div key={grupo.key} className="rounded-lg overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <button type="button" onClick={() => toggleOpen(grupo.key)} className="w-full flex items-center justify-between gap-2 p-3.5"
+                  style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <span style={{ color: 'var(--text-secondary)' }}>{aberto ? '▾' : '▸'}</span>
+                    <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{grupo.pai.label}</span>
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{[grupo.pai.panelName, grupo.pai.loopName].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{grupo.itens.length} sirene(s)</span>
+                </button>
+                {aberto && (
+                  <div className="flex flex-col gap-2 px-3.5 pb-3.5">
+                    {grupo.itens.map((s) => (
+                      <div key={s.id} className="rounded-md p-2 flex flex-col gap-1.5" style={{ border: '1px solid var(--border)' }}>
+                        {editingId === s.id ? (
+                          <div className="flex gap-2 flex-wrap">
+                            <select className={inputCls} style={{ flex: '1 1 160px' }} value={draft.modelo}
+                              onChange={(e) => setDraft({ ...draft, modelo: e.target.value })}>
+                              {Object.values(SIRENE_MODELOS_POR_MARCA).flat().map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                            </select>
+                            <input className={inputCls} style={{ flex: '1 1 160px' }} value={draft.localizacao}
+                              onChange={(e) => setDraft({ ...draft, localizacao: e.target.value })} placeholder="Localização" />
+                            <Button variant="primary" onClick={() => { onSubmitSireneCampos(s.id, { modelo: draft.modelo, description: draft.localizacao }); setEditingId(null); }}>Salvar</Button>
+                            <Button variant="secondary" onClick={() => setEditingId(null)}>Cancelar</Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                              {modeloLabel(s.modelo) || 'Modelo não definido'}
+                              {s.description && <span style={{ color: 'var(--text-secondary)' }}> — {s.description}</span>}
+                            </span>
+                            {canEdit && <IconButton title="Editar" onClick={() => { setEditingId(s.id); setDraft({ modelo: s.modelo || '', localizacao: s.description || '' }); }}><Pencil size={14} /></IconButton>}
+                          </div>
+                        )}
+                        {canEdit && (
+                          <Button variant="secondary" onClick={() => onInspectDevice('devices', s, `Sirene — ${s.description || grupo.pai.label}`)}>
+                            <ClipboardCheck size={15} /> Registrar inspeção
+                          </Button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {Object.values(SIRENE_MODELOS_POR_MARCA).flat().find((m) => m.value === s.modelo)?.label || s.modelo || 'Modelo não definido'}
-                      {s.description && <span style={{ color: 'var(--text-secondary)' }}> — {s.description}</span>}
-                    </span>
-                    {canEdit && <IconButton title="Editar" onClick={() => { setEditingId(s.id); setDraft({ modelo: s.modelo || '', localizacao: s.description || '' }); }}><Pencil size={14} /></IconButton>}
-                  </div>
-                )}
-                {canEdit && (
-                  <Button variant="secondary" onClick={() => onInspectDevice('devices', s, `Sirene — ${s.description || grupo.pai.label}`)}>
-                    <ClipboardCheck size={15} /> Registrar inspeção
-                  </Button>
                 )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -4573,14 +4655,26 @@ function BateriaForm({ initial, onSubmit, onCancel }) {
 
 function BateriasPainelList({ data, canEdit, onSubmit }) {
   const [editingPanelId, setEditingPanelId] = useState(null);
+  const [search, setSearch] = useState('');
 
   if ((data.panels || []).length === 0) {
     return <EmptyState icon={Zap} title="Nenhum painel cadastrado" description="Cadastre um painel na aba Painéis pra ele aparecer aqui." />;
   }
 
+  const termo = search.trim().toLowerCase();
+  const panelsFiltrados = termo ? data.panels.filter((p) => (p.name || '').toLowerCase().includes(termo)) : data.panels;
+
   return (
-    <div className="grid sm:grid-cols-2 gap-3">
-      {data.panels.map((p) => {
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+        <input className={`${inputCls} pl-9`} placeholder="Buscar painel..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+      {panelsFiltrados.length === 0 ? (
+        <EmptyState icon={Search} title="Nenhum painel encontrado" description="Ajuste os termos da busca." />
+      ) : (
+      <div className="grid sm:grid-cols-2 gap-3">
+      {panelsFiltrados.map((p) => {
         const bateria = (data.bateriasPainel || []).find((b) => b.panelId === p.id);
         const semBateria = !bateria || !bateria.dataInspecao;
         const vencida = !semBateria && [bateria.bateria1Data, bateria.bateria2Data].some((dt) => dt && addMonthsToDate(dt, 24) < todayISO());
@@ -4612,6 +4706,8 @@ function BateriasPainelList({ data, canEdit, onSubmit }) {
           </div>
         );
       })}
+      </div>
+      )}
     </div>
   );
 }
@@ -4647,7 +4743,10 @@ function FonteAuxiliarForm({ initial, onSubmit, onCancel }) {
 
 function FontesAuxiliaresList({ data, canEdit, onSubmit, onDelete }) {
   const [modalState, setModalState] = useState(null);
+  const [search, setSearch] = useState('');
   const list = data.fontesAuxiliares || [];
+  const termo = search.trim().toLowerCase();
+  const listFiltrada = termo ? list.filter((f) => (f.nome || '').toLowerCase().includes(termo)) : list;
 
   return (
     <div className="flex flex-col gap-3">
@@ -4656,12 +4755,20 @@ function FontesAuxiliaresList({ data, canEdit, onSubmit, onDelete }) {
           <Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Nova fonte auxiliar</Button>
         </div>
       )}
+      {list.length > 0 && (
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+          <input className={`${inputCls} pl-9`} placeholder="Buscar fonte auxiliar..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+      )}
       {list.length === 0 ? (
         <EmptyState icon={Zap} title="Nenhuma fonte auxiliar cadastrada" description="Cadastre a primeira fonte auxiliar."
           actionLabel={canEdit ? 'Nova fonte auxiliar' : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
+      ) : listFiltrada.length === 0 ? (
+        <EmptyState icon={Search} title="Nenhuma fonte auxiliar encontrada" description="Ajuste os termos da busca." />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
-          {list.map((f) => {
+          {listFiltrada.map((f) => {
             const vencida = [f.bateria1Data, f.bateria2Data].some((dt) => dt && addMonthsToDate(dt, 24) < todayISO());
             const semInspecao = !f.dataInspecao;
             return (
@@ -4737,12 +4844,18 @@ function RedeForm({ initial, panels, onSubmit, onCancel }) {
 
 function RedeList({ data, canEdit, onSubmit, onDelete }) {
   const [modalState, setModalState] = useState(null);
+  const [search, setSearch] = useState('');
   const list = data.redeDispositivos || [];
   const panelName = (id) => (data.panels || []).find((p) => p.id === id)?.name || '—';
 
   if ((data.panels || []).length === 0) {
     return <EmptyState icon={Zap} title="Nenhum painel cadastrado" description="Cadastre um painel na aba Painéis pra vincular um dispositivo de rede." />;
   }
+
+  const termo = search.trim().toLowerCase();
+  const listFiltrada = termo
+    ? list.filter((r) => `${REDE_TIPOS[r.tipo] || ''} ${r.etiqueta || ''} ${r.modelo || ''} ${panelName(r.panelId)}`.toLowerCase().includes(termo))
+    : list;
 
   return (
     <div className="flex flex-col gap-3">
@@ -4751,12 +4864,20 @@ function RedeList({ data, canEdit, onSubmit, onDelete }) {
           <Button variant="primary" onClick={() => setModalState({ mode: 'create', initial: null })}><Plus size={16} /> Novo dispositivo de rede</Button>
         </div>
       )}
+      {list.length > 0 && (
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
+          <input className={`${inputCls} pl-9`} placeholder="Buscar por tipo, etiqueta, modelo ou painel..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+      )}
       {list.length === 0 ? (
         <EmptyState icon={Zap} title="Nenhum dispositivo de rede cadastrado" description="Conversores de mídia e placas de rede vinculados a um painel."
           actionLabel={canEdit ? 'Novo dispositivo de rede' : undefined} onAction={canEdit ? () => setModalState({ mode: 'create', initial: null }) : undefined} />
+      ) : listFiltrada.length === 0 ? (
+        <EmptyState icon={Search} title="Nenhum dispositivo encontrado" description="Ajuste os termos da busca." />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
-          {list.map((r) => (
+          {listFiltrada.map((r) => (
             <div key={r.id} className="rounded-lg p-3.5 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>

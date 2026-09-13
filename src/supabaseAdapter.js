@@ -835,7 +835,9 @@ async function doSaveClientData(clienteId, data) {
   const dispositivosRows = [
     ...(data.devices || []).map((d) => ({
       id: d.id, cliente_id: clienteId, laco_id: d.loopId, painel_id: null,
-      endereco: d.address || null, etiqueta: d.description || null,
+      // `endereco` é NOT NULL no banco (sem default) — nunca mandar `null` explícito. Sirene herda o
+      // endereço do módulo pai em syncSirenes (App.jsx); qualquer outro caso sem endereço cai em ''.
+      endereco: d.address || '', etiqueta: d.description || null,
       tipo_modulo: d.type || 'outro', modelo: d.modelo || null,
       categoria_funcional: d.categoriaFuncional || null, papel_sinal: d.papelSinal || null, sub_endereco: d.subEndereco || null,
       etiqueta_complementar: d.etiquetaComplementar || null, data_calibracao: d.dataCalibracao || null, proxima_calibracao: d.proximaCalibracao || null,
@@ -843,13 +845,13 @@ async function doSaveClientData(clienteId, data) {
       modulo_pai_id: d.moduloPaiId || null,
     })),
     ...(data.nacs || []).map((n) => ({
-      id: n.id, cliente_id: clienteId, laco_id: null, painel_id: n.panelId,
+      id: n.id, cliente_id: clienteId, laco_id: null, painel_id: n.panelId, endereco: '',
       etiqueta: n.name || null, descricao: n.description || null, tipo_modulo: 'modulo_saida',
       categoria_funcional: n.categoriaFuncional || null,
       proxima_inspecao: n.nextMaintenance || null, ultima_manutencao: n.lastMaintenance || null,
     })),
     ...(data.gasDetectors || []).map((g) => ({
-      id: g.id, cliente_id: clienteId, laco_id: null, painel_id: null,
+      id: g.id, cliente_id: clienteId, laco_id: null, painel_id: null, endereco: '',
       etiqueta: g.name || null, descricao: g.location || null, modelo: g.modelo || null,
       tipo_modulo: 'detector_gas', categoria_funcional: g.type || 'Detector de Gás',
       proxima_inspecao: g.nextMaintenance || null, ultima_manutencao: g.lastMaintenance || null,
@@ -866,6 +868,13 @@ async function doSaveClientData(clienteId, data) {
   if (invalido) {
     throw new Error(`Salvamento abortado (nada foi apagado): tipo de dispositivo desconhecido "${invalido.tipo_modulo}" no endereço ${invalido.endereco || invalido.etiqueta || invalido.id}.`);
   }
+
+  // modulo_pai_id é FK auto-referenciada em dispositivos (ex.: sirene → NAC, sensor Tipo1 → módulo
+  // de entrada). No upsert em lote, o Postgres checa a FK linha a linha, na ordem do array — se o
+  // filho (com modulo_pai_id) vier antes do pai no mesmo upsert, a FK falha e o upsert inteiro aborta
+  // silenciosamente (ex.: sirenes vinculadas a NAC, já que data.nacs é mapeado depois de data.devices).
+  // Ordenação estável garante pais (modulo_pai_id null) sempre antes dos filhos.
+  dispositivosRows.sort((a, b) => (a.modulo_pai_id ? 1 : 0) - (b.modulo_pai_id ? 1 : 0));
 
   const legacyPayload = {
     pumpDevices: data.pumpDevices || [],
