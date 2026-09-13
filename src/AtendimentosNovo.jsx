@@ -951,7 +951,10 @@ function itemsFromVisita(v) {
         if (it.outro_descricao || it.outro_atividade) {
       const atividade = it.outro_atividade || '';
       const atividadeDados = it.outro_atividade_dados || {};
-      return { id: it.id, tipo: 'outro', etiqueta: ATIVIDADE_LABELS[atividade] || 'Outro', status: 'Resolvido',
+      const statusOutro = (atividade === 'manutencao_nao_cadastrada' && atividadeDados.tipoManutencao === 'corretiva' && atividadeDados.status)
+        ? atividadeDados.status.charAt(0).toUpperCase() + atividadeDados.status.slice(1)
+        : 'Resolvido';
+      return { id: it.id, tipo: 'outro', etiqueta: ATIVIDADE_LABELS[atividade] || 'Outro', status: statusOutro,
         descritivo: it.outro_descricao || '', fotos: it.outro_fotos || [],
         atividade, atividadeDados };
     }
