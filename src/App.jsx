@@ -7983,6 +7983,11 @@ function PageStyles() {
       .nav-tab[data-active="true"] { background: var(--surface-raised); color: var(--text-primary); }
       .nav-tab:hover:not([data-active="true"]) { color: var(--text-primary); }
       :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: var(--bg); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--bg); }
+      ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+      * { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
       input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
       input[type="color"] { padding: 2px; background: var(--surface-raised); }
 
