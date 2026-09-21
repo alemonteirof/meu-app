@@ -452,7 +452,28 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 - **Dashboard**: nenhum toggle Painel/Dispositivo nem balde único de falha — decisão fechada, não
   reabrir sem novo motivo concreto.
 
-## 20. Convenções de trabalho do Alexandre
+## 20. Otimização de bundle (2026-09-21)
+
+- `xlsx`, `exceljs`, `chart.js` e `pdfjs-dist` eram `import` estático no topo de `App.jsx` (e de
+  `exportChecklistXlsx.js`/`exportChecklistMonthXlsx.js`) — iam pro bundle inicial que **todo**
+  usuário baixa, inclusive Visualizador/cliente que nunca importa/exporta nada. Chunk principal
+  caiu de 2.873 kB → 973 kB (gzip 822 kB → 253 kB) convertendo esses 4 imports pra `import()`
+  dinâmico nos pontos de uso: `extractPdfWords` (pdfjs-dist, via `getPdfjsLib()` com cache de
+  promise), `readFileAsRows`/`parseIndicadorXlsx` (xlsx), `exportIndicadorXlsx` (chart.js + exceljs,
+  carregados juntos no início da função), `ToolChecklistHistory`/`ToolChecklistMonthExport`
+  (exceljs, no clique do botão de exportar).
+- `chart.js` só era usado dentro de `exportIndicadorXlsx` pra renderizar gráfico num canvas
+  off-screen e embutir no Excel — os gráficos exibidos em tela (`SimpleBarChart`/`SimplePieChart`)
+  já são SVG próprio, não dependem de chart.js.
+- Padrão pra manter: qualquer lib pesada nova (parser de arquivo, exportador, lib de gráfico)
+  entra via `import()` dinâmico dentro da função/handler que a usa, nunca como `import` estático
+  no topo de `App.jsx` — senão volta a engordar o bundle inicial de todo mundo.
+- Não mexido de propósito: `App.jsx` continua um arquivo único de ~455 kB sem code-splitting por
+  rota/tela (Dashboard, RVT, Configurações etc. todos no mesmo módulo/chunk). Quebrar isso exigiria
+  separar `App.jsx` em módulos por tela pra viabilizar `React.lazy` — refactor maior, avaliar só se
+  o chunk principal (973 kB / 253 kB gzip) virar gargalo real.
+
+## 21. Convenções de trabalho do Alexandre
 
 - Reaproveitar componente/padrão existente antes de criar novo; orçamento apertado.
 - Agrupar mudanças por sessão; menos validação manual quando o padrão já é conhecido/estável.

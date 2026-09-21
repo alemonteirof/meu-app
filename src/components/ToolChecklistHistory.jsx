@@ -5,7 +5,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../App";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
-import { exportChecklistToXlsx } from "../lib/exportChecklistXlsx";
 
 const VINHO = "#8B2F2F";
 
@@ -113,7 +112,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
                   )}
                   <button
                     type="button"
-                    onClick={() => exportChecklistToXlsx(r, clienteNome(clients, r.cliente_id))}
+                    onClick={() => import("../lib/exportChecklistXlsx").then((m) => m.exportChecklistToXlsx(r, clienteNome(clients, r.cliente_id)))}
                     className="text-xs px-2 py-1 rounded border"
                   >
                     Exportar .xlsx

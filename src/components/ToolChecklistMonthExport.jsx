@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../App";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
-import { exportMonthToXlsx } from "../lib/exportChecklistMonthXlsx";
 
 const VINHO = "#8B2F2F";
 
@@ -70,6 +69,7 @@ export default function ToolChecklistMonthExport() {
       return;
     }
 
+    const { exportMonthToXlsx } = await import("../lib/exportChecklistMonthXlsx");
     await exportMonthToXlsx(equipamentoSelecionado, data, ano, mes);
     setMensagem({ tipo: "ok", texto: `Planilha gerada com ${data.length} registro(s).` });
   }

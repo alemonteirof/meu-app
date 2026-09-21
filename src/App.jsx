@@ -20,20 +20,17 @@ import {
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
-import Chart from 'chart.js/auto';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+// xlsx, exceljs, chart.js e pdfjs-dist são libs pesadas usadas só em
+// import/export pontuais — carregadas via import() dinâmico nos pontos de uso
+// (readFileAsRows, parseIndicadorXlsx, exportIndicadorXlsx, extractPdfWords)
+// pra não engordar o bundle inicial que todo mundo baixa, inclusive o
+// Visualizador que nunca usa essas telas.
 
 /* ------------------------------------------------------------------ */
 /* Supabase (banco de dados + login de usuários)                      */
 /* ------------------------------------------------------------------ */
 import { createClient } from '@supabase/supabase-js';
-import ToolChecklistForm from './components/ToolChecklistForm';
 import ToolChecklistScreen from './components/ToolChecklistScreen';
-import ToolChecklistHistory from './components/ToolChecklistHistory';
 
 
 import { supabase } from './supabaseClient';
@@ -389,8 +386,23 @@ function parseDeviceLabelsCsv(text) {
    esquerda) e agrupamos as demais palavras numa "banda" vertical ao redor de cada
    endereço, atribuindo cada palavra à coluna correta pela posição horizontal. */
 
+let pdfjsLibPromise = null;
+async function getPdfjsLib() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = Promise.all([
+      import('pdfjs-dist'),
+      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    ]).then(([pdfjsLib, workerUrlMod]) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrlMod.default;
+      return pdfjsLib;
+    });
+  }
+  return pdfjsLibPromise;
+}
+
 async function extractPdfWords(file) {
   const buf = await file.arrayBuffer();
+  const pdfjsLib = await getPdfjsLib();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const items = [];
   let cumY = 0;
@@ -576,8 +588,9 @@ function readFileAsRows(file) {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Não foi possível ler esse arquivo.'));
     if (isExcel) {
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
+          const XLSX = await import('xlsx');
           const wb = XLSX.read(reader.result, { type: 'array' });
           const sheet = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
@@ -6000,6 +6013,10 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
   async function exportIndicadorXlsx() {
     setExporting(true);
     try {
+    const [{ default: Chart }, { default: ExcelJS }] = await Promise.all([
+      import('chart.js/auto'),
+      import('exceljs'),
+    ]);
     const VINHO = 'FF8B2F2F';
     const VINHO_ESCURO = 'FF5F1F1F';
     const CINZA_BORDA = 'FFD7DADC';
@@ -7173,6 +7190,7 @@ function excelValueToISODate(val) {
     espaços extras) já que casa por conteúdo normalizado, não pelo texto exato. */
 async function parseIndicadorXlsx(file) {
   const buf = await file.arrayBuffer();
+  const XLSX = await import('xlsx');
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const sheetName = wb.SheetNames.find((n) => /indicador/i.test(n)) || wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
