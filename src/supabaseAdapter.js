@@ -579,37 +579,50 @@ export async function listVisitas(clienteId) {
 }
 
 export async function loadClientData(clienteId) {
-  const { data: legacyRow, error: legacyErr } = await supabase
-    .from('kv_store').select('value').eq('key', legacyKey(clienteId)).maybeSingle();
+  // As buscas abaixo não dependem umas das outras (todas filtram só por cliente_id, exceto
+  // lacos que depende dos IDs de paineis) — antes eram 11 round-trips em série pro Postgres,
+  // o que sozinho já respondia por boa parte da demora ao abrir um cliente. Promise.all
+  // dispara tudo de uma vez; só lacos aguarda paineis resolver primeiro.
+  const [
+    { data: legacyRow, error: legacyErr },
+    { data: paineis, error: eP },
+    { data: dispositivos, error: eD },
+    { data: bateriasPainelRows, error: eBP },
+    { data: fontesAuxiliaresRows, error: eFA },
+    { data: combateConjuntosRows, error: eCC },
+    { data: combateSubitensRows, error: eCS },
+    { data: combateComponentesRows, error: eCP },
+    { data: combateBateriasRows, error: eCB },
+    { data: combateCilindrosRows, error: eCI },
+  ] = await Promise.all([
+    supabase.from('kv_store').select('value').eq('key', legacyKey(clienteId)).maybeSingle(),
+    supabase.from('paineis').select('*').eq('cliente_id', clienteId),
+    selectAllRows((from, to) => supabase.from('dispositivos').select('*').eq('cliente_id', clienteId).range(from, to)),
+    selectAllRows((from, to) => supabase.from('baterias_painel').select('*').eq('cliente_id', clienteId).range(from, to)),
+    selectAllRows((from, to) => supabase.from('fontes_auxiliares').select('*').eq('cliente_id', clienteId).range(from, to)),
+    selectAllRows((from, to) => supabase.from('combate_conjuntos').select('*').eq('cliente_id', clienteId).range(from, to)),
+    selectAllRows((from, to) => supabase.from('combate_subitens').select('*').eq('cliente_id', clienteId).range(from, to)),
+    supabase.from('combate_componentes').select('*').eq('cliente_id', clienteId),
+    supabase.from('combate_baterias_cilindros').select('*').eq('cliente_id', clienteId),
+    supabase.from('combate_cilindros').select('*').eq('cliente_id', clienteId),
+  ]);
   if (legacyErr) throw legacyErr;
   const legacy = legacyRow ? JSON.parse(legacyRow.value) : {};
-
-  const { data: paineis, error: eP } = await supabase.from('paineis').select('*').eq('cliente_id', clienteId);
   if (eP) throw eP;
+  if (eD) throw eD;
+  if (eBP) throw eBP;
+  if (eFA) throw eFA;
+  if (eCC) throw eCC;
+  if (eCS) throw eCS;
+  if (eCP) throw eCP;
+  if (eCB) throw eCB;
+  if (eCI) throw eCI;
 
   const painelIds = paineis.map((p) => p.id);
   const { data: lacos, error: eL } = painelIds.length
     ? await supabase.from('lacos').select('*').in('painel_id', painelIds)
     : { data: [], error: null };
   if (eL) throw eL;
-
-  const { data: dispositivos, error: eD } = await selectAllRows((from, to) => supabase.from('dispositivos').select('*').eq('cliente_id', clienteId).range(from, to));
-  if (eD) throw eD;
-
-  const { data: bateriasPainelRows, error: eBP } = await selectAllRows((from, to) => supabase.from('baterias_painel').select('*').eq('cliente_id', clienteId).range(from, to));
-  if (eBP) throw eBP;
-  const { data: fontesAuxiliaresRows, error: eFA } = await selectAllRows((from, to) => supabase.from('fontes_auxiliares').select('*').eq('cliente_id', clienteId).range(from, to));
-  if (eFA) throw eFA;
-  const { data: combateConjuntosRows, error: eCC } = await selectAllRows((from, to) => supabase.from('combate_conjuntos').select('*').eq('cliente_id', clienteId).range(from, to));
-  if (eCC) throw eCC;
-  const { data: combateSubitensRows, error: eCS } = await selectAllRows((from, to) => supabase.from('combate_subitens').select('*').eq('cliente_id', clienteId).range(from, to));
-  if (eCS) throw eCS;
-  const { data: combateComponentesRows, error: eCP } = await supabase.from('combate_componentes').select('*').eq('cliente_id', clienteId);
-  if (eCP) throw eCP;
-  const { data: combateBateriasRows, error: eCB } = await supabase.from('combate_baterias_cilindros').select('*').eq('cliente_id', clienteId);
-  if (eCB) throw eCB;
-  const { data: combateCilindrosRows, error: eCI } = await supabase.from('combate_cilindros').select('*').eq('cliente_id', clienteId);
-  if (eCI) throw eCI;
 
   const bateriasPainel = (bateriasPainelRows || []).map((b) => ({
     id: b.id, panelId: b.painel_id, tecnico: b.tecnico || '', dataInspecao: b.data_inspecao || '',
