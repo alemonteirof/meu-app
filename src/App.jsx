@@ -19,6 +19,7 @@ import {
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
+  Mail, Eye, EyeOff,
 } from 'lucide-react';
 // xlsx, exceljs, chart.js e pdfjs-dist são libs pesadas usadas só em
 // import/export pontuais — carregadas via import() dinâmico nos pontos de uso
@@ -102,6 +103,7 @@ function LoginScreen() {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
@@ -131,22 +133,42 @@ function LoginScreen() {
       <img src="/maj-emblem.png" alt="" aria-hidden="true" className="login-watermark"
         onError={(e) => { e.currentTarget.style.display = 'none'; }} />
       <div className="login-content">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="flex flex-col items-center gap-3 mb-4">
-            <BrandLogo boxSize={56} size={28} />
-            <h1 className="font-display text-lg font-semibold text-center" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
+        <form onSubmit={handleSubmit} className="login-card w-full max-w-sm rounded-2xl p-7">
+          <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="login-logo-ring">
+              <BrandLogo boxSize={52} size={26} />
+            </div>
+            <div className="text-center">
+              <h1 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>MAJ Soluções &middot; Manutenção de sistemas PCI</p>
+            </div>
           </div>
-          <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Email</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-            className="w-full mb-3 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-          <label className="block text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>Senha</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-            className="w-full mb-4 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-          {error && <p className="text-xs mb-3" style={{ color: 'var(--status-danger)' }}>{error}</p>}
-          {info && <p className="text-xs mb-3" style={{ color: 'var(--accent)' }}>{info}</p>}
-          <button type="submit" disabled={loading} className="w-full py-2 rounded-lg text-sm font-medium mb-3"
-            style={{ background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none', cursor: 'pointer' }}>
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Email</label>
+          <div className="login-input-wrap mb-4">
+            <Mail size={16} className="login-input-icon" />
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="voce@empresa.com" className="login-input" />
+          </div>
+
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Senha</label>
+          <div className="login-input-wrap mb-1">
+            <KeyRound size={16} className="login-input-icon" />
+            <input type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••" className="login-input" style={{ paddingRight: 38 }} />
+            <button type="button" onClick={() => setShowPassword((v) => !v)} className="login-input-toggle" tabIndex={-1}
+              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+
+          <div style={{ minHeight: error || info ? 'auto' : 0 }}>
+            {error && <p className="text-xs mt-3 login-msg-error">{error}</p>}
+            {info && <p className="text-xs mt-3 login-msg-info">{info}</p>}
+          </div>
+
+          <button type="submit" disabled={loading} className="login-submit w-full py-2.5 rounded-lg text-sm font-semibold mt-5 mb-3">
+            {loading ? <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto' }} /> : (mode === 'login' ? 'Entrar' : 'Criar conta')}
           </button>
           <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
             className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
@@ -8056,6 +8078,53 @@ function PageStyles() {
         position: relative; z-index: 1; min-height: 100vh;
         display: flex; align-items: center; justify-content: center; padding: 24px;
       }
+      .login-card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0) 45%), var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 24px 60px -24px rgba(0,0,0,0.65), 0 0 0 1px rgba(139,47,47,0.06);
+        animation: login-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes login-card-in {
+        from { opacity: 0; transform: translateY(10px) scale(0.985); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .login-logo-ring {
+        padding: 10px; border-radius: 16px;
+        background: radial-gradient(circle at 50% 30%, rgba(139,47,47,0.18), transparent 70%);
+        border: 1px solid rgba(139,47,47,0.25);
+      }
+      .login-input-wrap { position: relative; display: flex; align-items: center; }
+      .login-input-icon { position: absolute; left: 11px; color: var(--text-secondary); pointer-events: none; opacity: 0.8; }
+      .login-input {
+        width: 100%; padding: 9px 12px 9px 34px; border-radius: 10px; font-size: 13.5px;
+        background: var(--bg); border: 1px solid var(--border); color: var(--text-primary);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .login-input::placeholder { color: var(--text-secondary); opacity: 0.55; }
+      .login-input:focus {
+        outline: none; border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(139,47,47,0.18);
+      }
+      .login-input-toggle {
+        position: absolute; right: 8px; background: transparent; border: none; cursor: pointer;
+        color: var(--text-secondary); padding: 4px; display: flex; align-items: center; border-radius: 6px;
+        transition: color 0.15s ease;
+      }
+      .login-input-toggle:hover { color: var(--text-primary); }
+      .login-msg-error { color: var(--status-danger); }
+      .login-msg-info { color: var(--accent); }
+      .login-submit {
+        background: linear-gradient(180deg, #9a3535, var(--accent));
+        color: var(--accent-contrast); border: none; cursor: pointer;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 10px 24px -10px rgba(139,47,47,0.55);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+      }
+      .login-submit:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 14px 28px -10px rgba(139,47,47,0.65);
+      }
+      .login-submit:active:not(:disabled) { transform: translateY(0); }
+      .login-submit:disabled { opacity: 0.75; cursor: default; }
 
       @media print {
         @page { size: A4 landscape; margin: 12mm; }
