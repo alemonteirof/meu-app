@@ -1344,7 +1344,7 @@ function VisitaPrintView({ visitas, client, onBack }) {
         <button type="button" onClick={onBack} style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
           ← Voltar
         </button>
-        <button type="button" onClick={() => window.print()} style={btnStyle}>Imprimir / Salvar PDF</button>
+        <button type="button" onClick={() => { document.title = rvtNomeArquivo; window.print(); }} style={btnStyle}>Imprimir / Salvar PDF</button>
       </div>
 
       <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
