@@ -1,7 +1,7 @@
-﻿// src/components/ToolChecklistMonthExport.jsx
+// src/components/ToolChecklistMonthExport.jsx
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../App";
+import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
 
 const VINHO = "#8B2F2F";

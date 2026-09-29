@@ -5,6 +5,129 @@ function legacyKey(clienteId) {
   return `pci-dados-cliente-${clienteId}`;
 }
 
+// ---- Fotos no Supabase Storage ----
+// As fotos de atendimentos / inspeções / itens de visita / intervenções ficavam em base64
+// dentro da própria linha (jsonb). Com ~50 MB acumulados, TODA abertura de cliente baixava
+// todas as fotos junto com a lista. Agora o arquivo vai pro bucket privado `fotos`
+// (<cliente_id>/<uuid>.<ext>, RLS por has_client_access — ver
+// migracao_fotos_storage_e_performance.sql) e a linha guarda só "storage:<caminho>".
+// Leitura: a referência vira URL assinada (1 chamada por lista). Gravação: data URL nova
+// sobe pro bucket e URL assinada volta a ser referência. O array continua string[] — as
+// telas seguem fazendo <img src={f}> sem saber de nada disso. Data URLs antigas continuam
+// funcionando (convertidas pela migração em Configurações → Dados).
+const FOTOS_BUCKET = 'fotos';
+const FOTO_REF = 'storage:';
+const FOTO_URL_TTL = 60 * 60 * 24; // 24h
+const FOTO_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+const urlPorRef = new Map(); // "storage:<caminho>" -> { url, expira }
+
+const ehRef = (f) => typeof f === 'string' && f.startsWith(FOTO_REF);
+
+/** URL assinada (gerada por nós mesmos) -> "storage:<caminho>". Nunca grava URL que expira. */
+function refDaUrlAssinada(s) {
+  const m = /\/storage\/v1\/object\/sign\/fotos\/([^?]+)/.exec(s || '');
+  return m ? FOTO_REF + decodeURIComponent(m[1]) : null;
+}
+
+async function assinarRefs(refs) {
+  const limite = Date.now() + 60 * 60 * 1000; // renova quem vence em menos de 1h
+  const faltando = [...new Set(refs)].filter((r) => !(urlPorRef.get(r)?.expira > limite));
+  for (let i = 0; i < faltando.length; i += 500) {
+    const lote = faltando.slice(i, i + 500);
+    const { data, error } = await supabase.storage.from(FOTOS_BUCKET)
+      .createSignedUrls(lote.map((r) => r.slice(FOTO_REF.length)), FOTO_URL_TTL);
+    if (error) { console.error('Falha ao assinar fotos', error); continue; }
+    const expira = Date.now() + FOTO_URL_TTL * 1000;
+    (data || []).forEach((d) => { if (d.signedUrl && d.path) urlPorRef.set(FOTO_REF + d.path, { url: d.signedUrl, expira }); });
+  }
+}
+
+/** Troca, in-place, as referências "storage:" de `campo` em cada linha pela URL assinada. */
+async function resolverFotosEmLinhas(linhas, campo) {
+  const refs = [];
+  for (const l of linhas || []) for (const f of (Array.isArray(l?.[campo]) ? l[campo] : [])) if (ehRef(f)) refs.push(f);
+  if (!refs.length) return linhas;
+  await assinarRefs(refs);
+  for (const l of linhas) {
+    if (Array.isArray(l?.[campo])) l[campo] = l[campo].map((f) => (ehRef(f) ? (urlPorRef.get(f)?.url || f) : f));
+  }
+  return linhas;
+}
+
+/** Normaliza um array de fotos antes de gravar: data URL -> upload + "storage:<caminho>";
+    URL assinada -> "storage:<caminho>"; o resto fica como está. `cliente` é o id ou uma
+    função async que o descobre (só chamada se houver foto nova pra subir). Se não der pra
+    saber o cliente, mantém o base64 — nunca perde a foto. */
+async function prepararFotos(fotos, cliente) {
+  if (!Array.isArray(fotos) || !supabase) return fotos;
+  let clienteId;
+  if (fotos.some((f) => typeof f === 'string' && f.startsWith('data:'))) {
+    clienteId = typeof cliente === 'function' ? await cliente() : cliente;
+  }
+  return Promise.all(fotos.map(async (f) => {
+    if (typeof f !== 'string') return f;
+    if (f.startsWith('data:')) {
+      if (!clienteId) return f;
+      const blob = await (await fetch(f)).blob();
+      const caminho = `${clienteId}/${crypto.randomUUID()}.${FOTO_EXT[blob.type] || 'jpg'}`;
+      const { error } = await supabase.storage.from(FOTOS_BUCKET)
+        .upload(caminho, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
+      if (error) throw error;
+      return FOTO_REF + caminho;
+    }
+    return refDaUrlAssinada(f) || f;
+  }));
+}
+
+async function clienteDaLinha(tabela, id) {
+  const { data } = await supabase.from(tabela).select('cliente_id').eq('id', id).maybeSingle();
+  return data?.cliente_id || null;
+}
+async function clienteDaVisita(rvtId) {
+  return rvtId ? clienteDaLinha('rvts', rvtId) : null;
+}
+async function clienteDoItemVisita(rvtItemId) {
+  const { data } = await supabase.from('rvt_itens').select('rvts(cliente_id)').eq('id', rvtItemId).maybeSingle();
+  return data?.rvts?.cliente_id || null;
+}
+
+/** Converte as fotos antigas em base64 (atendimentos/inspeções/itens de visita/intervenções)
+    pro Storage. Idempotente: pode rodar de novo, só pega o que ainda tem base64. Cada linha
+    só é atualizada depois que TODAS as suas fotos subiram — se algo falhar, a linha fica
+    como estava (e há backup em backup.fotos_*_20260929). */
+export async function migrarFotosParaStorage(onProgresso) {
+  const COLUNA = { atendimentos: 'fotos', inspecoes: 'fotos', atendimento_intervencoes: 'fotos', rvt_itens: 'outro_fotos' };
+  const { data: pendentes, error } = await supabase.rpc('fotos_base64_pendentes');
+  if (error) throw error;
+  const total = (pendentes || []).length;
+  let feitos = 0, falhas = 0;
+  onProgresso?.({ feitos, falhas, total });
+  const fila = [...(pendentes || [])];
+  async function worker() {
+    while (fila.length) {
+      const p = fila.shift();
+      const col = COLUNA[p.tabela];
+      try {
+        const { data: linha, error: e1 } = await supabase.from(p.tabela).select(col).eq('id', p.id).single();
+        if (e1) throw e1;
+        const atuais = linha[col] || [];
+        const novas = await prepararFotos(atuais, p.cliente_id);
+        if (novas.some((f, i) => f !== atuais[i])) {
+          const { error: e2 } = await supabase.from(p.tabela).update({ [col]: novas }).eq('id', p.id);
+          if (e2) throw e2;
+        }
+        feitos += 1;
+      } catch (e) {
+        console.error('Falha ao migrar fotos', p, e);
+        falhas += 1;
+      }
+      onProgresso?.({ feitos, falhas, total });
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  return { feitos, falhas, total };
+}
+
 // ---- Clientes (lista multi-tenant) — fonte de verdade migrada do kv_store 'pci-clientes-v1' ----
 
 function rowToCliente(r) {
@@ -290,7 +413,7 @@ async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescrica
   const { error } = await supabase.from('rvt_itens').insert({
     rvt_id: rvtId, atendimento_id: atendimentoId || null,
     inspecao_id: inspecaoId || null, outro_descricao: outroDescricao || null,
-    outro_fotos: outroFotos || [],
+    outro_fotos: await prepararFotos(outroFotos || [], () => clienteDaVisita(rvtId)),
     outro_atividade: outroAtividade || null,
     outro_atividade_dados: outroAtividadeDados || {},
     intervencao_id: intervencaoId || null,
@@ -310,6 +433,8 @@ export async function addOutroToVisita(rvtId, descricao, fotos, atividade, ativi
 // contar como atividade da visita além de contar como Corretiva normal.
 export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, dataAgendamento, dispositivoLabels, fotos }) {
   const atendimentosGerados = [];
+  // Sobe as fotos 1x só (senão cada corretiva gerada subiria uma cópia do mesmo arquivo)
+  fotos = await prepararFotos(fotos, clienteId || (() => clienteDaVisita(rvtId)));
   for (const alvo of alvos) {
     const a = await createAtendimento({
       dispositivoId: alvo.kind === 'dispositivo' ? alvo.id : null,
@@ -339,10 +464,11 @@ export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteA
     falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null, falha_categoria: falhaCategoria || null,
     falha_escopo: escopoDaFalha(falhaCodigo) || null,
     tecnico: tecnico || null, descritivo: descritivo || null, origem_inspecao_id: origemInspecaoId || null,
-    fotos: fotos || [], data_agendamento: dataAgendamento || null,
+    fotos: await prepararFotos(fotos || [], clienteIdFinal), data_agendamento: dataAgendamento || null,
     ...(dataRegistro ? { data_registro: dataRegistro } : {}),
   }).select().single();
   if (error) throw error;
+  await resolverFotosEmLinhas([data], 'fotos');
 
   if (dispositivoId) {
     await supabase.from('dispositivos').update({ ultima_manutencao: hoje }).eq('id', dispositivoId);
@@ -422,9 +548,10 @@ export async function createInspecao({
     falha: falha || null, falha_codigo: falhaCodigo || null, falha_marca: falhaMarca || null,
     falha_categoria: falhaCategoria || null, falha_escopo: escopoDaFalha(falhaCodigo) || null,
     metodo: metodo || null, data_inspecao: dataFinal,
-    proxima_inspecao: proximaInspecao || null, fotos: fotos || [],
+    proxima_inspecao: proximaInspecao || null, fotos: await prepararFotos(fotos || [], clienteIdFinal),
   }).select().single();
   if (error) throw error;
+  await resolverFotosEmLinhas([inspecao], 'fotos');
 
   await addItemToVisita(rvtId, { inspecaoId: inspecao.id });
 
@@ -470,7 +597,7 @@ export async function listAtendimentos(clienteId) {
     .eq('cliente_id', clienteId)
     .order('data_registro', { ascending: false });
   if (error) throw error;
-  return data;
+  return resolverFotosEmLinhas(data, 'fotos');
 }
 
 /** Corretivas ainda abertas (Aguardando/Andamento) do cliente, de qualquer visita
@@ -483,7 +610,7 @@ export async function listAtendimentosAbertos(clienteId) {
     .neq('status', 'resolvido')
     .order('data_registro', { ascending: false });
   if (error) throw error;
-  return data;
+  return resolverFotosEmLinhas(data, 'fotos');
 }
 
 /** Registra 1 intervenção contra uma corretiva aberta (de qualquer visita) — o que
@@ -496,9 +623,11 @@ export async function registrarIntervencaoAtendimento({ atendimentoId, clienteId
   const { data: interv, error } = await supabase.from('atendimento_intervencoes').insert({
     atendimento_id: atendimentoId, cliente_id: clienteId || null, rvt_id: rvtId || null,
     data: data || new Date().toISOString().slice(0, 10), tecnico: tecnico || null,
-    status_resultante: statusResultante, descricao, fotos: fotos || [],
+    status_resultante: statusResultante, descricao,
+    fotos: await prepararFotos(fotos || [], clienteId || (() => clienteDaLinha('atendimentos', atendimentoId))),
   }).select().single();
   if (error) throw error;
+  await resolverFotosEmLinhas([interv], 'fotos');
 
   await updateAtendimento(atendimentoId, {
     status: statusResultante,
@@ -515,7 +644,7 @@ export async function listInspecoes(clienteId) {
     .eq('cliente_id', clienteId)
     .order('data_inspecao', { ascending: false });
   if (error) throw error;
-  return data;
+  return resolverFotosEmLinhas(data, 'fotos');
 }
 
 /** Intervenções (sem embed) de um conjunto de atendimentos — usado só pra "costurar" em JS
@@ -529,7 +658,7 @@ async function listAtendimentoIntervencoesRaw(atendimentoIds) {
     .in('atendimento_id', atendimentoIds)
     .order('data', { ascending: false });
   if (error) throw error;
-  return data;
+  return resolverFotosEmLinhas(data, 'fotos');
 }
 
 /** Monta as visitas (rvts) com os mesmos campos aninhados que a tela de Atendimentos/RVT espera
@@ -567,6 +696,7 @@ async function fetchVisitasEnriquecidas(clienteId, { atendimentos, inspecoes } =
 
   const { data: rvts, error } = await rvtsPromise;
   if (error) throw error;
+  await resolverFotosEmLinhas((rvts || []).flatMap((v) => v.rvt_itens || []), 'outro_fotos');
 
   return (rvts || []).map((v) => ({
     ...v,
@@ -1161,14 +1291,14 @@ export async function updateAtendimento(id, { falha, falhaCodigo, falhaMarca, fa
   if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (status !== undefined) patch.status = status;
   if (descritivo !== undefined) patch.descritivo = descritivo || null;
-  if (fotos !== undefined) patch.fotos = fotos;
+  if (fotos !== undefined) patch.fotos = await prepararFotos(fotos, () => clienteDaLinha('atendimentos', id));
   if (dispositivoId !== undefined) patch.dispositivo_id = dispositivoId || null;
   if (dataAgendamento !== undefined) patch.data_agendamento = dataAgendamento || null;
   if (resolvidoRvtId !== undefined) patch.resolvido_rvt_id = resolvidoRvtId || null;
   if (dataResolucao !== undefined) patch.data_resolucao = dataResolucao || null;
   const { data, error } = await supabase.from('atendimentos').update(patch).eq('id', id).select().single();
   if (error) throw error;
-  return data;
+  return (await resolverFotosEmLinhas([data], 'fotos'))[0];
 }
 
 export async function deleteAtendimento(id) {
@@ -1192,11 +1322,11 @@ export async function updateInspecao(id, { resultadoTeste, aparencia, comunicaca
   if (falhaCategoria !== undefined) patch.falha_categoria = falhaCategoria || null;
   if (metodo !== undefined) patch.metodo = metodo || null;
   if (proximaInspecao !== undefined) patch.proxima_inspecao = proximaInspecao || null;
-  if (fotos !== undefined) patch.fotos = fotos;
+  if (fotos !== undefined) patch.fotos = await prepararFotos(fotos, () => clienteDaLinha('inspecoes', id));
   if (dispositivoId !== undefined) patch.dispositivo_id = dispositivoId || null;
   const { data, error } = await supabase.from('inspecoes').update(patch).eq('id', id).select().single();
   if (error) throw error;
-  return data;
+  return (await resolverFotosEmLinhas([data], 'fotos'))[0];
 }
 
 export async function deleteInspecao(id) {
@@ -1207,7 +1337,7 @@ export async function deleteInspecao(id) {
 
 export async function updateOutroItem(rvtItemId, descricao, fotos, atividade, atividadeDados) {
   const patch = { outro_descricao: descricao };
-  if (fotos !== undefined) patch.outro_fotos = fotos;
+  if (fotos !== undefined) patch.outro_fotos = await prepararFotos(fotos, () => clienteDoItemVisita(rvtItemId));
   if (atividade !== undefined) patch.outro_atividade = atividade || null;
   if (atividadeDados !== undefined) patch.outro_atividade_dados = atividadeDados || {};
   const { error } = await supabase.from('rvt_itens').update(patch).eq('id', rvtItemId);

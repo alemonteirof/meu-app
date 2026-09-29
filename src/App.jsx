@@ -1,4 +1,3 @@
-﻿import AtendimentosNovo from './AtendimentosNovo';
 import {
   loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, deleteAtendimento, updateInspecao, deleteInspecao,
   functionalCategoriesForType, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
@@ -7,10 +6,11 @@ import {
   COMBATE_COMPONENTE_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, COMBATE_CILINDRO_ITENS, COMBATE_RETEST_LABORATORIAL_MESES,
   REDE_TIPOS,
   listCombateHistorico,
-  listClientes, upsertCliente, deleteCliente,
+  listClientes, upsertCliente, deleteCliente, migrarFotosParaStorage,
 } from './supabaseAdapter';
 import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
 import { logSecurityEvent } from './lib/securityLog';
+import { compressImageFile } from './lib/imagens';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -19,7 +19,7 @@ import {
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
-  Mail, Eye, EyeOff,
+  Mail, Eye, EyeOff, Database,
 } from 'lucide-react';
 // xlsx, exceljs, chart.js e pdfjs-dist são libs pesadas usadas só em
 // import/export pontuais — carregadas via import() dinâmico nos pontos de uso
@@ -30,8 +30,11 @@ import {
 /* ------------------------------------------------------------------ */
 /* Supabase (banco de dados + login de usuários)                      */
 /* ------------------------------------------------------------------ */
-import { createClient } from '@supabase/supabase-js';
-import ToolChecklistScreen from './components/ToolChecklistScreen';
+// Telas grandes que nem todo mundo abre ao entrar — viram chunks separados, baixados só\r
+// quando a aba é aberta (e pré-carregados em segundo plano depois que o cliente abre).
+const loadAtendimentosNovo = () => import('./AtendimentosNovo');
+const AtendimentosNovo = React.lazy(loadAtendimentosNovo);
+const ToolChecklistScreen = React.lazy(() => import('./components/ToolChecklistScreen'));
 
 
 import { supabase } from './supabaseClient';
@@ -133,48 +136,73 @@ function LoginScreen() {
       <img src="/maj-emblem.png" alt="" aria-hidden="true" className="login-watermark"
         onError={(e) => { e.currentTarget.style.display = 'none'; }} />
       <div className="login-content">
-        <form onSubmit={handleSubmit} className="login-card w-full max-w-sm rounded-2xl p-7">
-          <div className="flex flex-col items-center gap-3 mb-6">
-            <div className="login-logo-ring">
-              <BrandLogo boxSize={52} size={26} />
+        <div className="login-form-col">
+          <form onSubmit={handleSubmit} className="login-card w-full max-w-sm rounded-2xl p-7">
+            <div className="flex flex-col items-center gap-3 mb-6">
+              <div className="login-logo-ring">
+                <BrandLogo boxSize={52} size={26} />
+              </div>
+              <div className="text-center">
+                <h1 className="font-display text-lg font-semibold login-title-gradient" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>MAJ Soluções &middot; Manutenção de sistemas PCI</p>
+              </div>
             </div>
-            <div className="text-center">
-              <h1 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Centro de Controle de Manutenção</h1>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>MAJ Soluções &middot; Manutenção de sistemas PCI</p>
+
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Email</label>
+            <div className="login-input-wrap mb-4">
+              <Mail size={16} className="login-input-icon" />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="voce@empresa.com" className="login-input" />
             </div>
-          </div>
 
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Email</label>
-          <div className="login-input-wrap mb-4">
-            <Mail size={16} className="login-input-icon" />
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="voce@empresa.com" className="login-input" />
-          </div>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Senha</label>
+            <div className="login-input-wrap mb-1">
+              <KeyRound size={16} className="login-input-icon" />
+              <input type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••" className="login-input" style={{ paddingRight: 38 }} />
+              <button type="button" onClick={() => setShowPassword((v) => !v)} className="login-input-toggle" tabIndex={-1}
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
 
-          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Senha</label>
-          <div className="login-input-wrap mb-1">
-            <KeyRound size={16} className="login-input-icon" />
-            <input type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••" className="login-input" style={{ paddingRight: 38 }} />
-            <button type="button" onClick={() => setShowPassword((v) => !v)} className="login-input-toggle" tabIndex={-1}
-              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            <div style={{ minHeight: error || info ? 'auto' : 0 }}>
+              {error && <p className="text-xs mt-3 login-msg-error">{error}</p>}
+              {info && <p className="text-xs mt-3 login-msg-info">{info}</p>}
+            </div>
+
+            <button type="submit" disabled={loading} className="login-submit w-full py-2.5 rounded-lg text-sm font-semibold mt-5 mb-3">
+              {loading ? <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto' }} /> : (mode === 'login' ? 'Entrar' : 'Criar conta')}
             </button>
-          </div>
+            <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
+              className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              {mode === 'login' ? 'Não tem conta? Criar uma' : 'Já tem conta? Entrar'}
+            </button>
+          </form>
+        </div>
 
-          <div style={{ minHeight: error || info ? 'auto' : 0 }}>
-            {error && <p className="text-xs mt-3 login-msg-error">{error}</p>}
-            {info && <p className="text-xs mt-3 login-msg-info">{info}</p>}
+        <div className="login-visual-col" aria-hidden="true">
+          <div className="login-visual-texture" />
+          <svg className="login-visual-flame-art" viewBox="0 0 500 600" fill="none" preserveAspectRatio="xMaxYMax slice">
+            <path d="M340 600 C300 520 250 500 260 430 C266 388 300 368 292 320
+                     C286 286 258 268 262 230 C266 190 300 172 296 130
+                     C293 100 275 84 280 50
+                     C330 90 360 150 352 210 C346 254 318 270 326 312
+                     C332 344 362 358 358 400 C354 440 322 456 330 496
+                     C336 528 366 544 366 580 C366 590 354 598 340 600 Z"
+              fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.5" />
+          </svg>
+          <div className="login-visual-pulse-wrap">
+            <span className="login-visual-pulse-ring" />
+            <span className="login-visual-pulse-ring login-visual-pulse-ring-delay" />
+            <span className="login-visual-pulse-dot" />
           </div>
-
-          <button type="submit" disabled={loading} className="login-submit w-full py-2.5 rounded-lg text-sm font-semibold mt-5 mb-3">
-            {loading ? <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto' }} /> : (mode === 'login' ? 'Entrar' : 'Criar conta')}
-          </button>
-          <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
-            className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            {mode === 'login' ? 'Não tem conta? Criar uma' : 'Já tem conta? Entrar'}
-          </button>
-        </form>
+          <div className="login-visual-content">
+            <span className="login-visual-kicker">MAJ Soluções</span>
+            <p className="login-visual-caption">Prevenção e Combate a Incêndio</p>
+            <p className="login-visual-subcaption">Monitoramento completo de sistemas SDAI e SPCI, do sensor ao relatório — em tempo real.</p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -194,6 +222,14 @@ function BrandLogo({ size = 18, boxSize = 36, rounded = true }) {
     <img src="/maj-logo-icon.png" alt="MAJ Soluções"
       style={{ height: boxSize, width: 'auto', maxWidth: boxSize * 3.5, objectFit: 'contain', flexShrink: 0 }}
       onError={() => setFailed(true)} />
+  );
+}
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <Loader2 size={24} className="animate-spin" style={{ color: 'var(--accent)' }} />
+    </div>
   );
 }
 
@@ -990,34 +1026,6 @@ function modelKey(m) { return (m || '').trim().toLowerCase(); }
 function photoForModelo(data, modelo) {
   if (!modelo) return null;
   return data.modelPhotos?.[modelKey(modelo)]?.photo || null;
-}
-
-/* Resize + compress an uploaded image file into a small base64 JPEG */
-function compressImageFile(file, maxDim = 480, quality = 0.75) {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) { reject(new Error(`"${file.name}" não é uma imagem.`)); return; }
-    if (file.size > 25 * 1024 * 1024) { reject(new Error(`"${file.name}" é muito grande (limite 25 MB).`)); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new window.Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
-          else { width = Math.round((width * maxDim) / height); height = maxDim; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => reject(new Error('Não foi possível ler a imagem'));
-      img.src = e.target.result;
-    };
-    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo'));
-    reader.readAsDataURL(file);
-  });
 }
 
 /* Upload de múltiplas fotos (com atalho de câmera no celular), comprimindo cada uma. */
@@ -2486,6 +2494,9 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       try {
       const loaded = await loadClientData(client.id);
       setData(loaded);
+      // Com o cliente já na tela, pré-carrega a tela de Atendimentos em segundo plano
+      // pra troca de aba não esperar o download do chunk.
+      setTimeout(() => { loadAtendimentosNovo().catch(() => {}); }, 1500);
       } catch (e) {
         if (String(e?.code) === '42501' || /policy|permission|denied/i.test(e?.message || '')) {
           logSecurityEvent('acesso_negado', { detail: { onde: 'loadClientData', msg: e?.message } });
@@ -3328,12 +3339,16 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             onGoPanels={() => setView('panels')} />
         )}
         {view === 'atendimentos' && (
+          <React.Suspense fallback={<LazyFallback />}>
           <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit}
             onRefresh={async () => setData(await loadClientData(client.id))} />
+          </React.Suspense>
         )}
         {view === 'relatorios' && (
+          <React.Suspense fallback={<LazyFallback />}>
           <AtendimentosNovo data={data} client={client} clientId={client.id} canEdit={canEdit} reportMode
             onRefresh={async () => setData(await loadClientData(client.id))} />
+          </React.Suspense>
         )}
 
         {SDAI_VIEWS.includes(view) && (
@@ -7147,6 +7162,7 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
     { key: 'modelos', label: 'Modelos', icon: ImagePlus },
     { key: 'operadores', label: 'Operadores', icon: Users },
     { key: 'importar', label: 'Importar', icon: Upload },
+    { key: 'dados', label: 'Dados', icon: Database },
   ];
   return (
     <div className="flex flex-col gap-4">
@@ -7163,7 +7179,53 @@ function SettingsView({ client, data, tab, setTab, onUpdateClient, onSaveModelPh
         {tab === 'modelos' && <ModelLibraryManager data={data} onSave={onSaveModelPhoto} onRemove={onRemoveModelPhoto} />}
         {tab === 'operadores' && <MembersManager clientId={client.id} />}
         {tab === 'importar' && <ImportCsvView onImport={onImportCsv} data={data} lastImport={lastImport} onUndoImport={onUndoImport} />}
+        {tab === 'dados' && <MigrarFotosStorage />}
       </div>
+    </div>
+  );
+}
+
+/* Conversão única das fotos antigas (base64 dentro da linha) pro Supabase Storage —
+   ver migrarFotosParaStorage no supabaseAdapter. Pega TODOS os clientes que o usuário
+   enxerga (admin = todos), é idempotente e pode ser rodada de novo sem risco. */
+function MigrarFotosStorage() {
+  const [prog, setProg] = useState(null);
+  const [rodando, setRodando] = useState(false);
+  const [erro, setErro] = useState('');
+  async function rodar() {
+    setRodando(true); setErro('');
+    try { setProg(await migrarFotosParaStorage(setProg)); }
+    catch (e) { console.error(e); setErro(e.message || 'Falha ao migrar fotos.'); }
+    finally { setRodando(false); }
+  }
+  const concluido = prog && !rodando && prog.feitos + prog.falhas === prog.total;
+  return (
+    <div className="rounded-xl p-5 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Mover fotos antigas para o Storage</p>
+      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+        Fotos antigas ficavam dentro dos registros e eram baixadas inteiras toda vez que um cliente abria.
+        Isto move cada uma para o armazenamento de arquivos (mesmo controle de acesso por cliente) e deixa só a
+        referência no registro. Fotos novas já vão direto. Pode rodar de novo sem risco — só pega o que falta.
+      </p>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button onClick={rodar} disabled={rodando}>
+          {rodando ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />} {rodando ? 'Migrando…' : 'Migrar fotos'}
+        </Button>
+        {prog && (
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {prog.feitos + prog.falhas} de {prog.total} registro(s){prog.falhas > 0 && ` · ${prog.falhas} com falha`}
+          </span>
+        )}
+      </div>
+      {concluido && prog.falhas === 0 && (
+        <p className="text-xs" style={{ color: 'var(--status-ok)' }}>
+          {prog.total === 0 ? 'Nada pendente — todas as fotos já estão no Storage.' : 'Concluído. Recarregue a página para ver o app mais leve.'}
+        </p>
+      )}
+      {concluido && prog.falhas > 0 && (
+        <p className="text-xs" style={{ color: 'var(--status-danger)' }}>Alguns registros falharam (ficaram como estavam). Rode de novo; se persistir, veja o console.</p>
+      )}
+      {erro && <p className="text-xs" style={{ color: 'var(--status-danger)' }}>{erro}</p>}
     </div>
   );
 }
@@ -7921,8 +7983,7 @@ function MembersManager({ clientId }) {
 function PageStyles() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
+      /* Fontes (Google Fonts) carregadas no index.html, em paralelo com o JS. */
       html, body { overflow-x: hidden; max-width: 100vw; background: var(--bg); min-height: 100dvh; }
       #root { overflow-x: hidden; min-height: 100dvh; }
       :root {
@@ -8076,14 +8137,66 @@ function PageStyles() {
       }
       .login-content {
         position: relative; z-index: 1; min-height: 100vh;
-        display: flex; align-items: center; justify-content: center; padding: 24px;
+        display: flex; align-items: stretch;
+      }
+      .login-form-col {
+        flex: 1 1 54%; display: flex; align-items: center; justify-content: center; padding: 24px;
+      }
+      .login-title-gradient {
+        background: linear-gradient(180deg, #ffffff 0%, rgba(255,255,255,0.7) 100%);
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
       }
       .login-card {
         background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0) 45%), var(--surface);
         border: 1px solid var(--border);
+        border-top: 3px solid var(--accent);
         box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 24px 60px -24px rgba(0,0,0,0.65), 0 0 0 1px rgba(139,47,47,0.06);
         animation: login-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
       }
+      /* ---- Painel visual (split-screen) ao lado do formulário de login ---- */
+      .login-visual-col {
+        display: none; position: relative; flex: 1 1 46%; overflow: hidden;
+        background:
+          radial-gradient(120% 90% at 15% 0%, rgba(255,255,255,0.06), transparent 55%),
+          linear-gradient(160deg, #6e2424 0%, var(--accent) 45%, #3d1616 100%);
+      }
+      @media (min-width: 900px) {
+        .login-visual-col { display: flex; align-items: center; justify-content: center; }
+        .login-watermark { display: none; }
+      }
+      .login-visual-texture {
+        position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+        background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 16px);
+      }
+      .login-visual-flame-art {
+        position: absolute; right: 0; bottom: 0; width: 62%; height: 92%; pointer-events: none;
+      }
+      .login-visual-pulse-wrap {
+        position: absolute; top: 15%; left: 12%; width: 14px; height: 14px;
+      }
+      .login-visual-pulse-ring {
+        position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,0.45);
+        animation: login-pulse 2.6s ease-out infinite;
+      }
+      .login-visual-pulse-ring-delay { animation-delay: 1.3s; }
+      .login-visual-pulse-dot {
+        position: absolute; top: 5px; left: 5px; width: 4px; height: 4px; border-radius: 50%;
+        background: #fff; box-shadow: 0 0 8px 1px rgba(255,255,255,0.8);
+      }
+      @keyframes login-pulse {
+        0% { transform: scale(0.4); opacity: 0.8; }
+        100% { transform: scale(9); opacity: 0; }
+      }
+      .login-visual-content {
+        position: absolute; left: 0; bottom: 0; z-index: 1; display: flex; flex-direction: column;
+        gap: 10px; padding: 48px 44px; max-width: 340px;
+      }
+      .login-visual-kicker {
+        font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+        color: rgba(255,255,255,0.6);
+      }
+      .login-visual-caption { font-size: 22px; font-weight: 600; color: #fff; letter-spacing: -0.01em; line-height: 1.25; margin: 0; }
+      .login-visual-subcaption { font-size: 13px; color: rgba(255,255,255,0.68); line-height: 1.55; margin: 0; }
       @keyframes login-card-in {
         from { opacity: 0; transform: translateY(10px) scale(0.985); }
         to { opacity: 1; transform: translateY(0) scale(1); }
@@ -8260,9 +8373,9 @@ function Root() {
 
   useEffect(() => {
     (async () => {
-      const list = await loadAndMigrateClients();
+      // Independentes — antes eram 2 round-trips em série antes de abrir o último cliente.
+      const [list, last] = await Promise.all([loadAndMigrateClients(), loadLastClientId()]);
       setClients(list);
-      const last = await loadLastClientId();
       if (last && list.some((c) => c.id === last)) setActiveClientId(last);
       setLoaded(true);
     })();
@@ -8357,7 +8470,7 @@ const isMajStaff = isOwner || role === 'admin' || role === 'operador';
 
   if (!activeClientId) {
     if (showToolChecklist) {
-      return <ToolChecklistScreen clients={visibleClients} role={role} onBack={() => setShowToolChecklist(false)} />;
+      return <React.Suspense fallback={<LazyFallback />}><ToolChecklistScreen clients={visibleClients} role={role} onBack={() => setShowToolChecklist(false)} /></React.Suspense>;
     }
     
 

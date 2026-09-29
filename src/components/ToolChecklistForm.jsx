@@ -1,9 +1,9 @@
-﻿// src/components/ToolChecklistForm.jsx
+// src/components/ToolChecklistForm.jsx
 //
 // Uso: <ToolChecklistForm clients={visibleClients} />
 
 import { useEffect, useState } from "react";
-import { supabase } from "../App";
+import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS, STATUS_OPTIONS } from "../lib/toolChecklists";
 
 const VINHO = "#8B2F2F";

@@ -11,6 +11,7 @@ import {
   getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
 } from './supabaseAdapter';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
+import { compressImageFile } from './lib/imagens';
 
 /** Prefixo do id de opção sintética "o painel em si" no seletor de itens de visita
     (mesma ideia de bp:/fa:). Só corretiva/manutenção — inspeção de painel fica fora. */
@@ -80,22 +81,17 @@ function statusColor(status) {
   return 'var(--text-secondary)';
 }
 
-const MAX_FOTO_BYTES = 8 * 1024 * 1024; // 8 MB por foto — fotos vão em base64 na linha do banco
-
+// Foto de celular crua tinha 3–8 MB; 2048px/JPEG 0.85 fica ~300–600 kB e ainda
+// aguenta o "Tamanho real" do lightbox. Sobe pro Storage no adapter (prepararFotos).
 function filesToBase64(fileList) {
-  return Promise.all(Array.from(fileList).map((file) => new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) { reject(new Error(`"${file.name}" não é uma imagem.`)); return; }
-    if (file.size > MAX_FOTO_BYTES) { reject(new Error(`"${file.name}": ${(file.size / 1048576).toFixed(1)} MB. Limite de 8 MB por foto — reduza a resolução.`)); return; }
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  })));
+  return Promise.all(Array.from(fileList).map((file) => compressImageFile(file, 2048, 0.85)));
 }
 
-/** Extensão de arquivo a partir de um data URL de imagem (as fotos do RVT são
-    salvas em base64 via readAsDataURL). Cai para .jpg quando não dá pra saber. */
+/** Extensão de arquivo a partir de um data URL ou URL do Storage (…/<uuid>.jpg?token=…).
+    Cai para .jpg quando não dá pra saber. */
 function extDaImagem(src) {
+  const url = /\.(jpe?g|png|webp|gif)(\?|$)/i.exec(src || '');
+  if (url) return url[1].toLowerCase() === 'jpeg' ? '.jpg' : '.' + url[1].toLowerCase();
   const m = /^data:image\/([a-z0-9.+-]+)/i.exec(src || '');
   if (!m) return '.jpg';
   const t = m[1].toLowerCase();
@@ -104,17 +100,27 @@ function extDaImagem(src) {
   return '.' + t;
 }
 
-/** Dispara o download de uma imagem (data URL ou URL same-origin) com o nome dado. */
-function baixarImagem(src, nome) {
+/** Dispara o download de uma imagem com o nome dado. URL do Storage é de outra origem —
+    o navegador ignora `download` nesse caso (abriria a imagem no lugar do app), então
+    baixa como blob primeiro. */
+async function baixarImagem(src, nome) {
+  let href = src;
+  let blobUrl = null;
   try {
+    if (!String(src).startsWith('data:')) {
+      blobUrl = URL.createObjectURL(await (await fetch(src)).blob());
+      href = blobUrl;
+    }
     const a = document.createElement('a');
-    a.href = src;
+    a.href = href;
     a.download = nome;
     document.body.appendChild(a);
     a.click();
     a.remove();
   } catch (e) {
     console.error('Falha ao baixar imagem', e);
+  } finally {
+    if (blobUrl) setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   }
 }
 

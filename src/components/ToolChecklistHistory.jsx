@@ -1,9 +1,9 @@
-﻿// src/components/ToolChecklistHistory.jsx
+// src/components/ToolChecklistHistory.jsx
 //
 // Uso: <ToolChecklistHistory clients={visibleClients} />
 
 import { useEffect, useState } from "react";
-import { supabase } from "../App";
+import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
 
 const VINHO = "#8B2F2F";

@@ -473,6 +473,31 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
   separar `App.jsx` em módulos por tela pra viabilizar `React.lazy` — refactor maior, avaliar só se
   o chunk principal (973 kB / 253 kB gzip) virar gargalo real.
 
+### 20.1 Fotos no Storage + carregamento (2026-09-29)
+
+- **Gargalo real era dado, não bundle**: `atendimentos` tinha 39 MB p/ 113 linhas e `rvt_itens`
+  22 MB p/ 223 — fotos base64 (cruas, até 8 MB cada) dentro do jsonb. `loadClientData` baixava tudo
+  (~54 MB) a cada abertura de cliente **e** a cada recarga pós-salvamento.
+- Agora: bucket privado `fotos`, caminho `<cliente_id>/<uuid>.<ext>`, policies em `storage.objects`
+  por `has_client_access(1ª pasta)` (delete só admin). A linha guarda `"storage:<caminho>"`.
+  `supabaseAdapter.js`: `resolverFotosEmLinhas` (leitura → URL assinada 24h, 1 chamada por lista,
+  cache em memória) e `prepararFotos` (gravação: data URL → upload; URL assinada → volta a ser ref;
+  sem cliente conhecido mantém base64). Escopo: `atendimentos.fotos`, `inspecoes.fotos`,
+  `rvt_itens.outro_fotos`, `atendimento_intervencoes.fotos`. Baterias/fontes/combate continuam
+  base64 (pequenas, 900px) — não mexido de propósito.
+- Fotos antigas: conversão pelo app em **Configurações → Dados → Migrar fotos** (RPC
+  `fotos_base64_pendentes` + `migrarFotosParaStorage`, idempotente). Backup em
+  `backup.fotos_*_20260929` (schema não exposto) — apagar depois de validar.
+- Fotos novas de Atendimentos comprimidas pra 2048px/JPEG 0.85 (`lib/imagens.js`, `compressImageFile`
+  compartilhado com App.jsx). `baixarImagem` baixa via blob (URL do Storage é outra origem).
+- Arquivo removido de um registro fica órfão no bucket (não apagamos) — limpeza futura se pesar.
+- Bundle: `AtendimentosNovo` e `ToolChecklistScreen` via `React.lazy` (pré-carrega Atendimentos
+  1,5 s depois do cliente abrir); vendors em chunks próprios (`vite.config.js` `codeSplitting`) p/
+  cache entre deploys; Google Fonts saiu do `@import` em `PageStyles` pro `index.html` + preconnect
+  Supabase. Chunk do app: 375 kB (85 kB gzip).
+- Banco: índices nas FKs que faltavam, `has_client_access`/`is_admin` marcadas `STABLE`.
+  Tudo em `migracao_fotos_storage_e_performance.sql` (**rodada**).
+
 ## 21. Convenções de trabalho do Alexandre
 
 - Reaproveitar componente/padrão existente antes de criar novo; orçamento apertado.
