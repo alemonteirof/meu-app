@@ -543,15 +543,8 @@ async function listAtendimentoIntervencoesRaw(atendimentoIds) {
     e costura tudo em JS por id — mesmo resultado, muito menos joins no banco. `atendimentos` e
     `inspecoes` podem ser passados já carregados (loadClientData reaproveita o que já buscou). */
 async function fetchVisitasEnriquecidas(clienteId, { atendimentos, inspecoes } = {}) {
-  const atendimentosNovos = atendimentos || await listAtendimentos(clienteId);
-  const inspecoesNovos = inspecoes || await listInspecoes(clienteId);
-  const atendimentoById = new Map(atendimentosNovos.map((a) => [a.id, a]));
-  const inspecaoById = new Map(inspecoesNovos.map((i) => [i.id, i]));
-
-  const intervencoesNovas = await listAtendimentoIntervencoesRaw(atendimentosNovos.map((a) => a.id));
-  const intervencaoById = new Map(intervencoesNovas.map((iv) => [iv.id, { ...iv, atendimentos: atendimentoById.get(iv.atendimento_id) || null }]));
-
-  const { data: rvts, error } = await supabase
+  // rvts não depende de atendimentos/inspeções (só costura em JS depois) — dispara junto.
+  const rvtsPromise = supabase
     .from('rvts')
     .select(`
       id, data_visita, tecnico, painel_id,
@@ -561,6 +554,18 @@ async function fetchVisitasEnriquecidas(clienteId, { atendimentos, inspecoes } =
     `)
     .eq('cliente_id', clienteId)
     .order('data_visita', { ascending: false });
+
+  const [atendimentosNovos, inspecoesNovos] = await Promise.all([
+    atendimentos || listAtendimentos(clienteId),
+    inspecoes || listInspecoes(clienteId),
+  ]);
+  const atendimentoById = new Map(atendimentosNovos.map((a) => [a.id, a]));
+  const inspecaoById = new Map(inspecoesNovos.map((i) => [i.id, i]));
+
+  const intervencoesNovas = await listAtendimentoIntervencoesRaw(atendimentosNovos.map((a) => a.id));
+  const intervencaoById = new Map(intervencoesNovas.map((iv) => [iv.id, { ...iv, atendimentos: atendimentoById.get(iv.atendimento_id) || null }]));
+
+  const { data: rvts, error } = await rvtsPromise;
   if (error) throw error;
 
   return (rvts || []).map((v) => ({
@@ -583,6 +588,19 @@ export async function loadClientData(clienteId) {
   // lacos que depende dos IDs de paineis) — antes eram 11 round-trips em série pro Postgres,
   // o que sozinho já respondia por boa parte da demora ao abrir um cliente. Promise.all
   // dispara tudo de uma vez; só lacos aguarda paineis resolver primeiro.
+  // O histórico (atendimentos/inspeções/rvts, os mais pesados) não depende de nada acima —
+  // começa AGORA em paralelo em vez de esperar as buscas base + lacos terminarem. Cada lista
+  // tem catch própria (ver comentário mais abaixo), então nunca rejeita.
+  const historicoPromise = (async () => {
+    const [at, insp] = await Promise.all([
+      listAtendimentos(clienteId).catch((e) => { console.error('listAtendimentos falhou', e); return []; }),
+      listInspecoes(clienteId).catch((e) => { console.error('listInspecoes falhou', e); return []; }),
+    ]);
+    const visitas = await fetchVisitasEnriquecidas(clienteId, { atendimentos: at, inspecoes: insp })
+      .catch((e) => { console.error('listVisitas falhou', e); return []; });
+    return [at, insp, visitas];
+  })();
+
   const [
     { data: legacyRow, error: legacyErr },
     { data: paineis, error: eP },
@@ -771,12 +789,7 @@ export async function loadClientData(clienteId) {
   // dos dados intactos, incidente 2026-09-13). Melhor perder só aquele pedaço do histórico
   // do que a aplicação toda. visitasNovas reaproveita atendimentos/inspeções já buscados
   // (fetchVisitasEnriquecidas) em vez de re-buscar tudo de novo com embed profundo.
-  const [atendimentosNovos, inspecoesNovos] = await Promise.all([
-    listAtendimentos(clienteId).catch((e) => { console.error('listAtendimentos falhou', e); return []; }),
-    listInspecoes(clienteId).catch((e) => { console.error('listInspecoes falhou', e); return []; }),
-  ]);
-  const visitasNovas = await fetchVisitasEnriquecidas(clienteId, { atendimentos: atendimentosNovos, inspecoes: inspecoesNovos })
-    .catch((e) => { console.error('listVisitas falhou', e); return []; });
+  const [atendimentosNovos, inspecoesNovos, visitasNovas] = await historicoPromise;
 
   const indicadorNovos = [
     ...atendimentosNovos.map((a) => {
