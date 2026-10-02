@@ -118,6 +118,12 @@ assinatura_cliente_origem`. `assinatura_cliente_login/user_id` são gravados por
 `auth.uid()`/`auth.jwt()->>'email'` do servidor — o app nunca manda esses campos.
 `assinatura_cliente_origem`: `desenho | texto | salva`. Criado por `createVisita`
 ([supabaseAdapter.js:279](src/supabaseAdapter.js:279)).
+Assinatura do **técnico** (`migracao_assinatura_tecnico_rvt.sql`): `assinatura_tecnico`,
+`_tipo`, `_origem`, `_data`, `_login`, `_user_id`, `_nome`. Trigger `log_assinatura_tecnico_rvt`
+exige `is_maj_staff()`, carimba uid/email/nome(profiles)/data do servidor, trava o carimbo quando a
+assinatura não muda e grava evento `tecnico_assinada | tecnico_refeita` na mesma `assinatura_auditoria`.
+Em INSERT as colunas são zeradas (`bloqueia_assinatura_tecnico_insert`). App grava via
+`salvarAssinaturaTecnicoVisita`.
 
 ### `rvt_itens` (join Visita ↔ item)
 `id, rvt_id, atendimento_id, inspecao_id, intervencao_id, outro_descricao, outro_fotos,
@@ -207,15 +213,15 @@ Pedidos no primeiro login (`PerfilInicialScreen` no `AuthGate`), gravados via RP
 `user_id`↔`cliente_id`. Precisa de 2 policies PERMISSIVAS: `memberships_admin_all` (`is_admin()`,
 FOR ALL) + `memberships_self_select` (`user_id = auth.uid()`) — uma `FOR ALL` só com `is_admin()`
 sem policy de INSERT explícita **não basta** (RESTRICTIVE por padrão não concede, só filtra).
+"Vincular" só grava `memberships`; o papel geral (`profiles.role`, que decide DDS/Checklist via
+`is_maj_staff()`) é trocado em Configurações → usuários vinculados ("Equipe MAJ"/"Cliente") via RPC
+`definir_papel_global` (só admin, só operador↔visualizador, nunca mexe em perfil admin).
 
 ### `security_events` (append-only)
 Insert só aceita `evento IN ('login_falhou','acesso_negado')`, teto 100/min. `pg_cron` job
 `purga_security_events` apaga >90 dias às 3h UTC. Só `is_admin()` lê.
 
 ### `kv_store` (legado, aposentado como fonte de criação nova)
-"Vincular" só grava `memberships`; o papel geral (`profiles.role`, que decide DDS/Checklist via
-`is_maj_staff()`) é trocado em Configurações → usuários vinculados ("Equipe MAJ"/"Cliente") via RPC
-`definir_papel_global` (só admin, só operador↔visualizador, nunca mexe em perfil admin).
 Chave `pci-dados-cliente-<clienteId>` guarda `{ pumpDevices, maintenanceLog, inspectionLog,
 modelPhotos, indicador, rvt }` — só os registros com `origemNovo` ausente/false ainda vivem aqui;
 tudo com `origemNovo: true` já é linha própria em `atendimentos`/`inspecoes`/`rvts`. Policy
@@ -398,6 +404,14 @@ do valor assinado gravado por `pgcrypto`; (2) assinatura salva reutilizável
 (`assinaturas_salvas`, `listAssinaturaSalva`/`upsertAssinaturaSalva`/`deleteAssinaturaSalva` ~
 [supabaseAdapter.js:1179-1201](src/supabaseAdapter.js:1179)).
 
+`RvtSignatureBlock` (impressão do RVT, individual e por período): bloco fixo **Contratante + Técnico
+responsável**, sempre impresso. Contratante mostra a assinatura confirmada no `SignatureField` (que
+agora exibe só o registro/auditoria, sem repetir a imagem); sem assinatura → linha em branco p/
+assinar no papel. Técnico: assinatura digital via `TecnicoSignatureField` (reaproveita
+`MajSignatureField` → mesma assinatura pré-cadastrada do checklist/DDS), visível só p/ `canEdit`
+(admin/operador); sem assinatura → linha em branco + nome(s) do técnico. Voltar da impressão
+recarrega a lista de visitas (assinaturas novas aparecem ao reabrir).
+
 Campo de busca de dispositivo no item RVT: só aparece se o laço tem >8 dispositivos, filtra por
 endereço/tipo/descrição, contador "X de Y".
 
@@ -460,6 +474,8 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
   `dispositivos`. **Pendente de rodar em produção.**
 - `migracao_dds.sql` — tabelas `dds_sessoes`/`dds_assinaturas` + triggers + RLS (só MAJ) + trilha em
   `assinatura_auditoria_maj`. **Rodada** (2026-10-01).
+- `migracao_papel_global.sql` — RPC `definir_papel_global` + corrige matheus.alves para operador.
+  **Rodada** (2026-10-02).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
@@ -474,8 +490,6 @@ campos de `inspecoes`, bug de `paineis_marca_check` (esperava capitalizado, app 
 - Cliente de teste "ZZZZ" + painel "dasasdasd" a apagar pelo próprio app.
 
 ## 17. Código morto — não reintroduzir
-- `migracao_papel_global.sql` — RPC `definir_papel_global` + corrige matheus.alves para operador.
-  **Rodada** (2026-10-02).
 
 `PumpDeviceForm`, `GasDetectorForm`, `SimpleListView`, handlers órfãos (`submitPumpDevice`/
 `deletePumpDevice`/`submitGasDetector`/`deleteGasDetector`/`deleteMaintenanceLogEntry`/

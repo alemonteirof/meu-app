@@ -679,6 +679,8 @@ async function fetchVisitasEnriquecidas(clienteId, { atendimentos, inspecoes } =
       id, data_visita, tecnico, painel_id,
       assinatura_cliente, assinatura_cliente_tipo, assinatura_cliente_data,
       assinatura_cliente_login, assinatura_cliente_user_id, assinatura_cliente_origem,
+      assinatura_tecnico, assinatura_tecnico_tipo, assinatura_tecnico_origem, assinatura_tecnico_data,
+      assinatura_tecnico_login, assinatura_tecnico_nome,
       rvt_itens ( id, outro_descricao, outro_fotos, outro_atividade, outro_atividade_dados, atendimento_id, inspecao_id, intervencao_id )
     `)
     .eq('cliente_id', clienteId)
@@ -1371,6 +1373,26 @@ export async function salvarAssinaturaVisita(rvtId, { tipo, valor, origem }) {
     login: data?.assinatura_cliente_login || login,
     data: data?.assinatura_cliente_data || new Date().toISOString(),
     origem: data?.assinatura_cliente_origem || origem || tipo,
+  };
+}
+
+/** Assinatura do técnico responsável (membro MAJ) em 1 visita (rvt).
+    Trigger `log_assinatura_tecnico_rvt` exige is_maj_staff() e carimba
+    login/uid/nome/data + evento na `assinatura_auditoria` — o app só manda o valor. */
+export async function salvarAssinaturaTecnicoVisita(rvtId, { tipo, valor, origem }) {
+  const { data, error } = await supabase.from('rvts').update({
+    assinatura_tecnico: valor,
+    assinatura_tecnico_tipo: tipo,
+    assinatura_tecnico_origem: origem || tipo,
+  }).eq('id', rvtId)
+    .select('assinatura_tecnico_login, assinatura_tecnico_nome, assinatura_tecnico_data, assinatura_tecnico_origem')
+    .single();
+  if (error) throw error;
+  return {
+    login: data?.assinatura_tecnico_login || null,
+    nome: data?.assinatura_tecnico_nome || null,
+    data: data?.assinatura_tecnico_data || new Date().toISOString(),
+    origem: data?.assinatura_tecnico_origem || origem || tipo,
   };
 }
 

@@ -7,9 +7,10 @@ import {
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
-  salvarAssinaturaVisita, listAssinaturaAuditoria,
+  salvarAssinaturaVisita, salvarAssinaturaTecnicoVisita, listAssinaturaAuditoria,
   getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
 } from './supabaseAdapter';
+import MajSignatureField from './components/MajSignatureField';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
 import { compressImageFile, assinaturaDeImagem } from './lib/imagens';
 
@@ -1060,7 +1061,7 @@ function formatDateTimeBR(iso) {
     Auditoria: a atribuição (login/uid/data) e o log append-only são gravados por
     trigger no Postgres (`assinatura_auditoria`) usando auth.uid()/auth.jwt() —
     não dá pra forjar pelo app. */
-function SignatureField({ visita }) {
+function SignatureField({ visita, onConfirmada }) {
   const [confirmada, setConfirmada] = useState(
     visita?.assinatura_cliente
       ? {
@@ -1142,7 +1143,9 @@ function SignatureField({ visita }) {
     setSalvando(true);
     try {
       const res = await salvarAssinaturaVisita(visita.id, { tipo, valor, origem });
-      setConfirmada({ tipo, valor, data: res.data, login: res.login, origem: res.origem });
+      const nova = { tipo, valor, data: res.data, login: res.login, origem: res.origem };
+      setConfirmada(nova);
+      onConfirmada?.(nova);
       if (guardar && origem !== 'salva') {
         try { await salvarAssinaturaSalva({ tipo, valor }); setSalva({ tipo, valor }); } catch { /* não bloqueia a visita */ }
       }
@@ -1198,18 +1201,9 @@ function SignatureField({ visita }) {
   if (confirmada) {
     return (
       <div className="rvt-summary-card rounded-lg p-4" style={{ background: 'var(--surface-raised)' }}>
-        <RvtFieldLabelLocal>Assinatura do cliente — aprovação do serviço</RvtFieldLabelLocal>
-        {confirmada.tipo === 'desenho' ? (
-          <img
-            src={confirmada.valor}
-            alt="Assinatura do cliente"
-            style={{ display: 'block', width: '100%', maxWidth: 360, height: 'auto', background: '#fff', borderRadius: 6, border: '1px solid var(--border)', marginTop: 4 }}
-          />
-        ) : (
-          <p style={{ fontFamily: '"Segoe Script", "Brush Script MT", "Snell Roundhand", cursive', fontSize: 26, color: 'var(--text-primary)', margin: '6px 0 2px' }}>
-            {confirmada.valor}
-          </p>
-        )}
+        {/* A imagem/nome da assinatura aparece no bloco "Contratante" (RvtSignatureBlock);
+            aqui fica só o registro de auditoria. */}
+        <RvtFieldLabelLocal>Registro da assinatura do contratante</RvtFieldLabelLocal>
         <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
           Confirmada em {formatDateTimeBR(confirmada.data)}
         </p>
@@ -1235,7 +1229,7 @@ function SignatureField({ visita }) {
               <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0', fontSize: 10.5, color: 'var(--text-secondary)' }}>
                 {auditoria.map((ev) => (
                   <li key={ev.id} style={{ padding: '3px 0', borderTop: '1px solid var(--border)', wordBreak: 'break-word' }}>
-                    <strong>{formatDateTimeBR(ev.criado_em)}</strong> — {ev.evento}
+                    <strong>{formatDateTimeBR(ev.criado_em)}</strong> — {String(ev.evento || '').replace('tecnico_', 'técnico ')}
                     {' · '}login <strong>{ev.assinado_por_email || '—'}</strong>
                     {' · '}{origemLabel(ev.assinatura_origem)}
                     {ev.assinatura_hash ? (
@@ -1336,10 +1330,104 @@ function SignatureField({ visita }) {
   );
 }
 
+/** Bloco de assinaturas do RVT (Contratante + Técnico), sempre impresso.
+    Com assinatura registrada mostra a assinatura; sem, sai a linha em branco
+    pra assinar à mão no papel. */
+function assinaturaTecnicoDaVisita(v) {
+  return v?.assinatura_tecnico
+    ? { tipo: v.assinatura_tecnico_tipo || 'texto', valor: v.assinatura_tecnico, data: v.assinatura_tecnico_data, login: v.assinatura_tecnico_login || null, nome: v.assinatura_tecnico_nome || null }
+    : null;
+}
+
+/** Captura da assinatura do técnico (só membro MAJ — o trigger
+    `log_assinatura_tecnico_rvt` barra o resto). Reaproveita o MajSignatureField
+    (mesma assinatura pré-cadastrada do checklist/DDS). Fora da impressão:
+    o que imprime é o bloco "Técnico responsável" do RvtSignatureBlock. */
+function TecnicoSignatureField({ visita, assinatura, onConfirmada }) {
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [refazer, setRefazer] = useState(false);
+
+  const gravar = async (a) => {
+    if (!a || salvando) return;
+    setErro('');
+    setSalvando(true);
+    try {
+      const res = await salvarAssinaturaTecnicoVisita(visita.id, a);
+      onConfirmada({ tipo: a.tipo, valor: a.valor, ...res });
+      setRefazer(false);
+    } catch (e) {
+      setErro(e?.message || 'Não foi possível salvar a assinatura do técnico. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (assinatura && !refazer) {
+    return (
+      <div className="rvt-summary-card rounded-lg p-4 no-print" style={{ background: 'var(--surface-raised)' }}>
+        <RvtFieldLabelLocal>Assinatura do técnico registrada</RvtFieldLabelLocal>
+        <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+          Confirmada em {formatDateTimeBR(assinatura.data)}
+          {assinatura.login ? <> pelo login <strong>{assinatura.login}</strong></> : null}
+        </p>
+        <button type="button" onClick={() => setRefazer(true)} style={{ ...smallBtnStyle, marginTop: 8 }}>Refazer assinatura</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="no-print" style={{ opacity: salvando ? 0.7 : 1, pointerEvents: salvando ? 'none' : undefined }}>
+      <MajSignatureField value={null} onChange={gravar} nomeSugerido={visita?.tecnico || ''} />
+      {salvando && <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>Salvando...</p>}
+      {erro && <p style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 6 }}>{erro}</p>}
+      {refazer && <button type="button" onClick={() => setRefazer(false)} style={{ ...smallBtnStyle, marginTop: 8 }}>Cancelar</button>}
+    </div>
+  );
+}
+
+function RvtSignatureBlock({ assinaturaCliente, assinaturaTecnico, tecnicos }) {
+  const area = { height: 72, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' };
+  const coluna = (titulo, conteudo, linhas) => (
+    <div style={{ flex: '1 1 240px', minWidth: 0, textAlign: 'center' }}>
+      <div style={area}>{conteudo}</div>
+      <div style={{ borderTop: '1px solid var(--text-primary)', marginTop: 4, paddingTop: 4 }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{titulo}</p>
+        {linhas.filter(Boolean).map((l, i) => (
+          <p key={i} style={{ fontSize: 10.5, color: 'var(--text-secondary)', wordBreak: 'break-word' }}>{l}</p>
+        ))}
+      </div>
+    </div>
+  );
+  const conteudo = (a, alt) => (!a ? null
+    : a.tipo === 'desenho'
+      ? <img src={a.valor} alt={alt} style={{ maxHeight: 72, maxWidth: '100%', width: 'auto', background: '#fff', borderRadius: 4 }} />
+      : <p style={{ fontFamily: '"Segoe Script", "Brush Script MT", "Snell Roundhand", cursive', fontSize: 24, color: 'var(--text-primary)', margin: 0 }}>{a.valor}</p>);
+  const a = assinaturaCliente;
+  const t = assinaturaTecnico;
+  const linhaNome = 'Nome: ______________________________';
+  return (
+    <div className="rvt-summary-card rounded-lg p-4" style={{ background: 'var(--surface-raised)', breakInside: 'avoid' }}>
+      <RvtFieldLabelLocal>Assinaturas</RvtFieldLabelLocal>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px 40px', marginTop: 8 }}>
+        {coluna('Contratante', conteudo(a, 'Assinatura do contratante'), [
+          a ? `Assinado em ${formatDateTimeBR(a.data)}` : linhaNome,
+          a?.login ? `Login: ${a.login}` : null,
+        ])}
+        {coluna('Técnico responsável — M.A.J Soluções', conteudo(t, 'Assinatura do técnico'), [
+          t?.nome || (tecnicos.length ? tecnicos.join(', ') : linhaNome),
+          t ? `Assinado em ${formatDateTimeBR(t.data)}` : null,
+          t?.login ? `Login: ${t.login}` : null,
+        ])}
+      </div>
+    </div>
+  );
+}
+
 /** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, print-area
     etc.) que o RVT antigo usava, então imprime/exporta exatamente igual. Aceita 1 visita (impressão
     individual) ou várias (impressão de período, agrupadas por dia dentro do mesmo documento). */
-function VisitaPrintView({ visitas, client, onBack }) {
+function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false }) {
   const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
   const isPeriodo = dias.length > 1;
   const todosItens = agruparItensParaImpressao(visitas.flatMap((v) => itemsFromVisita(v)));
@@ -1367,6 +1455,13 @@ function VisitaPrintView({ visitas, client, onBack }) {
   const padFoto = (n) => String(n).padStart(_seqFoto >= 10 ? 2 : 1, '0');
 
   const [lightbox, setLightbox] = useState(null); // { src, nome } | null
+  const v0 = visitas[0];
+  const [assCliente, setAssCliente] = useState(
+    !isPeriodo && v0?.assinatura_cliente
+      ? { tipo: v0.assinatura_cliente_tipo || 'texto', valor: v0.assinatura_cliente, data: v0.assinatura_cliente_data, login: v0.assinatura_cliente_login || null }
+      : null,
+  );
+  const [assTecnico, setAssTecnico] = useState(isPeriodo ? null : assinaturaTecnicoDaVisita(v0));
 
   useEffect(() => {
     const tituloAnterior = document.title;
@@ -1501,7 +1596,13 @@ function VisitaPrintView({ visitas, client, onBack }) {
             );
           })}
 
-          {!isPeriodo && <SignatureField visita={visitas[0]} />}
+          {!isPeriodo && <SignatureField visita={visitas[0]} onConfirmada={setAssCliente} />}
+
+          {!isPeriodo && podeAssinarTecnico && (
+            <TecnicoSignatureField visita={visitas[0]} assinatura={assTecnico} onConfirmada={setAssTecnico} />
+          )}
+
+          <RvtSignatureBlock assinaturaCliente={assCliente} assinaturaTecnico={assTecnico} tecnicos={tecnicos} />
 
           <div className="rvt-footer-band">
             <div className="rvt-footer-icon"><ShieldAlert size={9} style={{ color: 'var(--accent)' }} /></div>
@@ -2521,7 +2622,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }
 
   if (printTarget) {
-    return <VisitaPrintView visitas={printTarget} client={client} onBack={() => setPrintTarget(null)} />;
+    return <VisitaPrintView visitas={printTarget} client={client} podeAssinarTecnico={canEdit} onBack={() => { setPrintTarget(null); refreshVisitas(); }} />;
   }
 
   return (
