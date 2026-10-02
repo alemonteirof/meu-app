@@ -7957,9 +7957,9 @@ function MembersManager({ clientId }) {
     if (err) { setError('Não foi possível carregar os usuários deste cliente.'); return; }
     if (!rows || rows.length === 0) { setMembers([]); return; }
     const ids = rows.map((r) => r.user_id);
-    const { data: profs } = await supabase.from('profiles').select('id, email').in('id', ids);
-    const emailById = Object.fromEntries((profs || []).map((p) => [p.id, p.email]));
-    setMembers(rows.map((r) => ({ ...r, email: emailById[r.user_id] || '(email não encontrado)' })));
+    const { data: profs } = await supabase.from('profiles').select('id, email, role').in('id', ids);
+    const profById = Object.fromEntries((profs || []).map((p) => [p.id, p]));
+    setMembers(rows.map((r) => ({ ...r, email: profById[r.user_id]?.email || '(email não encontrado)', globalRole: profById[r.user_id]?.role })));
   }
 
   useEffect(() => { loadMembers(); }, [clientId]);
@@ -7993,6 +7993,15 @@ function MembersManager({ clientId }) {
     loadMembers();
   }
 
+  // Papel geral (profiles.role): define se a pessoa é da equipe MAJ (DDS/Checklist) ou cliente.
+  async function changeGlobalRole(userId, newRole) {
+    setError(''); setInfo('');
+    const { error: err } = await supabase.rpc('definir_papel_global', { p_user_id: userId, p_role: newRole });
+    if (err) setError(err.message || 'Não foi possível alterar o papel geral.');
+    else setInfo('Papel geral atualizado. A pessoa precisa sair e entrar de novo no app.');
+    loadMembers();
+  }
+
   async function removeMember(id) {
     await supabase.from('memberships').delete().eq('id', id);
     loadMembers();
@@ -8004,6 +8013,7 @@ function MembersManager({ clientId }) {
         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Vincular usuário a este cliente</p>
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           A pessoa precisa primeiro ter criado uma conta na tela de login do app (com o email abaixo). Depois, vincule aqui e escolha o nível de acesso.
+          Na lista abaixo, "Equipe MAJ" / "Cliente" é o papel geral — só a Equipe MAJ vê DDS e Checklist de Ferramentas.
         </p>
         <form onSubmit={addMember} className="flex flex-col sm:flex-row gap-2">
           <input type="email" required placeholder="email@dapessoa.com" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -8038,7 +8048,16 @@ function MembersManager({ clientId }) {
             <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg p-2.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{m.email}</span>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {m.globalRole && m.globalRole !== 'admin' && (
+                  <select value={m.globalRole} onChange={(e) => changeGlobalRole(m.user_id, e.target.value)}
+                    title="Papel geral: Equipe MAJ vê DDS e Checklist de Ferramentas"
+                    className="px-2 py-1 rounded-md text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                    <option value="operador">Equipe MAJ</option>
+                    <option value="visualizador">Cliente</option>
+                  </select>
+                )}
                 <select value={m.role} onChange={(e) => changeRole(m.id, e.target.value)}
+                  title="Acesso neste cliente"
                   className="px-2 py-1 rounded-md text-xs" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
                   <option value="operador">Operador</option>
                   <option value="visualizador">Visualizador</option>

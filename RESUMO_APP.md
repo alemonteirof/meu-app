@@ -213,6 +213,9 @@ Insert só aceita `evento IN ('login_falhou','acesso_negado')`, teto 100/min. `p
 `purga_security_events` apaga >90 dias às 3h UTC. Só `is_admin()` lê.
 
 ### `kv_store` (legado, aposentado como fonte de criação nova)
+"Vincular" só grava `memberships`; o papel geral (`profiles.role`, que decide DDS/Checklist via
+`is_maj_staff()`) é trocado em Configurações → usuários vinculados ("Equipe MAJ"/"Cliente") via RPC
+`definir_papel_global` (só admin, só operador↔visualizador, nunca mexe em perfil admin).
 Chave `pci-dados-cliente-<clienteId>` guarda `{ pumpDevices, maintenanceLog, inspectionLog,
 modelPhotos, indicador, rvt }` — só os registros com `origemNovo` ausente/false ainda vivem aqui;
 tudo com `origemNovo: true` já é linha própria em `atendimentos`/`inspecoes`/`rvts`. Policy
@@ -471,6 +474,8 @@ campos de `inspecoes`, bug de `paineis_marca_check` (esperava capitalizado, app 
 - Cliente de teste "ZZZZ" + painel "dasasdasd" a apagar pelo próprio app.
 
 ## 17. Código morto — não reintroduzir
+- `migracao_papel_global.sql` — RPC `definir_papel_global` + corrige matheus.alves para operador.
+  **Rodada** (2026-10-02).
 
 `PumpDeviceForm`, `GasDetectorForm`, `SimpleListView`, handlers órfãos (`submitPumpDevice`/
 `deletePumpDevice`/`submitGasDetector`/`deleteGasDetector`/`deleteMaintenanceLogEntry`/
