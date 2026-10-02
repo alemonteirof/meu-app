@@ -11,6 +11,7 @@ import {
 import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
 import { logSecurityEvent } from './lib/securityLog';
 import { compressImageFile } from './lib/imagens';
+import ErrorScreen from './components/ErrorScreen';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -8592,6 +8593,12 @@ const isMajStaff = isOwner || role === 'admin' || role === 'operador';
 /* Error boundary: surfaces unexpected crashes instead of a frozen screen */
 /* ------------------------------------------------------------------ */
 
+// Chrome / Firefox / Safari usam mensagens diferentes pra falha de import() dinâmico.
+function isChunkLoadError(error) {
+  const msg = String((error && error.message) || error || '');
+  return /dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk/i.test(msg);
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -8602,17 +8609,30 @@ class ErrorBoundary extends React.Component {
   }
   componentDidCatch(error, info) {
     console.error('Erro na aplicação:', error, info);
+    // Chunk de versão antiga (deploy novo no meio da sessão): recarrega 1x sozinho.
+    if (isChunkLoadError(error)) {
+      let recent = false;
+      try {
+        const last = Number(sessionStorage.getItem('ccm-chunk-reload') || 0);
+        recent = Date.now() - last < 10000;
+        if (!recent) sessionStorage.setItem('ccm-chunk-reload', String(Date.now()));
+      } catch { /* sessionStorage bloqueado */ }
+      if (!recent) window.location.reload();
+    }
   }
   render() {
     if (this.state.error) {
+      const chunkError = isChunkLoadError(this.state.error);
       return (
         <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#181414' }}>
           <div className="w-full max-w-md rounded-2xl p-6" style={{ background: '#221D1D', border: '1px solid #3E3232' }}>
             <p className="font-medium mb-2" style={{ color: '#F1EDEA' }}>Ocorreu um erro inesperado</p>
-            <p className="text-sm mb-4" style={{ color: '#A79999', fontFamily: 'monospace' }}>
-              {String((this.state.error && this.state.error.message) || this.state.error)}
+            <p className="text-sm mb-4" style={{ color: '#A79999', fontFamily: chunkError ? undefined : 'monospace' }}>
+              {chunkError
+                ? 'O app foi atualizado para uma nova versão. Recarregue a página para continuar.'
+                : String((this.state.error && this.state.error.message) || this.state.error)}
             </p>
-            <button onClick={() => this.setState({ error: null })}
+            <button onClick={() => (chunkError ? window.location.reload() : this.setState({ error: null }))}
               className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: '#8B2F2F', color: '#FFFFFF', border: 'none', cursor: 'pointer' }}>
               Tentar novamente
             </button>
@@ -8670,9 +8690,11 @@ export default function App() {
     <UiThemeContext.Provider value={ctx}>
       <ErrorBoundary>
         <PageStyles />
-        <AuthGate>
-          <Root />
-        </AuthGate>
+        {IS_NOT_FOUND ? <NotFoundScreen /> : (
+          <AuthGate>
+            <Root />
+          </AuthGate>
+        )}
       </ErrorBoundary>
     </UiThemeContext.Provider>
   );
