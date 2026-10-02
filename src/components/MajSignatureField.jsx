@@ -206,7 +206,7 @@ export default function MajSignatureField({ value, onChange, nomeSugerido = "", 
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <button type="button" onClick={() => { setModo("desenho"); setErro(""); }} style={abaStyle(modo === "desenho")}>Desenhar</button>
         <button type="button" onClick={() => { setModo("texto"); setErro(""); }} style={abaStyle(modo === "texto")}>Digitar nome</button>
-        <button type="button" onClick={() => { setModo("importar"); setErro(""); }} style={abaStyle(modo === "importar")}>Importar imagem</button>
+        <button type="button" onClick={() => { setModo("importar"); setErro(""); }} style={abaStyle(modo === "importar")}>Importar assinatura</button>
       </div>
 
       {modo === "importar" ? (

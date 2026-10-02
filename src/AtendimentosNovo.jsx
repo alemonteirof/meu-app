@@ -1190,7 +1190,7 @@ function SignatureField({ visita }) {
 
   const origemLabel = (o) => (
     o === 'salva' ? 'assinatura salva do usuário'
-      : o === 'importada' ? 'imagem importada'
+      : o === 'importada' ? 'assinatura importada de arquivo'
       : o === 'texto' ? 'nome digitado no dispositivo'
         : 'desenho no dispositivo'
   );
@@ -1277,7 +1277,7 @@ function SignatureField({ visita }) {
       <div style={{ display: 'flex', gap: 8, margin: '6px 0 10px', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => { setModo('desenho'); setErro(''); }} style={tabBtnStyle(modo === 'desenho')}>Desenhar</button>
         <button type="button" onClick={() => { setModo('texto'); setErro(''); }} style={tabBtnStyle(modo === 'texto')}>Digitar nome</button>
-        <button type="button" onClick={() => { setModo('importar'); setErro(''); }} style={tabBtnStyle(modo === 'importar')}>Importar imagem</button>
+        <button type="button" onClick={() => { setModo('importar'); setErro(''); }} style={tabBtnStyle(modo === 'importar')}>Importar assinatura</button>
       </div>
 
       {modo === 'importar' ? (
