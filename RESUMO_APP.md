@@ -476,6 +476,8 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
   `assinatura_auditoria_maj`. **Rodada** (2026-10-01).
 - `migracao_papel_global.sql` — RPC `definir_papel_global` + corrige matheus.alves para operador.
   **Rodada** (2026-10-02).
+- `migracao_assinatura_tecnico_rvt.sql` — colunas `assinatura_tecnico*` em `rvts` + triggers
+  `trg_log_assinatura_tecnico_rvt`/`trg_bloqueia_assinatura_tecnico_insert`. **Rodada** (2026-10-02).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
