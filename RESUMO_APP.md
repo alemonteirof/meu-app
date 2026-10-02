@@ -549,6 +549,17 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 - Banco: índices nas FKs que faltavam, `has_client_access`/`is_admin` marcadas `STABLE`.
   Tudo em `migracao_fotos_storage_e_performance.sql` (**rodada**).
 
+### 20.2 Tela de erro / 404 + chunk antigo pós-deploy (2026-10-02)
+- `components/ErrorScreen.jsx` + `components/FireGame.jsx` (mini-jogo canvas estilo dinossauro do
+  Chrome: detector de calor pula chamas; botão de pulo = acionador manual; recorde em
+  `localStorage` `ccm-fire-game-hi`). Usada pelo `ErrorBoundary` e pelo 404.
+- 404: app não tem rotas — qualquer `pathname` ≠ `/` renderiza `NotFoundScreen` (antes do login).
+  `vercel.json` reescreve caminhos desconhecidos pro `index.html`, **exceto `/assets/`** (chunk
+  inexistente tem que continuar 404 de verdade pra cair no tratamento abaixo).
+- Chunk de deploy antigo (`error loading dynamically imported module`): `vite:preloadError` em
+  `main.jsx` + `ErrorBoundary` recarregam a página 1x sozinhos (trava de 10 s em `sessionStorage`
+  `ccm-chunk-reload`); se falhar de novo, mostra a tela "Nova versão" com botão Recarregar.
+
 ## 21. Convenções de trabalho do Alexandre
 
 - Reaproveitar componente/padrão existente antes de criar novo; orçamento apertado.

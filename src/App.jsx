@@ -8621,27 +8621,41 @@ class ErrorBoundary extends React.Component {
     }
   }
   render() {
-    if (this.state.error) {
-      const chunkError = isChunkLoadError(this.state.error);
+    const { error } = this.state;
+    if (error) {
+      const detail = String((error && error.message) || error);
+      const reload = { label: 'Recarregar página', onClick: () => window.location.reload() };
+      if (isChunkLoadError(error)) {
+        return (
+          <ErrorScreen code="NOVA VERSÃO"
+            title="O CCM foi atualizado enquanto você estava com ele aberto"
+            message="Recarregue a página para carregar a versão nova. Enquanto isso, segura o calor aí."
+            detail={detail}
+            actions={[reload]} />
+        );
+      }
       return (
-        <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#181414' }}>
-          <div className="w-full max-w-md rounded-2xl p-6" style={{ background: '#221D1D', border: '1px solid #3E3232' }}>
-            <p className="font-medium mb-2" style={{ color: '#F1EDEA' }}>Ocorreu um erro inesperado</p>
-            <p className="text-sm mb-4" style={{ color: '#A79999', fontFamily: chunkError ? undefined : 'monospace' }}>
-              {chunkError
-                ? 'O app foi atualizado para uma nova versão. Recarregue a página para continuar.'
-                : String((this.state.error && this.state.error.message) || this.state.error)}
-            </p>
-            <button onClick={() => (chunkError ? window.location.reload() : this.setState({ error: null }))}
-              className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: '#8B2F2F', color: '#FFFFFF', border: 'none', cursor: 'pointer' }}>
-              Tentar novamente
-            </button>
-          </div>
-        </div>
+        <ErrorScreen code="ERRO"
+          title="Ocorreu um erro inesperado"
+          message="Algo esquentou demais por aqui. Tente de novo — se continuar, recarregue a página."
+          detail={detail}
+          actions={[{ label: 'Tentar novamente', onClick: () => this.setState({ error: null }) }, reload]} />
       );
     }
     return this.props.children;
   }
+}
+
+// App não tem rotas: qualquer caminho além de "/" é 404 (o vercel.json reescreve
+// caminhos desconhecidos pro index.html, exceto /assets/, pra cair aqui).
+const IS_NOT_FOUND = !['/', '/index.html'].includes(window.location.pathname);
+function NotFoundScreen() {
+  return (
+    <ErrorScreen code="404"
+      title="Página não encontrada"
+      message={`O endereço "${window.location.pathname}" não existe no CCM. Nenhum detector cadastrado por aqui.`}
+      actions={[{ label: 'Voltar ao CCM', onClick: () => window.location.assign('/') }]} />
+  );
 }
 
 /* Aparência do app: dois "temas" de layout selecionáveis pelo usuário.
