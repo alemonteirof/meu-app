@@ -10,7 +10,7 @@ import ToolChecklistMonthExport from "./ToolChecklistMonthExport";
 
 const VINHO = "#8B2F2F";
 
-export default function ToolChecklistScreen({ clients = [], role, onBack }) {
+export default function ToolChecklistScreen({ clients = [], role, nomeUsuario = "", onBack }) {
   const [aba, setAba] = useState("form"); // "form" | "history" | "month"
   const isAdmin = role === "admin";
 
@@ -19,14 +19,16 @@ export default function ToolChecklistScreen({ clients = [], role, onBack }) {
       type="button"
       onClick={() => setAba(key)}
       className="text-sm px-3 py-1 rounded border"
-      style={aba === key ? { backgroundColor: VINHO, color: "white", borderColor: VINHO } : {}}
+      style={aba === key
+        ? { backgroundColor: VINHO, color: "white", borderColor: VINHO }
+        : { background: "var(--surface-raised)", color: "var(--text-primary)", borderColor: "var(--border)" }}
     >
       {label}
     </button>
   );
 
   return (
-    <div>
+    <div style={{ colorScheme: "dark", color: "var(--text-primary)" }}>
       <div className="p-4 flex justify-between items-center flex-wrap gap-2">
         <button onClick={onBack} className="text-sm underline" style={{ color: "var(--accent)" }}>
           ← Voltar
@@ -38,7 +40,7 @@ export default function ToolChecklistScreen({ clients = [], role, onBack }) {
         </div>
       </div>
 
-      {aba === "form" && <ToolChecklistForm clients={clients} />}
+      {aba === "form" && <ToolChecklistForm clients={clients} nomeUsuario={nomeUsuario} />}
       {aba === "history" && isAdmin && <ToolChecklistHistory clients={clients} />}
       {aba === "month" && isAdmin && <ToolChecklistMonthExport />}
     </div>

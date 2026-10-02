@@ -128,10 +128,22 @@ export async function exportChecklistToXlsx(record, clienteNome) {
     r += 1;
   }
 
+  // Assinatura digital do técnico (desenho vira imagem; nome digitado vira texto cursivo)
   ws.mergeCells(`A${r}:C${r}`);
   ws.getCell(`A${r}`).border = { bottom: { style: "thin" } };
   ws.mergeCells(`D${r}:F${r}`);
   ws.getCell(`D${r}`).border = { bottom: { style: "thin" } };
+  if (record.assinatura_valor) {
+    ws.getRow(r).height = 48;
+    if (record.assinatura_tipo === "desenho") {
+      const sigId = wb.addImage({ base64: record.assinatura_valor, extension: "png" });
+      ws.addImage(sigId, { tl: { col: 0.6, row: r - 1 + 0.05 }, ext: { width: 200, height: 60 } });
+    } else {
+      ws.getCell(`A${r}`).value = record.assinatura_valor;
+      ws.getCell(`A${r}`).font = { italic: true, size: 16, name: "Segoe Script" };
+      ws.getCell(`A${r}`).alignment = { horizontal: "center", vertical: "bottom" };
+    }
+  }
   r += 1;
   ws.mergeCells(`A${r}:C${r}`);
   ws.getCell(`A${r}`).value = "Técnico responsável (assinatura)";
@@ -141,6 +153,16 @@ export async function exportChecklistToXlsx(record, clienteNome) {
   ws.getCell(`D${r}`).value = "Encarregado/Supervisor (visto)";
   ws.getCell(`D${r}`).font = { italic: true, size: 8 };
   ws.getCell(`D${r}`).alignment = { horizontal: "center" };
+
+  r += 1;
+  ws.mergeCells(`A${r}:F${r}`);
+  const audCell = ws.getCell(`A${r}`);
+  audCell.value = record.assinatura_valor
+    ? `Assinado digitalmente por ${record.assinado_por_nome || record.tecnico_nome} (login ${record.assinado_por_email || "-"}) em ${record.assinado_em ? new Date(record.assinado_em).toLocaleString("pt-BR") : "-"} · verificação SHA-256: ${record.assinatura_hash || "-"}`
+    : "Registro anterior à assinatura digital (sem assinatura).";
+  audCell.font = { size: 7, color: { argb: "FF555555" } };
+  audCell.alignment = { wrapText: true, vertical: "top" };
+  ws.getRow(r).height = 22;
 
   ws.pageSetup.margins = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0, footer: 0 };
 

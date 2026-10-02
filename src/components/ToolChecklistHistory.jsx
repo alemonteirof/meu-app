@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
+import { AssinaturaPreview } from "./MajSignatureField";
 
 const VINHO = "#8B2F2F";
 
@@ -57,28 +58,28 @@ export default function ToolChecklistHistory({ clients = [] }) {
   });
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4">
+    <div className="max-w-3xl mx-auto p-4 space-y-4" style={{ color: "var(--text-primary)" }}>
       <div className="rounded-lg p-4 text-white" style={{ backgroundColor: VINHO }}>
         <h1 className="text-lg font-bold">Histórico de Checklists de Ferramentas</h1>
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <select className="border rounded p-2 text-sm" value={filtroFerramenta} onChange={(e) => setFiltroFerramenta(e.target.value)}>
+        <select className="field-input rounded p-2 text-sm" value={filtroFerramenta} onChange={(e) => setFiltroFerramenta(e.target.value)}>
           <option value="">Todas as ferramentas</option>
           {Object.entries(TOOL_CHECKLISTS).map(([key, t]) => (
             <option key={key} value={key}>{t.label}</option>
           ))}
         </select>
-        <select className="border rounded p-2 text-sm" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
+        <select className="field-input rounded p-2 text-sm" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
           <option value="">Todos os clientes</option>
           <option value="avulso">Avulso (sem cliente)</option>
           {clients.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
         </select>
       </div>
 
-      {erro && <p className="text-sm text-red-600">{erro}</p>}
-      {!registros && !erro && <p className="text-sm text-gray-500">Carregando...</p>}
-      {registros && filtrados.length === 0 && <p className="text-sm text-gray-500">Nenhum registro encontrado.</p>}
+      {erro && <p className="text-sm" style={{ color: "var(--status-danger)" }}>{erro}</p>}
+      {!registros && !erro && <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Carregando...</p>}
+      {registros && filtrados.length === 0 && <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Nenhum registro encontrado.</p>}
 
       <div className="space-y-2">
         {filtrados.map((r) => {
@@ -86,7 +87,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
           const isOpen = aberto === r.id;
           const isConfirmando = confirmando === r.id;
           return (
-            <div key={r.id} className="border rounded">
+            <div key={r.id} className="border rounded" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
               <div className="w-full text-left p-3 flex justify-between items-center gap-2">
                 <button
                   type="button"
@@ -96,7 +97,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
                   <p className="text-sm font-semibold">
                     {TOOL_CHECKLISTS[r.tool_type]?.label || r.tool_type} — {r.tecnico_nome}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                     {new Date(r.created_at).toLocaleString("pt-BR")} · {clienteNome(clients, r.cliente_id)}
                     {r.marca_modelo ? ` · ${r.marca_modelo}` : ""}
                   </p>
@@ -104,16 +105,17 @@ export default function ToolChecklistHistory({ clients = [] }) {
 
                 <div className="flex items-center gap-2 shrink-0">
                   {qtdNC > 0 ? (
-                    <span className="text-xs font-semibold px-2 py-1 rounded bg-red-100 text-red-700">
+                    <span className="text-xs font-semibold px-2 py-1 rounded" style={{ background: "rgba(224,72,61,0.15)", color: "var(--status-danger)" }}>
                       {qtdNC} não conforme(s)
                     </span>
                   ) : (
-                    <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">OK</span>
+                    <span className="text-xs font-semibold px-2 py-1 rounded" style={{ background: "rgba(63,185,80,0.15)", color: "var(--status-ok)" }}>OK</span>
                   )}
                   <button
                     type="button"
                     onClick={() => import("../lib/exportChecklistXlsx").then((m) => m.exportChecklistToXlsx(r, clienteNome(clients, r.cliente_id)))}
                     className="text-xs px-2 py-1 rounded border"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-raised)" }}
                   >
                     Exportar .xlsx
                   </button>
@@ -122,7 +124,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
                     <button
                       type="button"
                       onClick={() => setConfirmando(r.id)}
-                      className="text-xs px-2 py-1 rounded border border-red-300 text-red-600"
+                      className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--status-danger)", color: "var(--status-danger)" }}
                     >
                       Excluir
                     </button>
@@ -140,6 +142,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
                         type="button"
                         onClick={() => setConfirmando(null)}
                         className="text-xs px-2 py-1 rounded border"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-raised)" }}
                       >
                         Cancelar
                       </button>
@@ -149,11 +152,11 @@ export default function ToolChecklistHistory({ clients = [] }) {
               </div>
 
               {isOpen && (
-                <div className="border-t p-3 space-y-2">
+                <div className="border-t p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
                   {(r.respostas || []).map((it) => (
                     <div key={it.item} className="text-sm flex justify-between gap-2">
                       <span>{it.item}. {it.descricao}</span>
-                      <span className={`shrink-0 font-semibold ${it.status === "NC" ? "text-red-600" : "text-gray-600"}`}>
+                      <span className="shrink-0 font-semibold" style={{ color: it.status === "NC" ? "var(--status-danger)" : "var(--text-secondary)" }}>
                         {it.status}
                       </span>
                     </div>
@@ -161,6 +164,25 @@ export default function ToolChecklistHistory({ clients = [] }) {
                   {r.observacoes && (
                     <p className="text-sm mt-2"><strong>Observações:</strong> {r.observacoes}</p>
                   )}
+                  <div className="border-t pt-2 mt-2" style={{ borderColor: "var(--border)" }}>
+                    {r.assinatura_valor ? (
+                      <>
+                        <AssinaturaPreview tipo={r.assinatura_tipo} valor={r.assinatura_valor} maxWidth={260} />
+                        <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                          Assinado por <strong>{r.assinado_por_nome || r.tecnico_nome}</strong> · login <strong>{r.assinado_por_email || "—"}</strong>
+                          {" · "}{r.assinado_em ? new Date(r.assinado_em).toLocaleString("pt-BR") : "—"}
+                          {r.assinatura_origem === "salva" ? " · assinatura salva" : ""}
+                        </p>
+                        {r.assinatura_hash && (
+                          <p className="text-xs" style={{ color: "var(--text-secondary)", fontFamily: "ui-monospace, Menlo, Consolas, monospace" }}>
+                            verificação SHA-256: {r.assinatura_hash.slice(0, 24)}…
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs" style={{ color: "var(--text-secondary)" }}>Sem assinatura (registro anterior à assinatura digital).</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

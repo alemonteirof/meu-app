@@ -137,6 +137,24 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
 `assinaturas_salvas`: 1 linha por `user_id` (RLS `user_id = auth.uid()`), `origem` = `desenho|texto`.
 `assinatura_auditoria`: log append-only gravado só pelo trigger, nunca pelo app.
 
+### Checklist de ferramentas / assinatura MAJ (`tool_checklists`, `assinaturas_salvas_maj`, `assinatura_auditoria_maj`)
+- Só membros MAJ (`is_maj_staff()` = admin/operador) registram e assinam. Banco de assinatura **separado**
+  do RVT: `assinaturas_salvas_maj` (quem assina RVT não assina checklist). Vale também p/ DDS (futuro).
+- `tool_checklists` + `assinatura_tipo/valor/origem/hash`, `assinado_por_uid/email/nome`, `assinado_em`.
+  Trigger `tool_checklist_assinar` (BEFORE INSERT) exige MAJ + assinatura e carimba uid/email/nome/data/
+  sha256 e força `tecnico_id = auth.uid()`. Sem policy de UPDATE → registro imutável.
+- `assinatura_auditoria_maj`: genérica (`documento_tipo` 'tool_checklist'|'dds', `documento_id` SEM FK),
+  eventos `assinada` / `excluida` (este com `snapshot` jsonb do registro apagado) — trilha sobrevive à exclusão.
+- UI: `MajSignatureField` (components/) — mesma UX do `SignatureField` do RVT, mas só devolve
+  `{tipo, valor, origem}` pro form (grava junto no insert). Excel individual e mensal mostram assinatura.
+- Tipos: `TOOL_CHECKLISTS` em `lib/toolChecklists.js`; checklist pode limitar opções via `statusOptions`
+  e mostrar `avisoNC`. `cinto_talabarte` (SEG-EPI-001) = só C/NC/NA.
+
+### `profiles.nome` / `profiles.empresa`
+Pedidos no primeiro login (`PerfilInicialScreen` no `AuthGate`), gravados via RPC `definir_meu_perfil`
+(security definer, só altera esses 2 campos — usuário segue sem UPDATE no próprio `role`). Expostos no
+`AuthContext` (`nome`, `empresa`); nome preenche "Técnico responsável" do checklist.
+
 ### Combate (SPCI) — pipeline paralelo, não usa `dispositivo_id`
 - `combate_conjuntos`: `id, cliente_id, painel_id (nullable), tipo, agente, etiqueta`. `tipo` ∈
   `casa_bombas|hidrante|vga|lge|sistema_gas` (chaves de `COMBATE_CONJUNTO_TIPOS`).
@@ -402,6 +420,9 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
 - `migracao_assinatura_auditavel.sql` — colunas de assinatura em `rvts` + trigger + `pgcrypto`.
   Substituiu `migracao_assinatura_login.sql` (apagado). **Rodada.**
 - `migracao_memberships_rls.sql` — policies PERMISSIVAS de `memberships`. **Rodada.**
+- `migracao_checklist_assinatura_maj.sql` — tipo `cinto_talabarte`, `profiles.nome/empresa` + RPC,
+  assinatura MAJ em `tool_checklists` + triggers + `assinatura_auditoria_maj` + `assinaturas_salvas_maj`.
+  Exige assinatura em checklist novo. **Rodada** (2026-10-01).
 - `backfill_falha_categoria.sql` — backfill de `falha_categoria` a partir de `falhasPorMarca.js`.
   **Rodada** (regenerar com `scratchpad/gen_backfill.mjs` se as listas de falha mudarem).
 - `migracao_sirene_visual_sonoro.sql` — colunas `visual`/`sonoro` + CHECK em `inspecoes` e

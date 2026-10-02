@@ -90,6 +90,32 @@ export const TOOL_CHECKLISTS = {
       "As rodas/alça de transporte (quando houver) estão em bom estado?",
     ],
   },
+  cinto_talabarte: {
+    label: "Cinto Paraquedista com Talabarte Y",
+    codigo: "SEG-EPI-001",
+    epis: ["Capacete com Jugular", "Calçado de Segurança", "Luva de Segurança", "Óculos de Segurança"],
+    // Equipamento de proteção contra queda: qualquer defeito = retirar de uso, então não existe "Parcialmente".
+    statusOptions: ["C", "NC", "NA"],
+    avisoNC: "Item não conforme: retirar o cinto/talabarte de uso imediatamente e comunicar o responsável.",
+    itens: [
+      "A etiqueta está legível, com CA válido, fabricante, lote e data de fabricação?",
+      "O equipamento está dentro da vida útil indicada pelo fabricante e com a inspeção periódica em dia?",
+      "O equipamento nunca reteve uma queda (indicador de queda não acionado)?",
+      "As fitas do cinturão estão sem cortes, desfiamentos, abrasão, queimaduras, respingos de solda, ressecamento ou contaminação química?",
+      "As costuras do cinturão estão íntegras, sem pontos rompidos ou soltos?",
+      "As argolas (dorsal, peitoral e laterais) estão sem deformação, trincas, corrosão ou rebarbas?",
+      "As fivelas de ajuste e engate travam corretamente, sem corrosão ou deformação?",
+      "Os passadores, presilhas e acolchoamentos estão em bom estado (quando houver)?",
+      "As duas pernas do talabarte Y estão sem cortes, desfiamentos, nós, abrasão, queimaduras ou ressecamento?",
+      "As costuras e os terminais das duas pernas do talabarte estão íntegros?",
+      "A capa do absorvedor de energia está íntegra e lacrada, sem rasgos nem sinal de abertura?",
+      "As pernas elásticas do talabarte recolhem normalmente (quando aplicável)?",
+      "Os mosquetões/ganchos estão sem trincas, deformação, corrosão ou desgaste?",
+      "A trava de dupla ação dos conectores abre, fecha e trava sozinha, com a mola funcionando?",
+      "A conexão do talabarte com o cinturão (argola dorsal ou peitoral) está correta e firme?",
+      "O equipamento está limpo, seco e armazenado longe de sol, umidade e produtos químicos?",
+    ],
+  },
 };
 
 export const STATUS_OPTIONS = [

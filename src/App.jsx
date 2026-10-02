@@ -19,7 +19,7 @@ import {
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
-  Mail, Eye, EyeOff, Database,
+  Mail, Eye, EyeOff, Database, User,
 } from 'lucide-react';
 // xlsx, exceljs, chart.js e pdfjs-dist são libs pesadas usadas só em
 // import/export pontuais — carregadas via import() dinâmico nos pontos de uso
@@ -208,6 +208,70 @@ function LoginScreen() {
   );
 }
 
+/** Primeiro acesso: pede nome e empresa antes de liberar o app. Grava via RPC
+    definir_meu_perfil (só altera esses 2 campos do próprio perfil — role continua protegido). */
+function PerfilInicialScreen({ email, perfil, onSaved }) {
+  const [nome, setNome] = useState(perfil?.nome || '');
+  const [empresa, setEmpresa] = useState(perfil?.empresa || '');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (!nome.trim() || !empresa.trim()) { setError('Preencha nome e empresa.'); return; }
+    setLoading(true);
+    const { error: rpcErr } = await supabase.rpc('definir_meu_perfil', { p_nome: nome.trim(), p_empresa: empresa.trim() });
+    setLoading(false);
+    if (rpcErr) { setError(rpcErr.message || 'Não foi possível salvar.'); return; }
+    onSaved({ nome: nome.trim(), empresa: empresa.trim() });
+  }
+
+  return (
+    <div className="login-bg">
+      <div className="login-content">
+        <div className="login-form-col">
+          <form onSubmit={handleSubmit} className="login-card w-full max-w-sm rounded-2xl p-7">
+            <div className="flex flex-col items-center gap-3 mb-6">
+              <div className="login-logo-ring">
+                <BrandLogo boxSize={52} size={26} />
+              </div>
+              <div className="text-center">
+                <h1 className="font-display text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Complete seu cadastro</h1>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Primeiro acesso de {email}. Esses dados identificam você nos registros do sistema.</p>
+              </div>
+            </div>
+
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Nome completo</label>
+            <div className="login-input-wrap mb-4">
+              <User size={16} className="login-input-icon" />
+              <input required value={nome} onChange={(e) => setNome(e.target.value)} maxLength={120}
+                placeholder="Seu nome completo" className="login-input" autoFocus />
+            </div>
+
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Empresa</label>
+            <div className="login-input-wrap mb-1">
+              <Building2 size={16} className="login-input-icon" />
+              <input required value={empresa} onChange={(e) => setEmpresa(e.target.value)} maxLength={120}
+                placeholder="Ex: MAJ Soluções" className="login-input" />
+            </div>
+
+            {error && <p className="text-xs mt-3 login-msg-error">{error}</p>}
+
+            <button type="submit" disabled={loading} className="login-submit w-full py-2.5 rounded-lg text-sm font-semibold mt-5 mb-3">
+              {loading ? <Loader2 size={16} className="animate-spin" style={{ margin: '0 auto' }} /> : 'Continuar'}
+            </button>
+            <button type="button" onClick={() => supabase.auth.signOut()}
+              className="w-full text-xs" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              Sair
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BrandLogo({ size = 18, boxSize = 36, rounded = true }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -237,6 +301,7 @@ function AuthGate({ children }) {
   const [session, setSession] = useState(undefined);
   const [role, setRole] = useState('visualizador');
   const [memberships, setMemberships] = useState(null); // null = ainda carregando
+  const [perfil, setPerfil] = useState(undefined); // undefined = carregando; { nome, empresa }
 
   useEffect(() => {
     if (!supabase) { setSession(null); return; }
@@ -248,7 +313,14 @@ function AuthGate({ children }) {
   useEffect(() => {
     if (!supabase || !session) return;
     (async () => {
-      const { data, error } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+      let { data, error } = await supabase.from('profiles').select('role, nome, empresa').eq('id', session.user.id).maybeSingle();
+      if (error) {
+        // banco ainda sem as colunas nome/empresa (migração não rodada) -> não trava o login
+        ({ data, error } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle());
+        setPerfil(null);
+      } else {
+        setPerfil({ nome: data?.nome || '', empresa: data?.empresa || '' });
+      }
       if (!error && data) setRole(data.role);
     })();
     (async () => {
@@ -261,7 +333,7 @@ function AuthGate({ children }) {
     return <AuthContext.Provider value={{ role: 'admin', email: null, memberships: [], isOwner: true, signOut: () => {} }}>{children}</AuthContext.Provider>;
   }
 
-  if (session === undefined || (session && memberships === null)) {
+  if (session === undefined || (session && (memberships === null || perfil === undefined))) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <Loader2 size={28} className="animate-spin" style={{ color: 'var(--accent)' }} />
@@ -271,8 +343,12 @@ function AuthGate({ children }) {
 
   if (!session) return <LoginScreen />;
 
+  if (perfil && (!perfil.nome || !perfil.empresa)) {
+    return <PerfilInicialScreen email={session.user.email} perfil={perfil} onSaved={setPerfil} />;
+  }
+
   return (
-    <AuthContext.Provider value={{ role, email: session.user.email, memberships, isOwner: role === 'admin', signOut: () => supabase.auth.signOut() }}>
+    <AuthContext.Provider value={{ role, email: session.user.email, nome: perfil?.nome || '', empresa: perfil?.empresa || '', memberships, isOwner: role === 'admin', signOut: () => supabase.auth.signOut() }}>
       {children}
     </AuthContext.Provider>
   );
@@ -8363,7 +8439,7 @@ function PageStyles() {
 /* ------------------------------------------------------------------ */
 
 function Root() {
-  const { isOwner, memberships, role } = useAuth();
+  const { isOwner, memberships, role, nome } = useAuth();
   const [clients, setClients] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [activeClientId, setActiveClientId] = useState(null);
@@ -8470,7 +8546,7 @@ const isMajStaff = isOwner || role === 'admin' || role === 'operador';
 
   if (!activeClientId) {
     if (showToolChecklist) {
-      return <React.Suspense fallback={<LazyFallback />}><ToolChecklistScreen clients={visibleClients} role={role} onBack={() => setShowToolChecklist(false)} /></React.Suspense>;
+      return <React.Suspense fallback={<LazyFallback />}><ToolChecklistScreen clients={visibleClients} role={role} nomeUsuario={nome || ''} onBack={() => setShowToolChecklist(false)} /></React.Suspense>;
     }
     
 

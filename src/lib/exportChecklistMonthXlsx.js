@@ -161,10 +161,46 @@ export async function exportMonthToXlsx(equipamento, records, year, month) {
     r += 1;
   });
 
+  // Linha de assinatura digital: ✓ no dia que o checklist foi assinado
+  ws.getCell(r, 2).value = "ASSINADO (assinatura digital do técnico)";
+  ws.getCell(r, 2).font = { bold: true, size: 7.5 };
+  ws.getCell(r, 1).border = thinBorder;
+  ws.getCell(r, 2).border = thinBorder;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const cell = ws.getCell(r, 2 + d);
+    cell.border = thinBorder;
+    if (porDia[d]) {
+      cell.value = porDia[d].assinatura_valor ? "✓" : "—";
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.font = { size: 7, bold: true };
+    }
+  }
+  ws.getRow(r).height = 16;
   r += 1;
+
+  r += 1;
+  const opcoes = checklist.statusOptions
+    ? STATUS_OPTIONS.filter((o) => checklist.statusOptions.includes(o.value))
+    : STATUS_OPTIONS;
   ws.mergeCells(`A${r}:${lastCol}${r}`);
-  ws.getCell(`A${r}`).value = "Legenda:   C = Conforme   NC = Não Conforme   P = Parcialmente   NA = Não se Aplica   (célula em branco = não houve checklist naquele dia)";
+  ws.getCell(`A${r}`).value = `Legenda:   ${opcoes.map((o) => `${o.value} = ${o.label}`).join("   ")}   (célula em branco = não houve checklist naquele dia)`;
   ws.getCell(`A${r}`).font = { bold: true, size: 8 };
+
+  const assinados = Object.keys(porDia).map(Number).sort((a, b) => a - b).map((d) => [d, porDia[d]]);
+  if (assinados.length) {
+    r += 2;
+    ws.mergeCells(`A${r}:${lastCol}${r}`);
+    ws.getCell(`A${r}`).value = "Assinaturas do mês:";
+    ws.getCell(`A${r}`).font = { bold: true, size: 8 };
+    assinados.forEach(([dia, rec]) => {
+      r += 1;
+      ws.mergeCells(`A${r}:${lastCol}${r}`);
+      ws.getCell(`A${r}`).value = rec.assinatura_valor
+        ? `Dia ${dia}: ${rec.assinado_por_nome || rec.tecnico_nome} (login ${rec.assinado_por_email || "-"}) em ${rec.assinado_em ? new Date(rec.assinado_em).toLocaleString("pt-BR") : "-"} · SHA-256 ${(rec.assinatura_hash || "-").slice(0, 16)}…`
+        : `Dia ${dia}: ${rec.tecnico_nome} — registro anterior à assinatura digital`;
+      ws.getCell(`A${r}`).font = { size: 7.5 };
+    });
+  }
 
   const comObs = records.filter((rec) => rec.observacoes && rec.observacoes.trim());
   if (comObs.length) {
