@@ -10,10 +10,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { assinaturaDeImagem } from "../lib/imagens";
 
 const VINHO = "#8B2F2F";
 
-async function getAssinaturaSalvaMaj() {
+export async function getAssinaturaSalvaMaj() {
   const { data: u } = await supabase.auth.getUser();
   const uid = u?.user?.id;
   if (!uid) return null;
@@ -55,8 +56,11 @@ export function AssinaturaPreview({ tipo, valor, maxWidth = 320 }) {
   return <p style={{ fontFamily: '"Segoe Script", "Brush Script MT", "Snell Roundhand", cursive', fontSize: 24, color: "var(--text-primary)", margin: "4px 0" }}>{valor}</p>;
 }
 
-export default function MajSignatureField({ value, onChange, nomeSugerido = "" }) {
-  const [modo, setModo] = useState("desenho"); // 'desenho' | 'texto'
+// modoCadastro: usado na aba "Minha assinatura" — só cadastra/atualiza a assinatura
+// pré-cadastrada do usuário (sempre salva, sem checkbox, sem "usar").
+export default function MajSignatureField({ value, onChange, nomeSugerido = "", modoCadastro = false }) {
+  const [modo, setModo] = useState("desenho"); // 'desenho' | 'texto' | 'importar'
+  const [importada, setImportada] = useState(null); // data URL PNG da imagem importada
   const [nome, setNome] = useState(nomeSugerido);
   const [temTraco, setTemTraco] = useState(false);
   const [erro, setErro] = useState("");
@@ -111,6 +115,12 @@ export default function MajSignatureField({ value, onChange, nomeSugerido = "" }
   };
 
   const aplicar = (assinatura) => {
+    if (modoCadastro) {
+      salvarAssinaturaSalvaMaj(assinatura)
+        .then(() => { setSalva({ tipo: assinatura.tipo, valor: assinatura.valor }); limparCanvas(); onChange?.(assinatura); })
+        .catch((e) => setErro(e?.message || "Não foi possível salvar a assinatura."));
+      return;
+    }
     onChange(assinatura);
     if (guardar && assinatura.origem !== "salva") {
       salvarAssinaturaSalvaMaj(assinatura)
@@ -119,9 +129,22 @@ export default function MajSignatureField({ value, onChange, nomeSugerido = "" }
     }
   };
 
+  const importarArquivo = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setErro("");
+    try { setImportada(await assinaturaDeImagem(file)); }
+    catch (err) { setErro(err?.message || "Não foi possível ler a imagem."); }
+  };
+
   const confirmar = () => {
     setErro("");
-    if (modo === "desenho") {
+    if (modo === "importar") {
+      if (!importada) { setErro("Escolha a imagem da assinatura antes de confirmar."); return; }
+      aplicar({ tipo: "desenho", valor: importada, origem: "importada" });
+      setImportada(null);
+    } else if (modo === "desenho") {
       if (!temTraco) { setErro("Desenhe a assinatura antes de confirmar."); return; }
       aplicar({ tipo: "desenho", valor: canvasRef.current.toDataURL("image/png"), origem: "desenho" });
     } else {
@@ -131,9 +154,9 @@ export default function MajSignatureField({ value, onChange, nomeSugerido = "" }
   };
 
   const cardStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 };
-  const titulo = <p className="text-sm font-semibold mb-2">Assinatura do técnico responsável</p>;
+  const titulo = <p className="text-sm font-semibold mb-2">{modoCadastro ? "Minha assinatura pré-cadastrada" : "Assinatura do técnico responsável"}</p>;
 
-  if (value) {
+  if (value && !modoCadastro) {
     return (
       <div style={cardStyle}>
         {titulo}
@@ -152,27 +175,54 @@ export default function MajSignatureField({ value, onChange, nomeSugerido = "" }
     <div style={cardStyle}>
       {titulo}
 
+      {modoCadastro && !salva && (
+        <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
+          Você ainda não tem assinatura pré-cadastrada. Cadastre aqui pra usar com 1 clique na hora de assinar checklists.
+        </p>
+      )}
+
       {salva && (
         <div style={{ margin: "4px 0 12px", padding: 10, borderRadius: 8, border: "1px dashed var(--border)", background: "var(--surface-raised)" }}>
-          <p className="text-xs" style={{ margin: 0 }}>Você tem uma assinatura salva neste login.</p>
+          <p className="text-xs" style={{ margin: 0 }}>
+            {modoCadastro ? "Assinatura pré-cadastrada atual:" : "Você tem uma assinatura pré-cadastrada neste login."}
+          </p>
           <div style={{ margin: "6px 0" }}><AssinaturaPreview tipo={salva.tipo} valor={salva.valor} maxWidth={220} /></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => onChange({ tipo: salva.tipo, valor: salva.valor, origem: "salva" })} style={btnPrimario}>
-              Usar assinatura salva
-            </button>
+            {!modoCadastro && (
+              <button type="button" onClick={() => onChange({ tipo: salva.tipo, valor: salva.valor, origem: "salva" })} style={btnPrimario}>
+                Usar assinatura pré-cadastrada
+              </button>
+            )}
             <button type="button" onClick={() => apagarAssinaturaSalvaMaj().then(() => setSalva(null)).catch(() => {})} style={btnBase}>
-              Remover salva
+              Remover
             </button>
           </div>
+          {modoCadastro && (
+            <p className="text-xs mt-2" style={{ color: "var(--text-secondary)" }}>Pra trocar, faça uma nova abaixo e salve.</p>
+          )}
         </div>
       )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <button type="button" onClick={() => { setModo("desenho"); setErro(""); }} style={abaStyle(modo === "desenho")}>Desenhar</button>
         <button type="button" onClick={() => { setModo("texto"); setErro(""); }} style={abaStyle(modo === "texto")}>Digitar nome</button>
+        <button type="button" onClick={() => { setModo("importar"); setErro(""); }} style={abaStyle(modo === "importar")}>Importar imagem</button>
       </div>
 
-      {modo === "desenho" ? (
+      {modo === "importar" ? (
+        <div>
+          <label style={{ ...btnBase, display: "inline-block" }}>
+            Escolher arquivo (PNG, JPG…)
+            <input type="file" accept="image/*" onChange={importarArquivo} style={{ display: "none" }} />
+          </label>
+          {importada && (
+            <div style={{ marginTop: 8 }}><AssinaturaPreview tipo="desenho" valor={importada} maxWidth={360} /></div>
+          )}
+          <p className="text-xs mt-2" style={{ color: "var(--text-secondary)" }}>
+            Dica: foto ou scan da assinatura em papel branco funciona — o fundo branco é removido automaticamente.
+          </p>
+        </div>
+      ) : modo === "desenho" ? (
         <div>
           <canvas
             ref={canvasRef}
@@ -195,12 +245,16 @@ export default function MajSignatureField({ value, onChange, nomeSugerido = "" }
 
       {erro && <p className="text-xs mt-2" style={{ color: "var(--status-danger)" }}>{erro}</p>}
 
-      <label className="text-xs" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: "var(--text-secondary)", cursor: "pointer" }}>
-        <input type="checkbox" checked={guardar} onChange={(e) => setGuardar(e.target.checked)} />
-        {salva ? "Atualizar minha assinatura salva com esta" : "Salvar esta assinatura neste login para reutilizar"}
-      </label>
+      {!modoCadastro && (
+        <label className="text-xs" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: "var(--text-secondary)", cursor: "pointer" }}>
+          <input type="checkbox" checked={guardar} onChange={(e) => setGuardar(e.target.checked)} />
+          {salva ? "Atualizar minha assinatura pré-cadastrada com esta" : "Pré-cadastrar esta assinatura neste login para reutilizar"}
+        </label>
+      )}
 
-      <button type="button" onClick={confirmar} style={{ ...btnPrimario, marginTop: 10 }}>Confirmar assinatura</button>
+      <button type="button" onClick={confirmar} style={{ ...btnPrimario, marginTop: 10 }}>
+        {modoCadastro ? (salva ? "Substituir assinatura" : "Salvar assinatura") : "Confirmar assinatura"}
+      </button>
     </div>
   );
 }

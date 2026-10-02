@@ -171,7 +171,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
                         <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
                           Assinado por <strong>{r.assinado_por_nome || r.tecnico_nome}</strong> · login <strong>{r.assinado_por_email || "—"}</strong>
                           {" · "}{r.assinado_em ? new Date(r.assinado_em).toLocaleString("pt-BR") : "—"}
-                          {r.assinatura_origem === "salva" ? " · assinatura salva" : ""}
+                          {r.assinatura_origem === "salva" ? " · assinatura pré-cadastrada" : r.assinatura_origem === "importada" ? " · imagem importada" : ""}
                         </p>
                         {r.assinatura_hash && (
                           <p className="text-xs" style={{ color: "var(--text-secondary)", fontFamily: "ui-monospace, Menlo, Consolas, monospace" }}>

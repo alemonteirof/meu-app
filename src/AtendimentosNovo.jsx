@@ -11,7 +11,7 @@ import {
   getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
 } from './supabaseAdapter';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
-import { compressImageFile } from './lib/imagens';
+import { compressImageFile, assinaturaDeImagem } from './lib/imagens';
 
 /** Prefixo do id de opção sintética "o painel em si" no seletor de itens de visita
     (mesma ideia de bp:/fa:). Só corretiva/manutenção — inspeção de painel fica fora. */
@@ -1072,7 +1072,8 @@ function SignatureField({ visita }) {
         }
       : null,
   );
-  const [modo, setModo] = useState('desenho'); // 'desenho' | 'texto'
+  const [modo, setModo] = useState('desenho'); // 'desenho' | 'texto' | 'importar'
+  const [importada, setImportada] = useState(null); // data URL PNG da imagem importada
   const [nome, setNome] = useState('');
   const [temTraco, setTemTraco] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -1152,8 +1153,22 @@ function SignatureField({ visita }) {
     }
   };
 
+  const importarArquivo = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setErro('');
+    try { setImportada(await assinaturaDeImagem(file)); }
+    catch (err) { setErro(err?.message || 'Não foi possível ler a imagem.'); }
+  };
+
   const confirmar = () => {
     setErro('');
+    if (modo === 'importar') {
+      if (!importada) { setErro('Escolha a imagem da assinatura antes de confirmar.'); return; }
+      gravar({ tipo: 'desenho', valor: importada, origem: 'importada' });
+      return;
+    }
     const tipo = modo === 'desenho' ? 'desenho' : 'texto';
     if (tipo === 'desenho') {
       if (!temTraco) { setErro('Desenhe a assinatura antes de confirmar.'); return; }
@@ -1175,6 +1190,7 @@ function SignatureField({ visita }) {
 
   const origemLabel = (o) => (
     o === 'salva' ? 'assinatura salva do usuário'
+      : o === 'importada' ? 'imagem importada'
       : o === 'texto' ? 'nome digitado no dispositivo'
         : 'desenho no dispositivo'
   );
@@ -1261,9 +1277,23 @@ function SignatureField({ visita }) {
       <div style={{ display: 'flex', gap: 8, margin: '6px 0 10px', flexWrap: 'wrap' }}>
         <button type="button" onClick={() => { setModo('desenho'); setErro(''); }} style={tabBtnStyle(modo === 'desenho')}>Desenhar</button>
         <button type="button" onClick={() => { setModo('texto'); setErro(''); }} style={tabBtnStyle(modo === 'texto')}>Digitar nome</button>
+        <button type="button" onClick={() => { setModo('importar'); setErro(''); }} style={tabBtnStyle(modo === 'importar')}>Importar imagem</button>
       </div>
 
-      {modo === 'desenho' ? (
+      {modo === 'importar' ? (
+        <div>
+          <label style={{ ...smallBtnStyle, display: 'inline-block', cursor: 'pointer' }}>
+            Escolher arquivo (PNG, JPG…)
+            <input type="file" accept="image/*" onChange={importarArquivo} style={{ display: 'none' }} />
+          </label>
+          {importada && (
+            <img src={importada} alt="Assinatura importada" style={{ display: 'block', width: '100%', maxWidth: 360, height: 'auto', background: '#fff', borderRadius: 6, border: '1px solid var(--border)', marginTop: 8 }} />
+          )}
+          <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+            Foto ou scan da assinatura em papel branco funciona — o fundo branco é removido automaticamente.
+          </p>
+        </div>
+      ) : modo === 'desenho' ? (
         <div>
           <canvas
             ref={canvasRef}

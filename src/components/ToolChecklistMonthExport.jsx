@@ -8,7 +8,7 @@ const VINHO = "#8B2F2F";
 
 function nomeEquipamento(eq) {
   const t = TOOL_CHECKLISTS[eq.tool_type]?.label || eq.tool_type;
-  return `${t} — ${eq.marca}${eq.modelo ? " " + eq.modelo : ""}${eq.especificacoes ? " (" + eq.especificacoes + ")" : ""}`;
+  return `${t} — ${eq.marca}${eq.modelo ? " " + eq.modelo : ""}${eq.especificacoes ? " (" + eq.especificacoes + ")" : ""}${eq.ativo ? "" : " — desativado"}`;
 }
 
 export default function ToolChecklistMonthExport() {
@@ -25,7 +25,7 @@ export default function ToolChecklistMonthExport() {
     supabase
       .from("equipamentos")
       .select("*")
-      .eq("ativo", true)
+      .order("ativo", { ascending: false })
       .order("marca")
       .then(({ data, error }) => {
         if (error) setMensagem({ tipo: "erro", texto: error.message });

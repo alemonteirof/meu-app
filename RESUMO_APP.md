@@ -147,6 +147,9 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
   eventos `assinada` / `excluida` (este com `snapshot` jsonb do registro apagado) — trilha sobrevive à exclusão.
 - UI: `MajSignatureField` (components/) — mesma UX do `SignatureField` do RVT, mas só devolve
   `{tipo, valor, origem}` pro form (grava junto no insert). Excel individual e mensal mostram assinatura.
+- Abas do `ToolChecklistScreen`: Preencher novo · Histórico/Exportar mês/**Equipamentos** (admin) ·
+  **Minha assinatura** (todo MAJ — pré-cadastro via `MajSignatureField modoCadastro`). Equipamentos
+  (`ToolEquipamentosAdmin`): cadastrar/editar/desativar — sem excluir (FK de `tool_checklists`).
 - Tipos: `TOOL_CHECKLISTS` em `lib/toolChecklists.js`; checklist pode limitar opções via `statusOptions`
   e mostrar `avisoNC`. `cinto_talabarte` (SEG-EPI-001) = só C/NC/NA.
 
@@ -423,6 +426,10 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
 - `migracao_checklist_assinatura_maj.sql` — tipo `cinto_talabarte`, `profiles.nome/empresa` + RPC,
   assinatura MAJ em `tool_checklists` + triggers + `assinatura_auditoria_maj` + `assinaturas_salvas_maj`.
   Exige assinatura em checklist novo. **Rodada** (2026-10-01).
+- `migracao_assinatura_importada.sql` — libera origem `importada` no CHECK de
+  `tool_checklists.assinatura_origem` (RVT não precisa, sem CHECK). **Rodada** (2026-10-01).
+  "Importar imagem" (RVT e checklist) usa `assinaturaDeImagem` em `lib/imagens.js`: PNG ≤600x200,
+  fundo branco → transparente; grava `tipo='desenho'`, `origem='importada'`.
 - `backfill_falha_categoria.sql` — backfill de `falha_categoria` a partir de `falhasPorMarca.js`.
   **Rodada** (regenerar com `scratchpad/gen_backfill.mjs` se as listas de falha mudarem).
 - `migracao_sirene_visual_sonoro.sql` — colunas `visual`/`sonoro` + CHECK em `inspecoes` e
