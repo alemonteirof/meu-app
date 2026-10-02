@@ -139,7 +139,7 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
 
 ### Checklist de ferramentas / assinatura MAJ (`tool_checklists`, `assinaturas_salvas_maj`, `assinatura_auditoria_maj`)
 - Só membros MAJ (`is_maj_staff()` = admin/operador) registram e assinam. Banco de assinatura **separado**
-  do RVT: `assinaturas_salvas_maj` (quem assina RVT não assina checklist). Vale também p/ DDS (futuro).
+  do RVT: `assinaturas_salvas_maj` (quem assina RVT não assina checklist). Vale também p/ DDS (ver abaixo).
 - `tool_checklists` + `assinatura_tipo/valor/origem/hash`, `assinado_por_uid/email/nome`, `assinado_em`.
   Trigger `tool_checklist_assinar` (BEFORE INSERT) exige MAJ + assinatura e carimba uid/email/nome/data/
   sha256 e força `tecnico_id = auth.uid()`. Sem policy de UPDATE → registro imutável.
@@ -152,6 +152,23 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
   (`ToolEquipamentosAdmin`): cadastrar/editar/desativar — sem excluir (FK de `tool_checklists`).
 - Tipos: `TOOL_CHECKLISTS` em `lib/toolChecklists.js`; checklist pode limitar opções via `statusOptions`
   e mostrar `avisoNC`. `cinto_talabarte` (SEG-EPI-001) = só C/NC/NA.
+
+### DDS — Diálogo Diário de Segurança (`dds_sessoes`, `dds_assinaturas`)
+- Só membros MAJ (RLS `is_maj_staff()`); botão "DDS" ao lado de "Checklist de Ferramentas" (tela sem cliente).
+- `dds_sessoes`: `tema_codigo/tema_titulo`, `data_dds`, `local`, `status` 'aberto'|'encerrado',
+  `criado_por_*` e `encerrado_por_*` carimbados pelo trigger `dds_sessao_guard`. Qualquer MAJ abre; só quem
+  abriu (ou admin) encerra; encerrado não muda mais. Excluir = só admin (cascade nas assinaturas).
+- `dds_assinaturas`: 1 por login por DDS (`unique(dds_id, assinado_por_uid)`). Cada participante assina com o
+  PRÓPRIO login no próprio aparelho; trigger `dds_assinar` carimba uid/email/nome/data/sha256 e recusa se o DDS
+  estiver encerrado. Sem UPDATE/DELETE pelo app.
+- Trilha: `assinatura_auditoria_maj` com `documento_tipo='dds'`, `documento_id` = id do DDS; eventos
+  `aberto`/`encerrado`/`excluida` (sessão) e `assinada`/`assinatura_excluida` (presença).
+- Conteúdo dos 50 temas em `lib/ddsTemas.js` (gerado de `DDS_MAJ_50_Temas.md`); banco guarda só código/título.
+  Sugestão = próximo da sequência após o último DDS aberto (01→50, volta ao 01); dá pra trocar.
+- Saída: só PDF (sem Excel) — "Gerar PDF" após encerrar → folha A4 em pé via `window.print` (mesmo esquema
+  `.print-area`/`rvt-brand-band` do RVT) com tema resumido + tabela de participantes com assinatura e hash.
+- UI: `components/DdsScreen.jsx` (lista abertos/encerrados · abrir novo · detalhe com assinar/encerrar ·
+  impressão) + aba "Minha assinatura" (mesmo `assinaturas_salvas_maj` do checklist).
 
 ### `profiles.nome` / `profiles.empresa`
 Pedidos no primeiro login (`PerfilInicialScreen` no `AuthGate`), gravados via RPC `definir_meu_perfil`
@@ -434,6 +451,8 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
   **Rodada** (regenerar com `scratchpad/gen_backfill.mjs` se as listas de falha mudarem).
 - `migracao_sirene_visual_sonoro.sql` — colunas `visual`/`sonoro` + CHECK em `inspecoes` e
   `dispositivos`. **Pendente de rodar em produção.**
+- `migracao_dds.sql` — tabelas `dds_sessoes`/`dds_assinaturas` + triggers + RLS (só MAJ) + trilha em
+  `assinatura_auditoria_maj`. **Pendente de rodar** (antes de subir o build com a tela DDS).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 

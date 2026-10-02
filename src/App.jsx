@@ -35,6 +35,7 @@ import {
 const loadAtendimentosNovo = () => import('./AtendimentosNovo');
 const AtendimentosNovo = React.lazy(loadAtendimentosNovo);
 const ToolChecklistScreen = React.lazy(() => import('./components/ToolChecklistScreen'));
+const DdsScreen = React.lazy(() => import('./components/DdsScreen'));
 
 
 import { supabase } from './supabaseClient';
@@ -8444,6 +8445,7 @@ function Root() {
   const [loaded, setLoaded] = useState(false);
   const [activeClientId, setActiveClientId] = useState(null);
   const [showToolChecklist, setShowToolChecklist] = useState(false);
+  const [showDds, setShowDds] = useState(false);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [authedClientId, setAuthedClientId] = useState(null);
 
@@ -8548,12 +8550,17 @@ const isMajStaff = isOwner || role === 'admin' || role === 'operador';
     if (showToolChecklist) {
       return <React.Suspense fallback={<LazyFallback />}><ToolChecklistScreen clients={visibleClients} role={role} nomeUsuario={nome || ''} onBack={() => setShowToolChecklist(false)} /></React.Suspense>;
     }
-    
+    if (showDds && isMajStaff) {
+      return <React.Suspense fallback={<LazyFallback />}><DdsScreen role={role} nomeUsuario={nome || ''} onBack={() => setShowDds(false)} /></React.Suspense>;
+    }
 
     return (
       <div>
         {isMajStaff && (
-          <div className="p-4 flex justify-end">
+          <div className="p-4 flex justify-end gap-2 flex-wrap">
+            <button onClick={() => setShowDds(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#8B2F2F' }}>
+              DDS
+            </button>
             <button onClick={() => setShowToolChecklist(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#8B2F2F' }}>
               Checklist de Ferramentas
             </button>
