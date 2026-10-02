@@ -452,7 +452,7 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
 - `migracao_sirene_visual_sonoro.sql` — colunas `visual`/`sonoro` + CHECK em `inspecoes` e
   `dispositivos`. **Pendente de rodar em produção.**
 - `migracao_dds.sql` — tabelas `dds_sessoes`/`dds_assinaturas` + triggers + RLS (só MAJ) + trilha em
-  `assinatura_auditoria_maj`. **Pendente de rodar** (antes de subir o build com a tela DDS).
+  `assinatura_auditoria_maj`. **Rodada** (2026-10-01).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
