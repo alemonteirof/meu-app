@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
 import { AssinaturaPreview } from "./MajSignatureField";
+import { ChecklistPdfIndividual } from "./ToolChecklistPdf";
 
 const VINHO = "#8B2F2F";
 
@@ -23,6 +24,7 @@ export default function ToolChecklistHistory({ clients = [] }) {
   const [aberto, setAberto] = useState(null);
   const [confirmando, setConfirmando] = useState(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [imprimindo, setImprimindo] = useState(null); // registro aberto como PDF
 
   async function carregar() {
     const { data, error } = await supabase
@@ -56,6 +58,10 @@ export default function ToolChecklistHistory({ clients = [] }) {
     if (filtroCliente && filtroCliente !== "avulso" && r.cliente_id !== filtroCliente) return false;
     return true;
   });
+
+  if (imprimindo) {
+    return <ChecklistPdfIndividual record={imprimindo} clienteNome={clienteNome(clients, imprimindo.cliente_id)} onBack={() => setImprimindo(null)} />;
+  }
 
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-4" style={{ color: "var(--text-primary)" }}>
@@ -113,11 +119,11 @@ export default function ToolChecklistHistory({ clients = [] }) {
                   )}
                   <button
                     type="button"
-                    onClick={() => import("../lib/exportChecklistXlsx").then((m) => m.exportChecklistToXlsx(r, clienteNome(clients, r.cliente_id)))}
+                    onClick={() => setImprimindo(r)}
                     className="text-xs px-2 py-1 rounded border"
                     style={{ borderColor: "var(--border)", background: "var(--surface-raised)" }}
                   >
-                    Exportar .xlsx
+                    PDF
                   </button>
 
                   {!isConfirmando ? (

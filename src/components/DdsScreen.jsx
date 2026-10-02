@@ -9,10 +9,10 @@
 // carimbados por trigger (migracao_dds.sql) e vão pra assinatura_auditoria_maj.
 
 import { useCallback, useEffect, useState } from "react";
-import { ShieldAlert } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { DDS_TEMAS, DDS_EMPRESA, DDS_DURACAO, getTemaDds, proximoTemaDds } from "../lib/ddsTemas";
+import { DDS_TEMAS, DDS_DURACAO, getTemaDds, proximoTemaDds } from "../lib/ddsTemas";
 import MajSignatureField, { AssinaturaPreview } from "./MajSignatureField";
+import MajFolhaImpressao, { ResumoCard } from "./MajFolhaImpressao";
 
 const VINHO = "#8B2F2F";
 
@@ -126,53 +126,17 @@ function DdsImpressao({ sessao, assinaturas, onBack }) {
   const tema = getTemaDds(sessao.tema_codigo);
   const nomeArquivo = `DDS - ${sessao.tema_codigo} - ${dataBR(sessao.data_dds).replace(/\//g, "-")}`;
 
-  useEffect(() => {
-    const anterior = document.title;
-    document.title = nomeArquivo;
-    return () => { document.title = anterior; };
-  }, [nomeArquivo]);
-
-  const resumo = [
-    ["Data", dataBR(sessao.data_dds)],
-    ["Local", sessao.local || "—"],
-    ["Conduzido por", sessao.criado_por_nome || sessao.criado_por_email || "—"],
-    ["Participantes", String(assinaturas.length)],
-  ];
+  const rodape = `Encerrado em ${dataHoraBR(sessao.encerrado_em)}${sessao.encerrado_por_nome ? ` por ${sessao.encerrado_por_nome}` : ""}. `
+    + "Login, data/hora e código de verificação de cada assinatura foram registrados no servidor (CCM).";
 
   return (
-    <div className="max-w-4xl mx-auto p-4 flex flex-col gap-4">
-      {/* folha A4 em pé (o padrão global é paisagem por causa do RVT) */}
-      <style>{"@media print { @page { size: A4 portrait; margin: 12mm; } }"}</style>
-      <div className="flex items-center justify-between gap-3 flex-wrap no-print">
-        <button type="button" onClick={onBack} style={btnBase}>← Voltar</button>
-        <button type="button" onClick={() => { document.title = nomeArquivo; window.print(); }} style={btnPrimario}>Imprimir / Salvar PDF</button>
-      </div>
-
-      {/* color aqui (e não só no wrapper da tela): a .print-area redefine --text-primary
-          p/ escuro na impressão; herdado de fora, o texto ficava claro no papel branco */}
-      <div className="print-area rounded-xl overflow-hidden flex flex-col" style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
-        <div className="rvt-brand-band">
-          <div className="rvt-wordmark">
-            <div className="rvt-wordmark-icon"><ShieldAlert size={16} style={{ color: "#fff" }} /></div>
-            <div className="rvt-wordmark-text">
-              <div className="maj">M.A.J</div>
-              <div className="sol">Soluções</div>
-            </div>
-          </div>
-          <div style={{ textAlign: "right", position: "relative", zIndex: 1 }}>
-            <p style={{ color: "#fff", fontWeight: 600, fontSize: 16, letterSpacing: "0.04em" }}>DIÁLOGO DIÁRIO DE SEGURANÇA</p>
-            <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 12 }}>Lista de presença · {sessao.tema_codigo}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5 p-4 sm:p-6">
+    <MajFolhaImpressao titulo="DIÁLOGO DIÁRIO DE SEGURANÇA" subtitulo={`Lista de presença · ${sessao.tema_codigo}`}
+      nomeArquivo={nomeArquivo} onBack={onBack} rodape={rodape}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {resumo.map(([k, v]) => (
-              <div key={k} className="rvt-summary-card rounded-lg p-3" style={{ background: "var(--surface-raised)" }}>
-                <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-secondary)" }}>{k}</p>
-                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{v}</p>
-              </div>
-            ))}
+            <ResumoCard rotulo="Data" valor={dataBR(sessao.data_dds)} />
+            <ResumoCard rotulo="Local" valor={sessao.local || "—"} />
+            <ResumoCard rotulo="Conduzido por" valor={sessao.criado_por_nome || sessao.criado_por_email || "—"} />
+            <ResumoCard rotulo="Participantes" valor={String(assinaturas.length)} />
           </div>
 
           <div className="rvt-item-card rounded-lg p-4" style={{ background: "var(--surface-raised)", borderLeft: `4px solid ${VINHO}` }}>
@@ -220,17 +184,7 @@ function DdsImpressao({ sessao, assinaturas, onBack }) {
               </table>
             )}
           </div>
-
-          <div className="rvt-footer-band" style={{ flexDirection: "column", gap: 2, textAlign: "center", fontSize: 10, color: "var(--text-secondary)" }}>
-            <p>{DDS_EMPRESA}</p>
-            <p>
-              Encerrado em {dataHoraBR(sessao.encerrado_em)}{sessao.encerrado_por_nome ? ` por ${sessao.encerrado_por_nome}` : ""}.
-              {" "}Login, data/hora e código de verificação de cada assinatura foram registrados no servidor (CCM).
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+    </MajFolhaImpressao>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
+import { ChecklistPdfMes } from "./ToolChecklistPdf";
 
 const VINHO = "#8B2F2F";
 
@@ -20,6 +21,7 @@ export default function ToolChecklistMonthExport() {
   );
   const [gerando, setGerando] = useState(false);
   const [mensagem, setMensagem] = useState(null);
+  const [pdf, setPdf] = useState(null); // { equipamento, records, ano, mes } quando o PDF está aberto
 
   useEffect(() => {
     supabase
@@ -69,16 +71,18 @@ export default function ToolChecklistMonthExport() {
       return;
     }
 
-    const { exportMonthToXlsx } = await import("../lib/exportChecklistMonthXlsx");
-    await exportMonthToXlsx(equipamentoSelecionado, data, ano, mes);
-    setMensagem({ tipo: "ok", texto: `Planilha gerada com ${data.length} registro(s).` });
+    setPdf({ equipamento: equipamentoSelecionado, records: data, ano, mes });
+  }
+
+  if (pdf) {
+    return <ChecklistPdfMes {...pdf} onBack={() => setPdf(null)} />;
   }
 
   return (
     <div className="max-w-xl mx-auto p-4 space-y-4" style={{ color: "var(--text-primary)" }}>
       <div className="rounded-lg p-4 text-white" style={{ backgroundColor: VINHO }}>
-        <h1 className="text-lg font-bold">Exportar checklist do mês</h1>
-        <p className="text-sm opacity-90">Junta todos os preenchimentos de um equipamento num único Excel.</p>
+        <h1 className="text-lg font-bold">PDF do checklist do mês</h1>
+        <p className="text-sm opacity-90">Junta todos os preenchimentos de um equipamento num único PDF.</p>
       </div>
 
       <div>
@@ -116,7 +120,7 @@ export default function ToolChecklistMonthExport() {
         className="w-full py-2 rounded text-white font-semibold disabled:opacity-50"
         style={{ backgroundColor: VINHO }}
       >
-        {gerando ? "Gerando..." : "Gerar planilha do mês"}
+        {gerando ? "Gerando..." : "Gerar PDF do mês"}
       </button>
     </div>
   );

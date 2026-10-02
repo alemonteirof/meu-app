@@ -146,8 +146,12 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
 - `assinatura_auditoria_maj`: genérica (`documento_tipo` 'tool_checklist'|'dds', `documento_id` SEM FK),
   eventos `assinada` / `excluida` (este com `snapshot` jsonb do registro apagado) — trilha sobrevive à exclusão.
 - UI: `MajSignatureField` (components/) — mesma UX do `SignatureField` do RVT, mas só devolve
-  `{tipo, valor, origem}` pro form (grava junto no insert). Excel individual e mensal mostram assinatura.
-- Abas do `ToolChecklistScreen`: Preencher novo · Histórico/Exportar mês/**Equipamentos** (admin) ·
+  `{tipo, valor, origem}` pro form (grava junto no insert).
+- Saída: só PDF (Excel removido em 2026-10-02 a pedido do Alexandre — `exportChecklist*Xlsx.js` apagados).
+  `ToolChecklistPdf.jsx`: `ChecklistPdfIndividual` (botão "PDF" no Histórico, A4 em pé) e `ChecklistPdfMes`
+  (aba "PDF do mês", grade dias 1-31, A4 deitado, com tabela de assinaturas do mês). Folha comum a DDS e
+  checklist: `MajFolhaImpressao.jsx` (cabeçalho `rvt-brand-band`, `@page` por folha, cor fixada na `.print-area`).
+- Abas do `ToolChecklistScreen`: Preencher novo · Histórico/PDF do mês/**Equipamentos** (admin) ·
   **Minha assinatura** (todo MAJ — pré-cadastro via `MajSignatureField modoCadastro`). Equipamentos
   (`ToolEquipamentosAdmin`): cadastrar/editar/desativar — sem excluir (FK de `tool_checklists`).
 - Tipos: `TOOL_CHECKLISTS` em `lib/toolChecklists.js`; checklist pode limitar opções via `statusOptions`

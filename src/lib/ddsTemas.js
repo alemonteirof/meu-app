@@ -5,7 +5,6 @@
 // Abertura → Mensagem principal → Pontos-chave → Pergunta para a equipe → Fechamento.
 // O banco guarda só tema_codigo/tema_titulo; o conteúdo vem daqui (ajustar aqui, não no schema).
 
-export const DDS_EMPRESA = "MAJ Sistemas de Prevenção e Combate a Incêndios LTDA · CNPJ 45.893.915/0001-01";
 export const DDS_DURACAO = "até 3 minutos";
 
 export const DDS_TEMAS = [

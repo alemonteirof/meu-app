@@ -38,7 +38,7 @@ export default function ToolChecklistScreen({ clients = [], role, nomeUsuario = 
         <div className="flex gap-2 flex-wrap">
           {abaBtn("form", "Preencher novo")}
           {isAdmin && abaBtn("history", "Ver histórico")}
-          {isAdmin && abaBtn("month", "Exportar mês")}
+          {isAdmin && abaBtn("month", "PDF do mês")}
           {isAdmin && abaBtn("equip", "Equipamentos")}
           {abaBtn("assinatura", "Minha assinatura")}
         </div>
