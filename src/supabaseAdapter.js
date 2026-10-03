@@ -1,5 +1,6 @@
-﻿import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient';
 import { escopoDaFalha } from './lib/falhasPorMarca';
+import { hojeLocal } from './lib/datas';
 
 function legacyKey(clienteId) {
   return `pci-dados-cliente-${clienteId}`;
@@ -402,7 +403,7 @@ function statusCapitalizado(s) {
 export async function createVisita({ clienteId, painelId, tecnico, dataVisita }) {
   const { data, error } = await supabase.from('rvts').insert({
     cliente_id: clienteId, painel_id: painelId || null, tecnico: tecnico || null,
-    data_visita: dataVisita || new Date().toISOString().slice(0, 10),
+    data_visita: dataVisita || hojeLocal(),
   }).select().single();
   if (error) throw error;
   return data;
@@ -456,7 +457,7 @@ export async function createDiagnosticoOutro({ rvtId, tecnico, alvos, clienteId,
 
 export async function createAtendimento({ dispositivoId, bateriaPainelId, fonteAuxiliarId, painelId, clienteId, falha, falhaCodigo, falhaMarca, falhaCategoria, status, tecnico, descritivo, origemInspecaoId, rvtId, fotos, dataAgendamento, dataRegistro }) {
   const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId, painelId });
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = hojeLocal();
   const { data, error } = await supabase.from('atendimentos').insert({
     dispositivo_id: dispositivoId || null, bateria_painel_id: bateriaPainelId || null, fonte_auxiliar_id: fonteAuxiliarId || null,
     painel_id: painelId || null,
@@ -536,7 +537,7 @@ export async function createInspecao({
   dispositivoId, bateriaPainelId, fonteAuxiliarId, clienteId, tecnico, resultadoTeste, aparencia, comunicacaoLocal, comunicacaoRede,
   visual, sonoro, observacoes, falha, falhaCodigo, falhaMarca, falhaCategoria, metodo, dataInspecao, proximaInspecao, rvtId, fotos,
 }) {
-  const dataFinal = dataInspecao || new Date().toISOString().slice(0, 10);
+  const dataFinal = dataInspecao || hojeLocal();
   const clienteIdFinal = await resolveClienteId({ clienteId, dispositivoId, bateriaPainelId, fonteAuxiliarId });
 
   const { data: inspecao, error } = await supabase.from('inspecoes').insert({
@@ -622,7 +623,7 @@ export async function listAtendimentosAbertos(clienteId) {
 export async function registrarIntervencaoAtendimento({ atendimentoId, clienteId, rvtId, data, tecnico, statusResultante, descricao, fotos }) {
   const { data: interv, error } = await supabase.from('atendimento_intervencoes').insert({
     atendimento_id: atendimentoId, cliente_id: clienteId || null, rvt_id: rvtId || null,
-    data: data || new Date().toISOString().slice(0, 10), tecnico: tecnico || null,
+    data: data || hojeLocal(), tecnico: tecnico || null,
     status_resultante: statusResultante, descricao,
     fotos: await prepararFotos(fotos || [], clienteId || (() => clienteDaLinha('atendimentos', atendimentoId))),
   }).select().single();
@@ -1580,12 +1581,6 @@ export const PENDENCIA_RESPONSAVEIS = [
   { value: 'maj', label: 'MAJ' },
 ];
 export const MATERIAL_UNIDADES = ['un', 'm', 'pç', 'cx', 'par', 'jogo', 'rolo', 'kg', 'L'];
-
-// Data local (toISOString é UTC: depois das 21h no Brasil já vira o dia seguinte).
-function hojeLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function rowToPendencia(r) {
   return {

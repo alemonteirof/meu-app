@@ -11,6 +11,7 @@ import {
 import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
 import { logSecurityEvent } from './lib/securityLog';
 import { compressImageFile } from './lib/imagens';
+import { hojeLocal, dataLocalISO } from './lib/datas';
 import ErrorScreen from './components/ErrorScreen';
 import PendenciasIndicador from './components/PendenciasIndicador';
 import React, { useState, useEffect } from 'react';
@@ -1029,10 +1030,7 @@ function uid() {
 }
 
 function todayISO() {
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().slice(0, 10);
+  return hojeLocal();
 }
 
 function addMonthsToDate(dateStr, months) {
@@ -7352,9 +7350,7 @@ function excelValueToISODate(val) {
   if (val === null || val === undefined || val === '') return '';
   if (val instanceof Date) {
     if (isNaN(val.getTime())) return '';
-    const off = val.getTimezoneOffset();
-    const local = new Date(val.getTime() - off * 60000);
-    return local.toISOString().slice(0, 10);
+    return dataLocalISO(val);
   }
   const s = String(val).trim();
   if (!s || /^nat$/i.test(s)) return '';

@@ -641,3 +641,10 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 - Nunca `git restore`/`reset` sem confirmar que o trabalho atual já foi commitado.
 - Padrão de salvamento no Supabase: upsert + delete seletivo do que saiu da lista — **nunca**
   apagar tudo e reinserir (2 incidentes reais de perda de dado no passado).
+- **Data "de hoje" = data LOCAL** (2026-10-02): usar `hojeLocal()` / `dataLocalISO(date)` de
+  `src/lib/datas.js`. **Nunca** `new Date().toISOString().slice(0, 10)` para data do dia — é UTC e,
+  no Brasil (UTC-3), depois das 21h dá o dia seguinte (visita/inspeção/intervenção noturna ganhava
+  data de amanhã). Já aplicado em `createVisita`, `createAtendimento`, `createInspecao`,
+  `registrarIntervencaoAtendimento`, Pendências, forms de Visitas/agendamento/vistoria
+  (`AtendimentosNovo.jsx`), `todayISO` (App), DDS e checklist de ferramentas.
+  `toISOString()` completo continua certo para timestamp (`updated_at`, `atualizado_em`, assinaturas).

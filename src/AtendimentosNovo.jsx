@@ -15,6 +15,7 @@ import MajSignatureField from './components/MajSignatureField';
 import { PendenciasItem, usePerguntaBaixa, PendenciasPrintBlock, pendenciasVigentesNoDia } from './components/Pendencias';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
 import { compressImageFile, assinaturaDeImagem } from './lib/imagens';
+import { hojeLocal } from './lib/datas';
 
 /** Prefixo do id de opção sintética "o painel em si" no seletor de itens de visita
     (mesma ideia de bp:/fa:). Só corretiva/manutenção — inspeção de painel fica fora. */
@@ -1991,7 +1992,7 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
 function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
   const options = buildCombateOptions(data);
   const [tecnico, setTecnico] = useState('');
-  const [dataVistoria, setDataVistoria] = useState(new Date().toISOString().slice(0, 10));
+  const [dataVistoria, setDataVistoria] = useState(hojeLocal());
   const [selectedIds, setSelectedIds] = useState([]);
   const [resultado, setResultado] = useState('Aprovado');
   const [falha, setFalha] = useState('');
@@ -2003,7 +2004,7 @@ function VisitaCombateView({ data, clientId, canEdit, onRefresh }) {
   const temCilindroSelecionado = selectedIds.some((id) => options.find((o) => o.id === id)?.kind === 'cilindro');
   const [agendarCombateMode, setAgendarCombateMode] = useState(false);
   const [agendarCombateIds, setAgendarCombateIds] = useState([]);
-  const [agendarCombateData, setAgendarCombateData] = useState(new Date().toISOString().slice(0, 10));
+  const [agendarCombateData, setAgendarCombateData] = useState(hojeLocal());
   const [savingAgendarCombate, setSavingAgendarCombate] = useState(false);
   async function handleAgendarCombate(e) {
     e.preventDefault();
@@ -2159,7 +2160,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
     const [agendarSDAIMode, setAgendarSDAIMode] = useState(false);
   const [agendarSDAIIds, setAgendarSDAIIds] = useState([]);
-  const [agendarSDAIData, setAgendarSDAIData] = useState(new Date().toISOString().slice(0, 10));
+  const [agendarSDAIData, setAgendarSDAIData] = useState(hojeLocal());
   const [savingAgendarSDAI, setSavingAgendarSDAI] = useState(false);
   async function handleAgendarSDAI(e) {
     e.preventDefault();
@@ -2180,7 +2181,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       setSavingAgendarSDAI(false);
     }
   }
-  const [startForm, setStartForm] = useState({ painelId: '', tecnico: '', data: new Date().toISOString().slice(0, 10) });
+  const [startForm, setStartForm] = useState({ painelId: '', tecnico: '', data: hojeLocal() });
   async function iniciarVisita(e) {
     e.preventDefault();
     try {
