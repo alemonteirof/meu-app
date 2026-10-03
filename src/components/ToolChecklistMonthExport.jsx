@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS } from "../lib/toolChecklists";
 import { ChecklistPdfMes } from "./ToolChecklistPdf";
+import { dataLocalISO } from "../lib/datas";
 
 const VINHO = "#8B2F2F";
 
@@ -50,7 +51,7 @@ export default function ToolChecklistMonthExport() {
     setGerando(true);
 
     const inicio = `${mesAno}-01`;
-    const fim = new Date(ano, mes, 0).toISOString().slice(0, 10);
+    const fim = dataLocalISO(new Date(ano, mes, 0));
 
     const { data, error } = await supabase
       .from("tool_checklists")

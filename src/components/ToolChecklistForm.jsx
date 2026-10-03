@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { TOOL_CHECKLISTS, STATUS_OPTIONS } from "../lib/toolChecklists";
 import MajSignatureField from "./MajSignatureField";
+import { hojeLocal } from "../lib/datas";
 
 const VINHO = "#8B2F2F";
 
@@ -21,7 +22,7 @@ export default function ToolChecklistForm({ clients = [], nomeUsuario = "" }) {
   const [clienteId, setClienteId] = useState("");
   const [tecnicoNome, setTecnicoNome] = useState(nomeUsuario);
   const [tag, setTag] = useState("");
-  const [dataChecklist, setDataChecklist] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dataChecklist, setDataChecklist] = useState(hojeLocal);
   const [observacoes, setObservacoes] = useState("");
   const [respostas, setRespostas] = useState({});
   const [salvando, setSalvando] = useState(false);

@@ -4,6 +4,7 @@ import {
   PENDENCIA_TIPOS, PENDENCIA_RESPONSAVEIS, MATERIAL_UNIDADES,
   salvarPendencia, excluirPendencia, darBaixaPendencias, reabrirPendencia,
 } from '../supabaseAdapter';
+import { hojeLocal as hojeISO } from '../lib/datas';
 
 // "Pendências para conclusão" — o que um item em Aguardando/Andamento está aguardando.
 // Cadastro/baixa só em Atendimentos → Visitas (equipe MAJ); RVT e Indicador só exibem.
@@ -45,11 +46,6 @@ function formatDateBR(s) {
   const [y, m, d] = s.slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 }
-// Data LOCAL (toISOString usa UTC: depois das 21h no Brasil já virava o dia seguinte).
-const hojeISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 const chaveAlvo = (a) => (a.atendimentoId ? `at:${a.atendimentoId}` : `ri:${a.rvtItemId}`);
 
 /** Pendências ligadas a um alvo ({atendimentoId} ou {rvtItemId}). */

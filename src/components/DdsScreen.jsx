@@ -13,6 +13,7 @@ import { supabase } from "../supabaseClient";
 import { DDS_TEMAS, DDS_DURACAO, getTemaDds, proximoTemaDds } from "../lib/ddsTemas";
 import MajSignatureField, { AssinaturaPreview } from "./MajSignatureField";
 import MajFolhaImpressao, { ResumoCard } from "./MajFolhaImpressao";
+import { hojeLocal as hoje } from "../lib/datas";
 
 const VINHO = "#8B2F2F";
 
@@ -21,10 +22,6 @@ const btnPrimario = { ...btnBase, background: VINHO, borderColor: VINHO, color: 
 const btnPerigo = { ...btnBase, borderColor: "var(--status-danger)", color: "var(--status-danger)" };
 const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 12 };
 
-const hoje = () => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
 const dataBR = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 const dataHoraBR = (ts) => (ts ? new Date(ts).toLocaleString("pt-BR") : "—");
 const nomeAssinante = (a) => a.assinado_por_nome || a.assinado_por_email || "—";
