@@ -79,8 +79,11 @@ export default function ClassificarPendencias({ clienteAtualId }) {
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
   const [marcados, setMarcados] = useState(() => new Set());
-  const [tipo, setTipo] = useState('');
-  const [responsavel, setResponsavel] = useState('');
+  // Um item pode aguardar várias coisas ao mesmo tempo (ex.: Material + Condição de segurança +
+  // Parada de máquina) — cada linha vira 1 pendência própria, com o seu responsável.
+  const regraVazia = () => ({ tipo: '', responsavel: '', tipoOutro: '' });
+  const [regras, setRegras] = useState(() => [regraVazia()]);
+  const setRegra = (i, patch) => { setMsg(''); setRegras((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r))); };
   const [aplicando, setAplicando] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -124,20 +127,24 @@ export default function ClassificarPendencias({ clienteAtualId }) {
 
   async function aplicar() {
     if (!selecionados.length) { setMsg('Marque ao menos 1 item.'); return; }
-    if (!tipo || !responsavel) { setMsg('Escolha o Tipo e o Responsável.'); return; }
+    if (regras.some((r) => !r.tipo || !r.responsavel)) { setMsg('Escolha Tipo e Responsável em todas as linhas (ou remova a linha vazia).'); return; }
+    const repetido = regras.find((r, i) => r.tipo !== 'outro' && regras.findIndex((x) => x.tipo === r.tipo) !== i);
+    if (repetido) { setMsg(`O tipo "${PENDENCIA_TIPOS.find((t) => t.value === repetido.tipo)?.label}" aparece duas vezes.`); return; }
     const grupos = agruparParaPendencia(selecionados);
-    const tipoLabel = PENDENCIA_TIPOS.find((t) => t.value === tipo)?.label;
-    const respLabel = PENDENCIA_RESPONSAVEIS.find((r) => r.value === responsavel)?.label;
-    if (!window.confirm(`Criar ${grupos.length} pendência(s) "${tipoLabel} / ${respLabel}" para ${selecionados.length} item(ns)? O detalhe fica para completar depois no item da visita.`)) return;
+    const resumo = regras.map((r) => `• ${r.tipo === 'outro' ? (r.tipoOutro.trim() || 'Outro') : PENDENCIA_TIPOS.find((t) => t.value === r.tipo)?.label} / ${PENDENCIA_RESPONSAVEIS.find((x) => x.value === r.responsavel)?.label}`).join('\n');
+    const total = grupos.length * regras.length;
+    if (!window.confirm(`Criar ${total} pendência(s) para ${selecionados.length} item(ns):\n${resumo}\n\nO detalhe fica para completar depois no item da visita.`)) return;
     setAplicando(true); setMsg('');
     let ok = 0;
     try {
       for (const g of grupos) {
-        await salvarPendencia({
-          clienteId: g.clienteId, tipo, tipoOutro: tipo === 'outro' ? 'A definir' : '', responsavel,
-          detalhe: '', materiais: [], desde: g.desde, previsao: '', origemRvtId: g.rvtId, alvos: g.alvos,
-        });
-        ok += 1;
+        for (const r of regras) {
+          await salvarPendencia({
+            clienteId: g.clienteId, tipo: r.tipo, tipoOutro: r.tipo === 'outro' ? (r.tipoOutro.trim() || 'A definir') : '', responsavel: r.responsavel,
+            detalhe: '', materiais: [], desde: g.desde, previsao: '', origemRvtId: g.rvtId, alvos: g.alvos,
+          });
+          ok += 1;
+        }
       }
       setMsg(`${ok} pendência(s) criada(s) para ${selecionados.length} item(ns). Complete o detalhe no card do item, em Atendimentos → Visitas.`);
       setMarcados(new Set());
@@ -155,7 +162,8 @@ export default function ClassificarPendencias({ clienteAtualId }) {
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Classificar pendências antigas</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Tela temporária. Itens em Aguardando/Andamento que ainda não têm pendência: marque, escolha Tipo e Responsável e aplique.
+          Tela temporária. Itens em Aguardando/Andamento que ainda não têm pendência: marque, diga o que eles estão aguardando
+          (pode ser mais de um tipo, cada um com seu responsável) e aplique.
           O "Desde" vem da data da visita. O detalhe fica para completar depois, no card do item em Atendimentos → Visitas.
         </p>
         <p style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 6 }}>
@@ -188,20 +196,36 @@ export default function ClassificarPendencias({ clienteAtualId }) {
         </div>
       </div>
 
-      <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid #8B2F2F', borderRadius: 0 }}>
-        <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>{selecionados.length} selecionado(s)</strong>
-        <select style={inputStyle} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo">
-          <option value="">Tipo...</option>
-          {PENDENCIA_TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
-        <select style={inputStyle} value={responsavel} onChange={(e) => setResponsavel(e.target.value)} aria-label="Responsável">
-          <option value="">Responsável...</option>
-          {PENDENCIA_RESPONSAVEIS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-        </select>
-        <span style={{ flex: 1 }} />
-        <button type="button" onClick={aplicar} disabled={aplicando} style={{ ...btnStyle, opacity: aplicando ? 0.7 : 1 }}>
-          {aplicando ? 'Aplicando...' : `Aplicar aos ${selecionados.length}`}
-        </button>
+      <div style={{ display: 'grid', gap: 8, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid #8B2F2F', borderRadius: 0 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+          <strong>{selecionados.length} selecionado(s)</strong>
+          <span style={{ color: 'var(--text-secondary)' }}> · o que esses itens estão aguardando (uma linha por tipo):</span>
+        </div>
+        {regras.map((r, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select style={{ ...inputStyle, flex: '1 1 170px' }} value={r.tipo} onChange={(e) => setRegra(i, { tipo: e.target.value })} aria-label={`Tipo ${i + 1}`}>
+              <option value="">Tipo...</option>
+              {PENDENCIA_TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <select style={{ ...inputStyle, flex: '1 1 130px' }} value={r.responsavel} onChange={(e) => setRegra(i, { responsavel: e.target.value })} aria-label={`Responsável ${i + 1}`}>
+              <option value="">Responsável...</option>
+              {PENDENCIA_RESPONSAVEIS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+            </select>
+            {r.tipo === 'outro' && (
+              <input style={{ ...inputStyle, flex: '1 1 170px' }} value={r.tipoOutro} onChange={(e) => setRegra(i, { tipoOutro: e.target.value })} placeholder="Qual? (opcional)" />
+            )}
+            {regras.length > 1 && (
+              <button type="button" onClick={() => setRegras((rs) => rs.filter((_, j) => j !== i))} style={smallBtnStyle} aria-label={`Remover linha ${i + 1}`}>✕</button>
+            )}
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" onClick={() => setRegras((rs) => [...rs, regraVazia()])} style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>+ Outro tipo</button>
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={aplicar} disabled={aplicando} style={{ ...btnStyle, opacity: aplicando ? 0.7 : 1 }}>
+            {aplicando ? 'Aplicando...' : `Aplicar aos ${selecionados.length}`}
+          </button>
+        </div>
       </div>
       {msg && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</p>}
 

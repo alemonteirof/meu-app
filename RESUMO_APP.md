@@ -173,7 +173,9 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   `classificar`, item no `NAV_ITEMS` só no papel admin + guard `navRole === 'admin'`): itens abertos
   sem nenhuma pendência de TODOS os clientes visíveis (`listItensSemPendencia`: corretivas +
   avulsos `manutencao_nao_cadastrada` corretiva). Filtros cliente (começa no atual)/painel/período
-  da visita, "marcar todos", barra fixa Tipo+Responsável → "Aplicar". `agruparParaPendencia`: itens
+  da visita, "marcar todos", barra com N linhas Tipo+Responsável ("+ Outro tipo"; um item pode
+  aguardar várias coisas) → "Aplicar" cria 1 pendência por linha em cada grupo (tipo repetido é
+  recusado, exceto "Outro"). `agruparParaPendencia`: itens
   da mesma visita com mesma falha+descritivo viram 1 pendência compartilhada; o resto, 1 cada.
   `desde` = data da 1ª visita do item (fallback `data_registro`). Pendência nasce sem detalhe
   (completar no card em Visitas); contador `contarPendenciasSemDetalhe`. **Remover** (NAV_ITEMS +
