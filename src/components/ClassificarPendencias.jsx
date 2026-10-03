@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   listItensSemPendencia, contarPendenciasSemDetalhe, salvarPendencia,
+  listPendenciasDetalhadas, listPendencias, listNomesMateriais, listVisitas,
   PENDENCIA_TIPOS, PENDENCIA_RESPONSAVEIS,
 } from '../supabaseAdapter';
+import { PendenciaForm, pendenciaSemDetalhe, tipoPendenciaLabel, responsavelLabel } from './Pendencias';
+import { localDaPendencia } from './PendenciasIndicador';
 
-// TELA TEMPORÁRIA (só admin) — classificação retroativa dos itens antigos em Aguardando/
-// Andamento que ainda não têm pendência. Marca vários → aplica Tipo + Responsável de uma vez;
-// cada pendência nasce "sem detalhe" e é completada depois no card do item em Visitas.
-// Remover (item 'classificar' do NAV_ITEMS em App.jsx + este arquivo) quando a lista zerar.
+// TELA TEMPORÁRIA (só admin) — 3 abas: Classificar (itens antigos em Aguardando/Andamento sem
+// pendência → Tipo(s) + Responsável em massa), Completar detalhe (pendências "sem detalhe") e
+// Reenviar RVTs (visitas cujo RVT agora mostra pendências, p/ imprimir e mandar de novo ao cliente).
+// REMOVER INTEIRA quando tudo estiver classificado: item 'classificar' de NAV_ITEMS e
+// NAV_KEYS_BY_ROLE.admin + render da view em App.jsx + este arquivo (+ exports
+// visitaTemPendencias/VisitaPrintView em AtendimentosNovo e listItensSemPendencia/
+// contarPendenciasSemDetalhe no adapter, se não forem usados em outro lugar).
 
 const inputStyle = {
   padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)',
@@ -69,7 +75,221 @@ function LinhaItem({ it, marcado, onToggle }) {
   );
 }
 
-export default function ClassificarPendencias({ clienteAtualId }) {
+const tabBtn = (ativo) => ({
+  padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+  background: ativo ? '#8B2F2F' : 'var(--surface)', color: ativo ? '#fff' : 'var(--text-primary)',
+});
+
+export default function ClassificarPendencias({ clienteAtualId, client }) {
+  const [aba, setAba] = useState('classificar');
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" style={tabBtn(aba === 'classificar')} onClick={() => setAba('classificar')}>Classificar</button>
+        <button type="button" style={tabBtn(aba === 'completar')} onClick={() => setAba('completar')}>Completar detalhe</button>
+        <button type="button" style={tabBtn(aba === 'reenviar')} onClick={() => setAba('reenviar')}>Reenviar RVTs</button>
+      </div>
+      {aba === 'classificar' && <AbaClassificar clienteAtualId={clienteAtualId} />}
+      {aba === 'completar' && <AbaCompletar clientId={clienteAtualId} client={client} />}
+      {aba === 'reenviar' && <AbaReenviar clientId={clienteAtualId} client={client} />}
+    </div>
+  );
+}
+
+function TextoLongo({ texto, limite = 220 }) {
+  const [verTudo, setVerTudo] = useState(false);
+  if (!texto) return null;
+  const longo = texto.length > limite;
+  return (
+    <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12.5, color: 'var(--text-primary)' }}>
+      {longo && !verTudo ? `${texto.slice(0, limite)}…` : texto}
+      {longo && (
+        <button type="button" onClick={() => setVerTudo((v) => !v)} style={{ ...smallBtnStyle, border: 'none', padding: '0 4px', color: '#8B2F2F' }}>
+          {verTudo ? 'ver menos' : 'ver tudo'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Aba "Completar detalhe": pendências abertas sem detalhe do cliente aberto, com o contexto do
+    item (falha + descritivo antigo, onde o técnico escreveu em texto livre o que faltava). */
+function AbaCompletar({ clientId, client }) {
+  const [lista, setLista] = useState([]);
+  const [nomes, setNomes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [l, n] = await Promise.all([listPendenciasDetalhadas(clientId), listNomesMateriais()]);
+      setLista(l); setNomes(n);
+    } catch (e) {
+      console.error(e);
+      setMsg('Não foi possível carregar as pendências.');
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const semDetalhe = lista.filter((p) => !p.baixaEm && pendenciaSemDetalhe(p));
+
+  async function salvar(p) {
+    setSaving(true); setMsg('');
+    try {
+      await salvarPendencia({ ...p, clienteId: clientId });
+      setEditId(null);
+      setMsg('Detalhe salvo. A pendência continua no item da visita.');
+      await carregar();
+    } catch (e) {
+      console.error(e);
+      setMsg('Erro ao salvar. Tente de novo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Completar detalhe</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Pendências de {client?.name || 'este cliente'} classificadas e ainda sem detalhe. Ao salvar, o detalhe fica gravado
+          na pendência do item — aparece no card da visita, no RVT e no Indicador.
+        </p>
+        <p style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 6 }}><strong>{semDetalhe.length}</strong> sem detalhe</p>
+      </div>
+      {msg && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</p>}
+      {loading && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Carregando...</p>}
+      {!loading && semDetalhe.length === 0 && (
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma pendência sem detalhe.</p>
+      )}
+      {semDetalhe.map((p) => {
+        const it = p.itens?.[0] || {};
+        return (
+          <div key={p.id} style={{ border: '1px solid var(--border)', borderLeft: '4px solid #8B2F2F', borderRadius: 0, padding: '10px 12px', background: 'var(--surface)', display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13, color: 'var(--text-primary)' }}>
+              <strong style={{ wordBreak: 'break-word' }}>{localDaPendencia(p)}</strong>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Visita {formatDateBR(p.origemData || p.desde)}</span>
+            </div>
+            <div style={{ fontSize: 13 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{tipoPendenciaLabel(p)}</strong>
+              <span style={{ color: 'var(--text-secondary)' }}> · {responsavelLabel(p)} · desde {formatDateBR(p.desde)}</span>
+            </div>
+            <TextoLongo texto={[it.falha && `Falha: ${it.falha}`, it.descritivo && `Descritivo: ${it.descritivo}`].filter(Boolean).join('\n')} />
+            {editId === p.id ? (
+              <PendenciaForm inicial={{ ...p }} nomesMateriais={nomes} saving={saving} onSave={salvar} onCancel={() => setEditId(null)} />
+            ) : (
+              <div>
+                <button type="button" onClick={() => setEditId(p.id)} disabled={!!editId} style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>Completar</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Aba "Reenviar RVTs": visitas do cliente aberto cujo RVT agora mostra pendências.
+    Reaproveita o VisitaPrintView de Atendimentos (import dinâmico — AtendimentosNovo é lazy). */
+function AbaReenviar({ clientId, client }) {
+  const [mod, setMod] = useState(null);
+  const [visitas, setVisitas] = useState([]);
+  const [pendencias, setPendencias] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
+  const [marcadas, setMarcadas] = useState(() => new Set());
+  const [imprimir, setImprimir] = useState(null); // array de visitas | null
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [m, v, p] = await Promise.all([import('../AtendimentosNovo'), listVisitas(clientId), listPendencias(clientId)]);
+      setMod(m); setVisitas(v); setPendencias(p);
+    } catch (e) {
+      console.error(e);
+      setMsg('Não foi possível carregar as visitas.');
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const comPendencia = useMemo(() => {
+    if (!mod) return [];
+    return visitas
+      .map((v) => {
+        const pend = mod.visitaTemPendencias(v, pendencias);
+        const unicas = [...new Map(pend.map((p) => [p.id, p])).values()];
+        return { v, total: unicas.length, semDetalhe: unicas.filter(pendenciaSemDetalhe).length };
+      })
+      .filter((x) => x.total > 0)
+      .sort((a, b) => a.v.data_visita.localeCompare(b.v.data_visita));
+  }, [mod, visitas, pendencias]);
+
+  if (imprimir && mod) {
+    const Print = mod.VisitaPrintView;
+    return <Print visitas={imprimir} client={client} pendencias={pendencias} podeAssinarTecnico onBack={() => { setImprimir(null); carregar(); }} />;
+  }
+
+  const selecionadas = comPendencia.filter((x) => marcadas.has(x.v.id)).map((x) => x.v);
+  const todas = comPendencia.length > 0 && selecionadas.length === comPendencia.length;
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Reenviar RVTs</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Visitas de {client?.name || 'este cliente'} cujo RVT agora mostra o bloco "Pendências para conclusão". Abra uma por uma
+          (RVT individual, com assinaturas) ou marque várias e gere um PDF só.
+        </p>
+      </div>
+      {msg && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</p>}
+      {loading && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Carregando...</p>}
+      {!loading && comPendencia.length === 0 && (
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma visita com pendência classificada ainda.</p>
+      )}
+      {comPendencia.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={todas} onChange={() => setMarcadas(todas ? new Set() : new Set(comPendencia.map((x) => x.v.id)))} />
+            Marcar todas ({comPendencia.length})
+          </label>
+          <span style={{ flex: 1 }} />
+          <button type="button" disabled={!selecionadas.length} onClick={() => setImprimir(selecionadas)} style={{ ...btnStyle, opacity: selecionadas.length ? 1 : 0.6 }}>
+            Imprimir {selecionadas.length || ''} juntas
+          </button>
+        </div>
+      )}
+      <div style={{ display: 'grid', gap: 8 }}>
+        {comPendencia.map(({ v, total, semDetalhe }) => (
+          <div key={v.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', background: 'var(--surface)', display: 'grid', gridTemplateColumns: '24px minmax(0,1fr) auto', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={marcadas.has(v.id)} onChange={() => setMarcadas((prev) => {
+              const next = new Set(prev);
+              if (next.has(v.id)) next.delete(v.id); else next.add(v.id);
+              return next;
+            })} />
+            <div style={{ minWidth: 0, fontSize: 13, color: 'var(--text-primary)' }}>
+              <strong>{formatDateBR(v.data_visita)}</strong> · {v.tecnico || 'sem técnico'}
+              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                {total} pendência(s)
+                {semDetalhe > 0 && <span style={{ color: 'var(--status-warn, #b07000)' }}> · {semDetalhe} sem detalhe (complete antes de enviar)</span>}
+              </div>
+            </div>
+            <button type="button" onClick={() => setImprimir([v])} style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>Ver / Imprimir</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AbaClassificar({ clienteAtualId }) {
   const [itens, setItens] = useState([]);
   const [semDetalhe, setSemDetalhe] = useState(0);
   const [loading, setLoading] = useState(true);

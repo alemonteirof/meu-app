@@ -1435,7 +1435,14 @@ function RvtSignatureBlock({ assinaturaCliente, assinaturaTecnico, tecnicos }) {
 /** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, print-area
     etc.) que o RVT antigo usava, então imprime/exporta exatamente igual. Aceita 1 visita (impressão
     individual) ou várias (impressão de período, agrupadas por dia dentro do mesmo documento). */
-function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false, pendencias = [] }) {
+/** Usado pela tela temporária "Classificar pendências" (aba Reenviar RVTs): a visita tem algum
+    item não resolvido com pendência vigente no dia dela — ou seja, o RVT impresso mostra pendências. */
+export function visitaTemPendencias(v, pendencias) {
+  return itemsFromVisita(v).filter((it) => it.status !== 'Resolvido')
+    .flatMap((it) => pendenciasVigentesNoDia(pendencias, it.pendenciaAlvo, v.data_visita));
+}
+
+export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false, pendencias = [] }) {
   const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
   const isPeriodo = dias.length > 1;
   // Itens da visita + pendências vigentes no dia dela (só itens ainda não resolvidos).

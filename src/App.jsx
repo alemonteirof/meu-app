@@ -3566,7 +3566,7 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
         )}
 
         {view === 'classificar' && navRole === 'admin' && (
-          <ClassificarPendencias clienteAtualId={client.id} />
+          <ClassificarPendencias clienteAtualId={client.id} client={client} />
         )}
 
         {view === 'settings' && (

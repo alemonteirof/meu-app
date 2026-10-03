@@ -177,9 +177,18 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   aguardar várias coisas) → "Aplicar" cria 1 pendência por linha em cada grupo (tipo repetido é
   recusado, exceto "Outro"). `agruparParaPendencia`: itens
   da mesma visita com mesma falha+descritivo viram 1 pendência compartilhada; o resto, 1 cada.
-  `desde` = data da 1ª visita do item (fallback `data_registro`). Pendência nasce sem detalhe
-  (completar no card em Visitas); contador `contarPendenciasSemDetalhe`. **Remover** (NAV_ITEMS +
-  NAV_KEYS_BY_ROLE.admin + render em App.jsx + o arquivo) quando a lista zerar.
+  `desde` = data da 1ª visita do item (fallback `data_registro`). Pendência nasce sem detalhe;
+  contador `contarPendenciasSemDetalhe`. Confirmação do "Aplicar" é inline (não `window.confirm`:
+  o navegador embutido do app Claude não mostra a caixa e devolve Cancelar).
+  3 abas: **Classificar** · **Completar detalhe** (pendências sem detalhe do cliente aberto, com
+  falha+descritivo antigo, `PendenciaForm` inline — grava na própria pendência, que continua no
+  item da visita) · **Reenviar RVTs** (visitas cujo RVT agora mostra pendências —
+  `visitaTemPendencias` exportado de AtendimentosNovo; "Ver / Imprimir" individual ou "Imprimir
+  juntas" via `VisitaPrintView` exportado, import dinâmico; avisa "N sem detalhe").
+  **REMOVER A TELA INTEIRA (as 3 abas) quando tudo estiver classificado** — combinado com o
+  Alexandre em 2026-10-02: NAV_ITEMS + NAV_KEYS_BY_ROLE.admin + render em App.jsx + o arquivo +
+  exports só usados por ela (`visitaTemPendencias`, export de `VisitaPrintView`,
+  `listItensSemPendencia`, `contarPendenciasSemDetalhe`).
 - Datas "hoje" das pendências usam data LOCAL (`hojeLocal`/`hojeISO`), não `toISOString` (UTC).
 
 ### `rvt_itens` (join Visita ↔ item)

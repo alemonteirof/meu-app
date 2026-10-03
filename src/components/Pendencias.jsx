@@ -56,7 +56,7 @@ export function pendenciasDoAlvo(lista, alvo) {
 
 const novoMaterial = () => ({ item: '', qtd: '', unidade: 'un', especificacao: '', marca: '', obs: '' });
 
-function PendenciaForm({ inicial, sugestoes, nomesMateriais, saving, onSave, onCancel }) {
+export function PendenciaForm({ inicial, sugestoes, nomesMateriais, saving, onSave, onCancel }) {
   const [f, setF] = useState(() => ({
     ...inicial,
     materiais: inicial.materiais?.length ? inicial.materiais.map((m) => ({ ...novoMaterial(), ...m, qtd: m.qtd ?? '' })) : [novoMaterial()],
