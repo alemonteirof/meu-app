@@ -1,5 +1,5 @@
 import {
-  loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, deleteAtendimento, updateInspecao, deleteInspecao,
+  loadClientData, saveClientData, createVisita, createAtendimento, createInspecao, updateAtendimento, pendenciasQueFechariam, darBaixaPendencias, deleteAtendimento, updateInspecao, deleteInspecao,
   functionalCategoriesForType, PAPEL_SINAL_OPTIONS, CATEGORIAS_COM_PAPEL_SINAL, FUNCTIONAL_CATEGORY_MAP, PAPEL_SINAL_MAP, getMetodoTeste,
   FUNCTIONAL_CATEGORIES_SAIDA, SIRENE_MODELOS_POR_MARCA,
   COMBATE_CONJUNTO_TIPOS, COMBATE_AGUA_TIPOS, COMBATE_GAS_AGENTES, conjuntoSubitemInfo,
@@ -2985,10 +2985,21 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
       (async () => {
         try {
           if (initialId.startsWith('novo-at-')) {
-            await updateAtendimento(initialId.replace('novo-at-', ''), {
-              falha: values.falha, status: (values.status || 'Aguardando').toLowerCase(),
+            const atendimentoId = initialId.replace('novo-at-', '');
+            const novoStatus = (values.status || 'Aguardando').toLowerCase();
+            // Resolvendo agora com pendência aberta: pergunta se dá baixa junto (OK = baixa).
+            let baixaIds = [];
+            if (novoStatus === 'resolvido' && (modal.initial.status || '').toLowerCase() !== 'resolvido') {
+              const fechariam = await pendenciasQueFechariam({ atendimentoId });
+              if (fechariam.length && window.confirm(`Esta corretiva tem ${fechariam.length} pendência(s) aberta(s). Dar baixa nelas junto com a resolução?\n\nOK = resolver e dar baixa · Cancelar = resolver sem baixa`)) {
+                baixaIds = fechariam.map((p) => p.id);
+              }
+            }
+            await updateAtendimento(atendimentoId, {
+              falha: values.falha, status: novoStatus,
               descritivo: values.descritivo, fotos: values.fotos,
             });
+            if (baixaIds.length) await darBaixaPendencias(baixaIds, { obs: 'Baixa junto com a resolução da corretiva' });
           } else if (initialId.startsWith('novo-insp-')) {
             await updateInspecao(initialId.replace('novo-insp-', ''), {
               falha: values.falha, observacoes: values.descritivo,

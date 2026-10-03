@@ -1543,6 +1543,10 @@ export async function deleteVisita(rvtId) {
     atendimentosParaRecalcular = [...new Set((intervs || []).map((i) => i.atendimento_id))].filter((id) => !atendimentoIds.includes(id));
   }
 
+  // Pendências que receberam baixa junto com uma resolução feita nesta visita voltam a ficar
+  // abertas (o status da corretiva também é revertido logo abaixo).
+  await supabase.from('pendencias').update({ baixa_em: null }).eq('baixa_rvt_id', rvtId);
+
   if (atendimentoIds.length) await supabase.from('atendimentos').delete().in('id', atendimentoIds);
   if (inspecaoIds.length) await supabase.from('inspecoes').delete().in('id', inspecaoIds);
   await supabase.from('rvt_itens').delete().eq('rvt_id', rvtId);
@@ -1555,4 +1559,147 @@ export async function deleteVisita(rvtId) {
   for (const id of atendimentosParaRecalcular) {
     await recalcularStatusAtendimento(id);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pendências para conclusão (migracao_pendencias.sql)
+// 1 pendência → N alvos (corretivas e/ou item avulso do RVT). Pertence ao item, não ao RVT:
+// o "Desde" é gravado uma vez e nunca muda quando o item reaparece em outra visita.
+// ---------------------------------------------------------------------------
+
+export const PENDENCIA_TIPOS = [
+  { value: 'material', label: 'Material' },
+  { value: 'liberacao', label: 'Liberação' },
+  { value: 'parada_maquina', label: 'Parada de máquina' },
+  { value: 'condicao_seguranca', label: 'Condição de segurança' },
+  { value: 'decisao_cliente', label: 'Decisão do cliente' },
+  { value: 'outro', label: 'Outro' },
+];
+export const PENDENCIA_RESPONSAVEIS = [
+  { value: 'cliente', label: 'Cliente' },
+  { value: 'maj', label: 'MAJ' },
+];
+export const MATERIAL_UNIDADES = ['un', 'm', 'pç', 'cx', 'par', 'jogo', 'rolo', 'kg', 'L'];
+
+function rowToPendencia(r) {
+  return {
+    id: r.id, clienteId: r.cliente_id, tipo: r.tipo, tipoOutro: r.tipo_outro || '',
+    responsavel: r.responsavel, detalhe: r.detalhe || '', materiais: Array.isArray(r.materiais) ? r.materiais : [],
+    desde: r.desde || '', previsao: r.previsao || '', origemRvtId: r.origem_rvt_id || null,
+    baixaEm: r.baixa_em || '', baixaObs: r.baixa_obs || '', baixaRvtId: r.baixa_rvt_id || null,
+    baixaPorNome: r.baixa_por_nome || r.baixa_por_email || '',
+    alvos: (r.pendencia_alvos || []).map((a) => ({ id: a.id, atendimentoId: a.atendimento_id || null, rvtItemId: a.rvt_item_id || null })),
+  };
+}
+
+/** Todas as pendências (abertas e com baixa) de um cliente, com os alvos. */
+export async function listPendencias(clienteId) {
+  const { data, error } = await supabase
+    .from('pendencias')
+    .select('*, pendencia_alvos(id, atendimento_id, rvt_item_id)')
+    .eq('cliente_id', clienteId)
+    .order('desde', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(rowToPendencia);
+}
+
+/** Nomes de material já usados em qualquer pendência visível (autocomplete do campo Item). */
+export async function listNomesMateriais() {
+  const { data, error } = await supabase.from('pendencias').select('materiais').eq('tipo', 'material');
+  if (error) return [];
+  const nomes = new Map();
+  for (const r of data || []) {
+    for (const m of r.materiais || []) {
+      const nome = (m?.item || '').trim();
+      if (nome && !nomes.has(nome.toLowerCase())) nomes.set(nome.toLowerCase(), nome);
+    }
+  }
+  return [...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/** Cria ou atualiza 1 pendência + sincroniza os alvos no padrão seguro:
+    upsert da pendência, insere só os alvos novos e remove só os que saíram da lista. */
+export async function salvarPendencia(p) {
+  const materiais = p.tipo === 'material'
+    ? (p.materiais || []).filter((m) => (m.item || '').trim()).map((m) => ({
+      item: m.item.trim(), qtd: m.qtd === '' || m.qtd == null ? null : Number(m.qtd), unidade: m.unidade || 'un',
+      especificacao: (m.especificacao || '').trim(), marca: (m.marca || '').trim(), obs: (m.obs || '').trim(),
+    }))
+    : [];
+  const row = {
+    cliente_id: p.clienteId, tipo: p.tipo, tipo_outro: p.tipo === 'outro' ? (p.tipoOutro || '').trim() || null : null,
+    responsavel: p.responsavel, detalhe: p.tipo === 'material' ? null : (p.detalhe || '').trim() || null,
+    materiais, desde: p.desde || new Date().toISOString().slice(0, 10), previsao: p.previsao || null,
+    origem_rvt_id: p.origemRvtId || null,
+  };
+  const { data: salvo, error } = p.id
+    ? await supabase.from('pendencias').update(row).eq('id', p.id).select().single()
+    : await supabase.from('pendencias').insert(row).select().single();
+  if (error) throw error;
+
+  const desejados = (p.alvos || []).map((a) => ({ atendimentoId: a.atendimentoId || null, rvtItemId: a.rvtItemId || null }));
+  const chave = (a) => (a.atendimentoId ? `at:${a.atendimentoId}` : `ri:${a.rvtItemId}`);
+  const { data: atuais, error: errAtuais } = await supabase.from('pendencia_alvos')
+    .select('id, atendimento_id, rvt_item_id').eq('pendencia_id', salvo.id);
+  if (errAtuais) throw errAtuais;
+  const atuaisPorChave = new Map((atuais || []).map((a) => [chave({ atendimentoId: a.atendimento_id, rvtItemId: a.rvt_item_id }), a]));
+  const desejadasChaves = new Set(desejados.map(chave));
+
+  const novos = desejados.filter((a) => !atuaisPorChave.has(chave(a)));
+  if (novos.length) {
+    const { error: e } = await supabase.from('pendencia_alvos').insert(novos.map((a) => ({
+      pendencia_id: salvo.id, cliente_id: p.clienteId, atendimento_id: a.atendimentoId, rvt_item_id: a.rvtItemId,
+    })));
+    if (e) throw e;
+  }
+  // Remoção por último: se tudo saísse, o trigger apagaria a pendência — só remove o que saiu.
+  const saiu = [...atuaisPorChave.entries()].filter(([k]) => !desejadasChaves.has(k)).map(([, a]) => a.id);
+  if (saiu.length && desejadasChaves.size > 0) {
+    const { error: e } = await supabase.from('pendencia_alvos').delete().in('id', saiu);
+    if (e) throw e;
+  }
+  return salvo.id;
+}
+
+/** Remove uma pendência cadastrada por engano (não é a baixa — baixa usa darBaixaPendencias). */
+export async function excluirPendencia(id) {
+  const { error } = await supabase.from('pendencias').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Dá baixa (resolvida) em 1+ pendências. Quem deu baixa é carimbado pelo servidor. */
+export async function darBaixaPendencias(ids, { data, obs, rvtId } = {}) {
+  if (!ids?.length) return;
+  const { error } = await supabase.from('pendencias').update({
+    baixa_em: data || new Date().toISOString().slice(0, 10), baixa_obs: (obs || '').trim() || null, baixa_rvt_id: rvtId || null,
+  }).in('id', ids);
+  if (error) throw error;
+}
+
+/** Pendências abertas ligadas a um alvo que ficariam sem nenhum item aberto se este alvo
+    fosse resolvido agora (pendência compartilhada com outro item ainda aberto não entra).
+    Consulta o banco (fonte de verdade do status de cada alvo). Erro → [] pra nunca travar
+    a resolução da corretiva. */
+export async function pendenciasQueFechariam({ atendimentoId, rvtItemId }) {
+  const col = atendimentoId ? 'atendimento_id' : 'rvt_item_id';
+  const alvoId = atendimentoId || rvtItemId;
+  if (!alvoId) return [];
+  const { data: links, error: e1 } = await supabase.from('pendencia_alvos').select('pendencia_id').eq(col, alvoId);
+  if (e1 || !links?.length) return [];
+  const { data, error } = await supabase.from('pendencias')
+    .select('*, pendencia_alvos(id, atendimento_id, rvt_item_id, atendimentos(status), rvt_itens(outro_atividade_dados))')
+    .in('id', [...new Set(links.map((l) => l.pendencia_id))])
+    .is('baixa_em', null);
+  if (error) return [];
+  const ehEste = (a) => (atendimentoId ? a.atendimento_id === atendimentoId : a.rvt_item_id === rvtItemId);
+  const resolvido = (a) => a.atendimentos?.status === 'resolvido' || a.rvt_itens?.outro_atividade_dados?.status === 'resolvido';
+  return (data || [])
+    .filter((p) => (p.pendencia_alvos || []).every((a) => ehEste(a) || resolvido(a)))
+    .map(rowToPendencia);
+}
+
+/** Desfaz a baixa (pendência volta a ficar aberta). */
+export async function reabrirPendencia(id) {
+  const { error } = await supabase.from('pendencias').update({ baixa_em: null }).eq('id', id);
+  if (error) throw error;
 }

@@ -9,8 +9,10 @@ import {
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
   salvarAssinaturaVisita, salvarAssinaturaTecnicoVisita, listAssinaturaAuditoria,
   getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
+  listPendencias, listNomesMateriais, pendenciasQueFechariam, darBaixaPendencias,
 } from './supabaseAdapter';
 import MajSignatureField from './components/MajSignatureField';
+import { PendenciasItem, usePerguntaBaixa } from './components/Pendencias';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
 import { compressImageFile, assinaturaDeImagem } from './lib/imagens';
 
@@ -961,9 +963,11 @@ function itemsFromVisita(v) {
       const statusOutro = (atividade === 'manutencao_nao_cadastrada' && atividadeDados.tipoManutencao === 'corretiva' && atividadeDados.status)
         ? atividadeDados.status.charAt(0).toUpperCase() + atividadeDados.status.slice(1)
         : 'Resolvido';
+      const corretivaAvulsa = atividade === 'manutencao_nao_cadastrada' && atividadeDados.tipoManutencao === 'corretiva';
       return { id: it.id, tipo: 'outro', etiqueta: ATIVIDADE_LABELS[atividade] || 'Outro', status: statusOutro,
         descritivo: it.outro_descricao || '', fotos: it.outro_fotos || [],
-        atividade, atividadeDados };
+        atividade, atividadeDados,
+        pendenciaAlvo: corretivaAvulsa ? { rvtItemId: it.id } : null, alvoAberto: corretivaAvulsa && statusOutro !== 'Resolvido' };
     }
     if (it.atendimentos) {
       const a = it.atendimentos;
@@ -976,6 +980,7 @@ function itemsFromVisita(v) {
         falha: a.falha || '', descritivo: a.descritivo || '',
         status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : '',
         fotos: a.fotos || [],
+        pendenciaAlvo: { atendimentoId: a.id }, alvoAberto: a.status !== 'resolvido',
       };
     }
     if (it.inspecoes) {
@@ -1004,6 +1009,7 @@ function itemsFromVisita(v) {
         descritivo: interv.descricao || '', descricao: interv.descricao || '',
         status: interv.status_resultante === 'resolvido' ? 'Resolvido' : 'Andamento',
         fotos: interv.fotos || [],
+        pendenciaAlvo: a.id ? { atendimentoId: a.id } : null, alvoAberto: !!a.id && a.status !== 'resolvido',
       };
     }
     return null;
@@ -1828,7 +1834,7 @@ function EditItemForm({ editForm, setEditForm, onSave, onCancel, onConvert, devi
     a lista de itens, e nesse modo expandido dá pra editar item por item. Em visitas
     grandes (mais de 8 itens, mais de 1 painel/laço envolvido), a lista ganha busca e
     agrupamento por Painel/Laço — mesmo raciocínio já usado no Relatório de Inspeções. */
-function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, onConvertOutro, deviceOptions, savingEdit, reportMode = false }) {
+function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, onDelete, onVerImprimir, onReopen, editingItemId, editForm, setEditForm, onStartEdit, onSaveEdit, onCancelEdit, onConvertOutro, deviceOptions, savingEdit, reportMode = false, pendCtx }) {
   const itens = itemsFromVisita(visita);
   const nManutencao = itens.filter((it) => it.tipo === 'atendimento').length;
   const nInspecao = itens.filter((it) => it.tipo === 'inspecao').length;
@@ -1866,8 +1872,21 @@ function VisitaCard({ visita, panelOptions, canEdit, expanded, onToggleExpand, o
         {editingItemId === it.id && (
           <EditItemForm editForm={editForm} setEditForm={setEditForm} onSave={onSaveEdit} onCancel={onCancelEdit} onConvert={onConvertOutro} deviceOptions={deviceOptions} saving={savingEdit} />
         )}
+        {it.pendenciaAlvo && (
+          <PendenciasItem ctx={pendCtx} alvo={it.pendenciaAlvo} aberto={it.alvoAberto} canEdit={canEdit}
+            dataPadrao={visita.data_visita} rvtId={visita.id} sugestoes={sugestoesDoItem(it)} />
+        )}
       </div>
     );
+  }
+
+  // Outras corretivas abertas desta visita com a mesma falha/descritivo (ex.: 5 sirenes do
+  // mesmo diagnóstico) — oferecidas pra pendência compartilhada ao cadastrar.
+  function sugestoesDoItem(it) {
+    if (it.tipo !== 'atendimento' || !it.alvoAberto) return [];
+    return itens
+      .filter((o) => o.id !== it.id && o.tipo === 'atendimento' && o.alvoAberto && o.falha === it.falha && o.descritivo === it.descritivo)
+      .map((o) => ({ alvo: o.pendenciaAlvo, label: o.etiqueta }));
   }
 
   return (
@@ -2221,6 +2240,10 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (!intervencaoForm?.descricao?.trim()) { setMsg('Descreva o que foi feito.'); return; }
     const p = pendentes.find((x) => x.id === intervencaoAbertaId);
     if (!p) return;
+    const pergunta = intervencaoForm.statusResultante === 'resolvido'
+      ? await perguntarAntesDeResolver({ atendimentoId: p.id })
+      : { decisao: 'sem', ids: [] };
+    if (pergunta.decisao === 'voltar') return;
     setSavingIntervencao(true);
     try {
       await registrarIntervencaoAtendimento({
@@ -2228,6 +2251,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         tecnico: visita.tecnico, statusResultante: intervencaoForm.statusResultante,
         descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
       });
+      if (pergunta.decisao === 'baixa') await baixaJuntoComResolucao(pergunta.ids, { data: visita.data_visita, rvtId: visita.id });
       setItensVisita((prev) => [...prev, {
         tipo: 'intervencao', falha: p.falha, dispositivoLabel: labelDaPendencia(p),
         descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
@@ -2466,6 +2490,35 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }, [clientId]);
   useEffect(() => { refreshVisitas(); }, [refreshVisitas]);
 
+  // ---- Pendências para conclusão (o que cada item aberto está aguardando) ----
+  const [pendenciasLista, setPendenciasLista] = useState([]);
+  const [nomesMateriais, setNomesMateriais] = useState([]);
+  const recarregarPendencias = useCallback(async () => {
+    if (!clientId) return;
+    try {
+      const [lista, nomes] = await Promise.all([listPendencias(clientId), listNomesMateriais()]);
+      setPendenciasLista(lista);
+      setNomesMateriais(nomes);
+    } catch (err) {
+      console.error(err); // tabela ainda não migrada → a tela segue funcionando sem pendências
+    }
+  }, [clientId]);
+  useEffect(() => { recarregarPendencias(); }, [recarregarPendencias, visitas]);
+  const pendCtx = { lista: pendenciasLista, clienteId: clientId, nomesMateriais, recarregar: recarregarPendencias };
+
+  // Aviso ao resolver uma corretiva com pendência aberta: 'baixa' | 'sem' | 'voltar'.
+  const { dialog: perguntaBaixaDialog, perguntar: perguntarBaixa } = usePerguntaBaixa();
+  async function perguntarAntesDeResolver(alvo) {
+    const fechariam = await pendenciasQueFechariam(alvo);
+    if (!fechariam.length) return { decisao: 'sem', ids: [] };
+    const decisao = await perguntarBaixa(fechariam);
+    return { decisao, ids: fechariam.map((p) => p.id) };
+  }
+  async function baixaJuntoComResolucao(ids, { data, rvtId }) {
+    if (!ids.length) return;
+    await darBaixaPendencias(ids, { data, rvtId, obs: 'Baixa junto com a resolução da corretiva' });
+  }
+
   async function handleDeleteVisita(id) {
     if (!window.confirm('Excluir esta visita e todos os itens dentro dela? Essa acao nao pode ser desfeita.')) return;
     try {
@@ -2515,10 +2568,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (raw.outro_descricao || raw.outro_atividade) {
       setEditForm({ kind: 'outro', rvtItemId: raw.id, rvtId: v.id, descricao: raw.outro_descricao || '', fotos: raw.outro_fotos || [],
         atividade: raw.outro_atividade || '', atividadeDados: raw.outro_atividade_dados || {},
+        statusOriginal: raw.outro_atividade_dados?.status || '',
         visitaData: v.data_visita, visitaTecnico: v.tecnico || '' });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', id: a.id, dispositivoId: a.dispositivo_id || null, painelId: a.painel_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
+      setEditForm({ kind: 'atendimento', rvtId: v.id, visitaData: v.data_visita, statusOriginal: a.status || 'aguardando', id: a.id, dispositivoId: a.dispositivo_id || null, painelId: a.painel_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
@@ -2543,6 +2597,13 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       && (editForm.falha || '').trim() && !falhaClassificada(editForm.falhaSel)) {
       setMsg('Selecione a falha na lista ou escolha uma categoria antes de salvar.'); return;
     }
+    // Passou a Resolvido agora? Pergunta sobre as pendências abertas antes de gravar.
+    const resolvendoAtendimento = editForm.kind === 'atendimento' && editForm.status === 'resolvido' && editForm.statusOriginal !== 'resolvido';
+    const resolvendoOutro = editForm.kind === 'outro' && editForm.atividadeDados?.status === 'resolvido' && editForm.statusOriginal !== 'resolvido';
+    const pergunta = resolvendoAtendimento || resolvendoOutro
+      ? await perguntarAntesDeResolver(resolvendoAtendimento ? { atendimentoId: editForm.id } : { rvtItemId: editForm.rvtItemId })
+      : { decisao: 'sem', ids: [] };
+    if (pergunta.decisao === 'voltar') return;
     setSavingEditItem(true);
     try {
       // O alvo (dispositivo x bateria x fonte) é fixo na edição — só repassa dispositivoId quando o alvo é dispositivo.
@@ -2566,6 +2627,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       } else if (editForm.kind === 'outro') {
         await updateOutroItem(editForm.rvtItemId, editForm.descricao, editForm.fotos, editForm.atividade, editForm.atividadeDados);
       }
+      if (pergunta.decisao === 'baixa') await baixaJuntoComResolucao(pergunta.ids, { data: editForm.visitaData, rvtId: editForm.rvtId });
       cancelEditItem();
       refreshVisitas();
       if (onRefresh) onRefresh();
@@ -2627,6 +2689,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
   return (
     <div>
+      {perguntaBaixaDialog}
       {!reportMode && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
           <button onClick={() => setSubAba('dispositivos')} style={tabBtnStyle(subAba === 'dispositivos')}>Visitas (SDAI)</button>
@@ -2947,6 +3010,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                         {p.falha && <div style={{ color: 'var(--text-secondary)' }}>{p.falha}</div>}
                         {p.descritivo && <div style={{ color: 'var(--text-secondary)' }}>{p.descritivo}</div>}
                       </div>
+                      <PendenciasItem ctx={pendCtx} alvo={{ atendimentoId: p.id }} aberto canEdit={canEdit}
+                        dataPadrao={(p.data_registro || '').slice(0, 10)} rvtId={p.rvt_itens?.[0]?.rvt_id || null} />
                       {intervencaoAbertaId === p.id ? (
                         <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                           <Field label="O que foi feito / como foi feito">
@@ -3079,7 +3144,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                     expanded={expandedIds.has(v.id)} onToggleExpand={() => toggleExpand(v.id)}
                     onDelete={handleDeleteVisita} onVerImprimir={(vv) => setPrintTarget([vv])} onReopen={reabrirVisita}
                     editingItemId={editingItemId} editForm={editForm} setEditForm={setEditForm}
-                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} onConvertOutro={converterItemOutro} savingEdit={savingEditItem} />
+                    onStartEdit={startEditItem} onSaveEdit={saveEditItem} onCancelEdit={cancelEditItem} onConvertOutro={converterItemOutro} savingEdit={savingEditItem}
+                    pendCtx={pendCtx} />
                 ))}
               </div>
             </div>

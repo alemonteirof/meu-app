@@ -125,6 +125,33 @@ assinatura não muda e grava evento `tecnico_assinada | tecnico_refeita` na mesm
 Em INSERT as colunas são zeradas (`bloqueia_assinatura_tecnico_insert`). App grava via
 `salvarAssinaturaTecnicoVisita`.
 
+### `pendencias` / `pendencia_alvos` (Pendências para conclusão — `migracao_pendencias.sql`)
+O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, não ao RVT (o
+`desde` nunca zera quando o item reaparece em outra visita).
+- `pendencias`: `id uuid, cliente_id, tipo` (`material|liberacao|parada_maquina|condicao_seguranca|
+  decisao_cliente|outro` + `tipo_outro`), `responsavel` (`cliente|maj`), `detalhe` (texto livre),
+  `materiais` jsonb `[{item, qtd, unidade, especificacao, marca, obs}]` (só tipo material), `desde`,
+  `previsao`, `origem_rvt_id`, baixa: `baixa_em, baixa_obs, baixa_rvt_id, baixa_por_uid/email/nome`
+  (carimbo pelo trigger `pendencia_carimbo`, servidor). "Sem detalhe" é derivado (sem materiais /
+  sem texto), não é coluna. Nunca apagada na baixa; `excluirPendencia` só p/ cadastro por engano.
+- `pendencia_alvos`: `pendencia_id, cliente_id, atendimento_id | rvt_item_id` (exatamente 1).
+  **Pendência compartilhada** = N alvos (ex.: 5 sirenes do mesmo diagnóstico → soma de material
+  não multiplica). Alvo apagado → cascade; pendência sem alvo é apagada pelo trigger
+  `pendencia_limpa_orfa` (ex.: visita cancelada).
+- Alvos válidos: corretivas (`atendimentos`) + avulso `manutencao_nao_cadastrada` corretiva
+  (`rvt_itens`). Indicador legado (kv_store) fica de fora. Combate (SPCI): depois.
+- RLS: SELECT `has_client_access`; INSERT/UPDATE/DELETE `is_maj_staff() and has_client_access`.
+- Adapter: `listPendencias`, `listNomesMateriais` (autocomplete), `salvarPendencia` (upsert +
+  insere só alvos novos + remove só os que saíram), `darBaixaPendencias`, `reabrirPendencia`,
+  `excluirPendencia`, `pendenciasQueFechariam({atendimentoId|rvtItemId})` (abertas cujos outros
+  alvos já estão resolvidos). `deleteVisita` reabre pendências com `baixa_rvt_id` = visita apagada.
+- UI: `components/Pendencias.jsx` — `PendenciasItem` (bloco no card do item em Visitas anteriores
+  e na aba "Pendências de visitas anteriores"; cadastro/editar/completar/baixa/reabrir/excluir;
+  ao criar oferece "vale também para" as outras corretivas abertas da mesma visita com mesma
+  falha+descritivo) e `usePerguntaBaixa` (diálogo Voltar / Resolver sem baixa / Resolver e dar
+  baixa) chamado em `salvarIntervencao` e `saveEditItem` quando o item passa a Resolvido. Edição
+  pelo Indicador (App.jsx `submitIndicador`) usa `window.confirm` simples (sem "Voltar").
+
 ### `rvt_itens` (join Visita ↔ item)
 `id, rvt_id, atendimento_id, inspecao_id, intervencao_id, outro_descricao, outro_fotos,
 outro_atividade, outro_atividade_dados (jsonb)`. Inserido por `addItemToVisita`
@@ -478,6 +505,8 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
   **Rodada** (2026-10-02).
 - `migracao_assinatura_tecnico_rvt.sql` — colunas `assinatura_tecnico*` em `rvts` + triggers
   `trg_log_assinatura_tecnico_rvt`/`trg_bloqueia_assinatura_tecnico_insert`. **Rodada** (2026-10-02).
+- `migracao_pendencias.sql` — tabelas `pendencias`/`pendencia_alvos` + RLS + triggers de carimbo da
+  baixa e limpeza de órfã. **Pendente de rodar em produção** (Fase 1 das pendências).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
@@ -514,6 +543,13 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 - **Este é o item de maior abertura para brainstorm de próximo passo.**
 
 ## 19. Outras frentes explicitamente em aberto/adiadas
+
+- **Pendências para conclusão** — Fase 1 (banco + cadastro em Visitas) feita. Faltam: Fase 2 bloco
+  "Pendências para conclusão" no fim do card do RVT impresso (borda preta, responsável por extenso,
+  `break-inside: avoid`; agrupamento de impressão só junta corretivas que compartilham a mesma
+  pendência), Fase 3 aba "Pendências" no Indicador (resumo, filtros, Cliente→MAJ, dias em aberto,
+  baixa, materiais somados por responsável, imprimir, Excel paisagem 2 abas), Fase 4 tela temporária
+  só admin de classificação retroativa em massa (`desde` = data da 1ª visita da corretiva).
 
 - **Assinatura com validade jurídica** (ICP-Brasil/Lei 14.063) via provedor externo, preferência
   ZapSign, modo "assinatura eletrônica avançada". Plano desenhado (adiado 2026-08-30): pipeline
