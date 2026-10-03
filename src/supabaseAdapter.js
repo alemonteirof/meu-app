@@ -1581,6 +1581,12 @@ export const PENDENCIA_RESPONSAVEIS = [
 ];
 export const MATERIAL_UNIDADES = ['un', 'm', 'pç', 'cx', 'par', 'jogo', 'rolo', 'kg', 'L'];
 
+// Data local (toISOString é UTC: depois das 21h no Brasil já vira o dia seguinte).
+function hojeLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function rowToPendencia(r) {
   return {
     id: r.id, clienteId: r.cliente_id, tipo: r.tipo, tipoOutro: r.tipo_outro || '',
@@ -1629,7 +1635,7 @@ export async function salvarPendencia(p) {
   const row = {
     cliente_id: p.clienteId, tipo: p.tipo, tipo_outro: p.tipo === 'outro' ? (p.tipoOutro || '').trim() || null : null,
     responsavel: p.responsavel, detalhe: p.tipo === 'material' ? null : (p.detalhe || '').trim() || null,
-    materiais, desde: p.desde || new Date().toISOString().slice(0, 10), previsao: p.previsao || null,
+    materiais, desde: p.desde || hojeLocal(), previsao: p.previsao || null,
     origem_rvt_id: p.origemRvtId || null,
   };
   const { data: salvo, error } = p.id
@@ -1671,7 +1677,7 @@ export async function excluirPendencia(id) {
 export async function darBaixaPendencias(ids, { data, obs, rvtId } = {}) {
   if (!ids?.length) return;
   const { error } = await supabase.from('pendencias').update({
-    baixa_em: data || new Date().toISOString().slice(0, 10), baixa_obs: (obs || '').trim() || null, baixa_rvt_id: rvtId || null,
+    baixa_em: data || hojeLocal(), baixa_obs: (obs || '').trim() || null, baixa_rvt_id: rvtId || null,
   }).in('id', ids);
   if (error) throw error;
 }

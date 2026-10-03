@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   PENDENCIA_TIPOS, PENDENCIA_RESPONSAVEIS, MATERIAL_UNIDADES,
   salvarPendencia, excluirPendencia, darBaixaPendencias, reabrirPendencia,
@@ -30,9 +31,9 @@ export function responsavelLabel(p) {
 export function pendenciaSemDetalhe(p) {
   return p.tipo === 'material' ? !(p.materiais || []).some((m) => (m.item || '').trim()) : !(p.detalhe || '').trim();
 }
-export function diasEmAberto(p, hoje = new Date()) {
+export function diasEmAberto(p) {
   if (!p.desde) return null;
-  const fim = p.baixaEm ? new Date(`${p.baixaEm}T00:00:00`) : new Date(hoje.toISOString().slice(0, 10) + 'T00:00:00');
+  const fim = new Date(`${p.baixaEm || hojeISO()}T00:00:00`);
   return Math.max(0, Math.round((fim - new Date(`${p.desde}T00:00:00`)) / 86400000));
 }
 export function formatQtd(m) {
@@ -44,7 +45,11 @@ function formatDateBR(s) {
   const [y, m, d] = s.slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 }
-const hojeISO = () => new Date().toISOString().slice(0, 10);
+// Data LOCAL (toISOString usa UTC: depois das 21h no Brasil já virava o dia seguinte).
+const hojeISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const chaveAlvo = (a) => (a.atendimentoId ? `at:${a.atendimentoId}` : `ri:${a.rvtItemId}`);
 
 /** Pendências ligadas a um alvo ({atendimentoId} ou {rvtItemId}). */
@@ -354,7 +359,9 @@ export function usePerguntaBaixa() {
     setEstado(null);
   }
   const n = estado?.pendencias.length || 0;
-  const dialog = estado ? (
+  // Portal no <body>: dentro da tela, um ancestral com transform (animação) prendia o
+  // position:fixed e o fundo escuro não cobria a tela toda.
+  const dialog = estado ? createPortal(
     <div onClick={() => responder('voltar')} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, maxWidth: 440, width: '100%' }}>
@@ -370,7 +377,8 @@ export function usePerguntaBaixa() {
           <button type="button" onClick={() => responder('baixa')} style={btnStyle}>Resolver e dar baixa</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   ) : null;
   return { dialog, perguntar };
 }
