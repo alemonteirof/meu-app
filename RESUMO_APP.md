@@ -506,7 +506,7 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
 - `migracao_assinatura_tecnico_rvt.sql` — colunas `assinatura_tecnico*` em `rvts` + triggers
   `trg_log_assinatura_tecnico_rvt`/`trg_bloqueia_assinatura_tecnico_insert`. **Rodada** (2026-10-02).
 - `migracao_pendencias.sql` — tabelas `pendencias`/`pendencia_alvos` + RLS + triggers de carimbo da
-  baixa e limpeza de órfã. **Pendente de rodar em produção** (Fase 1 das pendências).
+  baixa e limpeza de órfã. **Rodada** (2026-10-02).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
