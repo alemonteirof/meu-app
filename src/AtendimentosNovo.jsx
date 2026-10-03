@@ -12,7 +12,7 @@ import {
   listPendencias, listNomesMateriais, pendenciasQueFechariam, darBaixaPendencias,
 } from './supabaseAdapter';
 import MajSignatureField from './components/MajSignatureField';
-import { PendenciasItem, usePerguntaBaixa } from './components/Pendencias';
+import { PendenciasItem, usePerguntaBaixa, PendenciasPrintBlock, pendenciasVigentesNoDia } from './components/Pendencias';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
 import { compressImageFile, assinaturaDeImagem } from './lib/imagens';
 import { hojeLocal } from './lib/datas';
@@ -1028,8 +1028,9 @@ function agruparItensParaImpressao(itens) {
   const grupos = [];
   const porChave = new Map();
   for (const it of itens) {
+    // Pendências entram na chave: só junta no mesmo card quem compartilha as mesmas pendências.
     const chave = it.tipo === 'atendimento'
-      ? JSON.stringify([it.falha, it.descritivo, it.status, it.fotos])
+      ? JSON.stringify([it.falha, it.descritivo, it.status, it.fotos, (it.pendencias || []).map((p) => p.id)])
       : null;
     if (!chave) { grupos.push({ ...it, dispositivos: [{ etiqueta: it.etiqueta, endereco: it.endereco }] }); continue; }
     const existente = porChave.get(chave);
@@ -1434,10 +1435,15 @@ function RvtSignatureBlock({ assinaturaCliente, assinaturaTecnico, tecnicos }) {
 /** Layout de impressão — reaproveita as mesmas classes CSS globais (rvt-brand-band, print-area
     etc.) que o RVT antigo usava, então imprime/exporta exatamente igual. Aceita 1 visita (impressão
     individual) ou várias (impressão de período, agrupadas por dia dentro do mesmo documento). */
-function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false }) {
+function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false, pendencias = [] }) {
   const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
   const isPeriodo = dias.length > 1;
-  const todosItens = agruparItensParaImpressao(visitas.flatMap((v) => itemsFromVisita(v)));
+  // Itens da visita + pendências vigentes no dia dela (só itens ainda não resolvidos).
+  const itensDaVisita = (v) => itemsFromVisita(v).map((it) => ({
+    ...it,
+    pendencias: it.status !== 'Resolvido' ? pendenciasVigentesNoDia(pendencias, it.pendenciaAlvo, v.data_visita) : [],
+  }));
+  const todosItens = agruparItensParaImpressao(visitas.flatMap(itensDaVisita));
   const totalResolvidos = todosItens.filter((it) => it.status === 'Resolvido').length;
   const tecnicos = [...new Set(visitas.map((v) => v.tecnico).filter(Boolean))];
   const periodoLabel = isPeriodo ? `${formatDateBR(dias[0])} a ${formatDateBR(dias[dias.length - 1])}` : formatDateBR(dias[0]);
@@ -1455,7 +1461,7 @@ function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false }
   const fotoNums = {};
   let _seqFoto = 0;
   dias.forEach((dia) => {
-    agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v))).forEach((it) => {
+    agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap(itensDaVisita)).forEach((it) => {
       (it.fotos || []).forEach((_, fi) => { _seqFoto += 1; fotoNums[`${it.id}#${fi}`] = _seqFoto; });
     });
   });
@@ -1533,7 +1539,7 @@ function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false }
           </div>
 
           {dias.map((dia) => {
-            const itensDoDia = agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap((v) => itemsFromVisita(v)));
+            const itensDoDia = agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap(itensDaVisita));
             return (
               <div key={dia} className="flex flex-col gap-3">
                 {isPeriodo && (
@@ -1596,6 +1602,7 @@ function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false }
                         </div>
                       )}
                     </div>
+                    <PendenciasPrintBlock pendencias={it.pendencias} dia={dia} />
                   </div>
                   );
                 })}
@@ -2685,7 +2692,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }
 
   if (printTarget) {
-    return <VisitaPrintView visitas={printTarget} client={client} podeAssinarTecnico={canEdit} onBack={() => { setPrintTarget(null); refreshVisitas(); }} />;
+    return <VisitaPrintView visitas={printTarget} client={client} podeAssinarTecnico={canEdit} pendencias={pendenciasLista} onBack={() => { setPrintTarget(null); refreshVisitas(); }} />;
   }
 
   return (

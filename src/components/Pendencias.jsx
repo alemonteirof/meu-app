@@ -342,6 +342,74 @@ export function PendenciasItem({ ctx, alvo, aberto, canEdit, dataPadrao, rvtId, 
   );
 }
 
+/** Pendências de um alvo vigentes num dia (RVT é diário): já existiam e ainda não tinham
+    baixa naquela data. Reimprimir um RVT antigo mostra a situação daquele dia. */
+export function pendenciasVigentesNoDia(lista, alvo, dia) {
+  if (!alvo) return [];
+  return pendenciasDoAlvo(lista, alvo)
+    .filter((p) => (!p.desde || p.desde <= dia) && (!p.baixaEm || p.baixaEm > dia))
+    .sort((a, b) => (a.desde || '').localeCompare(b.desde || ''));
+}
+
+const thPrint = { textAlign: 'left', fontWeight: 600, fontSize: 10, padding: '3px 6px', borderBottom: '1px solid var(--text-primary)' };
+const tdPrint = { fontSize: 11, padding: '3px 6px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', wordBreak: 'break-word' };
+
+/** Bloco "Pendências para conclusão" no fim do card do item no RVT impresso.
+    Legível em preto e branco: borda escura e responsável escrito por extenso (não só cor). */
+export function PendenciasPrintBlock({ pendencias, dia }) {
+  if (!pendencias?.length) return null;
+  const diasAte = (p) => {
+    if (!p.desde) return null;
+    return Math.max(0, Math.round((new Date(`${dia}T00:00:00`) - new Date(`${p.desde}T00:00:00`)) / 86400000));
+  };
+  return (
+    <div className="rvt-pendencias" style={{ marginTop: 10, border: '1px solid var(--text-primary)', padding: '8px 10px', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-primary)', marginBottom: 6 }}>PENDÊNCIAS PARA CONCLUSÃO</p>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {pendencias.map((p, i) => {
+          const d = diasAte(p);
+          return (
+            <div key={p.id} style={{ breakInside: 'avoid', paddingTop: i ? 6 : 0, borderTop: i ? '1px dashed var(--border)' : 'none' }}>
+              <p style={{ fontSize: 11.5, color: 'var(--text-primary)', wordBreak: 'break-word' }}>
+                <strong>{i + 1}. {tipoPendenciaLabel(p)}</strong>
+                {' — Responsável: '}<strong>{responsavelLabel(p).toUpperCase()}</strong>
+                {' · Desde '}{formatDateBR(p.desde)}{d ? ` (${d} dia${d === 1 ? '' : 's'} aguardando)` : ''}
+                {' · Previsão '}{p.previsao ? formatDateBR(p.previsao) : '—'}
+              </p>
+              {p.tipo === 'material' && p.materiais?.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, tableLayout: 'fixed', color: 'var(--text-primary)' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thPrint, width: '30%' }}>Item</th>
+                      <th style={{ ...thPrint, width: '12%' }}>Qtd</th>
+                      <th style={{ ...thPrint, width: '24%' }}>Especificação</th>
+                      <th style={{ ...thPrint, width: '17%' }}>Marca/modelo</th>
+                      <th style={{ ...thPrint, width: '17%' }}>Obs.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.materiais.map((m, mi) => (
+                      <tr key={mi}>
+                        <td style={tdPrint}>{m.item}</td>
+                        <td style={tdPrint}>{formatQtd(m) || '—'}</td>
+                        <td style={tdPrint}>{m.especificacao || '—'}</td>
+                        <td style={tdPrint}>{m.marca || '—'}</td>
+                        <td style={tdPrint}>{m.obs || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : p.detalhe ? (
+                <p style={{ fontSize: 11, color: 'var(--text-primary)', marginTop: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{p.detalhe}</p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Aviso ao resolver uma corretiva que ainda tem pendência aberta.
     const { dialog, perguntar } = usePerguntaBaixa();  →  renderizar {dialog};
     await perguntar(pendencias) → 'baixa' | 'sem' | 'voltar'. */
