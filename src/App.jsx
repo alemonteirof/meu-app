@@ -8377,7 +8377,7 @@ function PageStyles() {
         .print-area { overflow: visible !important; }
         .print-area .flex.flex-col > * { margin-top: 12px; }
         .print-area .flex.flex-col > *:first-child { margin-top: 0; }
-        .rvt-item-card, .rvt-summary-card {
+        .rvt-item-card, .rvt-summary-card, .rvt-pendencias {
           -webkit-column-break-inside: avoid;
           break-inside: avoid;
           page-break-inside: avoid;

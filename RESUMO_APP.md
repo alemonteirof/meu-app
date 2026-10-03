@@ -151,6 +151,15 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   falha+descritivo) e `usePerguntaBaixa` (diálogo Voltar / Resolver sem baixa / Resolver e dar
   baixa) chamado em `salvarIntervencao` e `saveEditItem` quando o item passa a Resolvido. Edição
   pelo Indicador (App.jsx `submitIndicador`) usa `window.confirm` simples (sem "Voltar").
+- RVT impresso (`VisitaPrintView`, prop `pendencias`): `PendenciasPrintBlock` no fim do card de item
+  não resolvido — Tipo, Responsável em MAIÚSCULAS, Desde (+ "N dias aguardando" até a data da
+  visita, omitido se 0), Previsão, detalhe ou tabela de materiais; borda escura (P&B), classe
+  `.rvt-pendencias` com `break-inside: avoid` no `@media print`. Mostra as pendências **vigentes no
+  dia da visita** (`pendenciasVigentesNoDia`: `desde <= dia` e sem baixa até o dia) — reimprimir RVT
+  antigo mostra a situação daquele dia. `agruparItensParaImpressao` inclui os ids das pendências na
+  chave: corretivas só juntam no mesmo card se compartilham as mesmas pendências (efeito: o card
+  "Itens registrados" pode subir quando um item do grupo ganha pendência própria).
+- Datas "hoje" das pendências usam data LOCAL (`hojeLocal`/`hojeISO`), não `toISOString` (UTC).
 
 ### `rvt_itens` (join Visita ↔ item)
 `id, rvt_id, atendimento_id, inspecao_id, intervencao_id, outro_descricao, outro_fotos,
@@ -544,10 +553,8 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 
 ## 19. Outras frentes explicitamente em aberto/adiadas
 
-- **Pendências para conclusão** — Fase 1 (banco + cadastro em Visitas) feita. Faltam: Fase 2 bloco
-  "Pendências para conclusão" no fim do card do RVT impresso (borda preta, responsável por extenso,
-  `break-inside: avoid`; agrupamento de impressão só junta corretivas que compartilham a mesma
-  pendência), Fase 3 aba "Pendências" no Indicador (resumo, filtros, Cliente→MAJ, dias em aberto,
+- **Pendências para conclusão** — Fase 1 (banco + cadastro em Visitas) e Fase 2 (bloco no RVT
+  impresso) feitas. Faltam: Fase 3 aba "Pendências" no Indicador (resumo, filtros, Cliente→MAJ, dias em aberto,
   baixa, materiais somados por responsável, imprimir, Excel paisagem 2 abas), Fase 4 tela temporária
   só admin de classificação retroativa em massa (`desde` = data da 1ª visita da corretiva).
 
