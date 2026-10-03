@@ -125,15 +125,24 @@ export default function ClassificarPendencias({ clienteAtualId }) {
     });
   }
 
-  async function aplicar() {
+  // Confirmação dentro da tela (não usa window.confirm: alguns navegadores embutidos não mostram
+  // a caixa e devolvem "Cancelar" sozinhos — o botão parecia não fazer nada).
+  const [confirmacao, setConfirmacao] = useState(null); // { grupos, total, resumo } | null
+
+  function aplicar() {
     if (!selecionados.length) { setMsg('Marque ao menos 1 item.'); return; }
     if (regras.some((r) => !r.tipo || !r.responsavel)) { setMsg('Escolha Tipo e Responsável em todas as linhas (ou remova a linha vazia).'); return; }
     const repetido = regras.find((r, i) => r.tipo !== 'outro' && regras.findIndex((x) => x.tipo === r.tipo) !== i);
     if (repetido) { setMsg(`O tipo "${PENDENCIA_TIPOS.find((t) => t.value === repetido.tipo)?.label}" aparece duas vezes.`); return; }
     const grupos = agruparParaPendencia(selecionados);
-    const resumo = regras.map((r) => `• ${r.tipo === 'outro' ? (r.tipoOutro.trim() || 'Outro') : PENDENCIA_TIPOS.find((t) => t.value === r.tipo)?.label} / ${PENDENCIA_RESPONSAVEIS.find((x) => x.value === r.responsavel)?.label}`).join('\n');
-    const total = grupos.length * regras.length;
-    if (!window.confirm(`Criar ${total} pendência(s) para ${selecionados.length} item(ns):\n${resumo}\n\nO detalhe fica para completar depois no item da visita.`)) return;
+    const resumo = regras.map((r) => `${r.tipo === 'outro' ? (r.tipoOutro.trim() || 'Outro') : PENDENCIA_TIPOS.find((t) => t.value === r.tipo)?.label} / ${PENDENCIA_RESPONSAVEIS.find((x) => x.value === r.responsavel)?.label}`);
+    setMsg('');
+    setConfirmacao({ grupos, total: grupos.length * regras.length, resumo, nItens: selecionados.length });
+  }
+
+  async function confirmarAplicar() {
+    const { grupos, nItens } = confirmacao;
+    setConfirmacao(null);
     setAplicando(true); setMsg('');
     let ok = 0;
     try {
@@ -146,7 +155,7 @@ export default function ClassificarPendencias({ clienteAtualId }) {
           ok += 1;
         }
       }
-      setMsg(`${ok} pendência(s) criada(s) para ${selecionados.length} item(ns). Complete o detalhe no card do item, em Atendimentos → Visitas.`);
+      setMsg(`${ok} pendência(s) criada(s) para ${nItens} item(ns). Complete o detalhe no card do item, em Atendimentos → Visitas.`);
       setMarcados(new Set());
     } catch (e) {
       console.error(e);
@@ -222,10 +231,25 @@ export default function ClassificarPendencias({ clienteAtualId }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={() => setRegras((rs) => [...rs, regraVazia()])} style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>+ Outro tipo</button>
           <span style={{ flex: 1 }} />
-          <button type="button" onClick={aplicar} disabled={aplicando} style={{ ...btnStyle, opacity: aplicando ? 0.7 : 1 }}>
+          <button type="button" onClick={aplicar} disabled={aplicando || !!confirmacao} style={{ ...btnStyle, opacity: aplicando || confirmacao ? 0.7 : 1 }}>
             {aplicando ? 'Aplicando...' : `Aplicar aos ${selecionados.length}`}
           </button>
         </div>
+        {confirmacao && (
+          <div role="alertdialog" style={{ padding: 12, borderRadius: 8, border: '1px solid #8B2F2F', background: 'rgba(139,47,47,.10)', display: 'grid', gap: 8 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+              <strong>Criar {confirmacao.total} pendência(s) para {confirmacao.nItens} item(ns)?</strong>
+              <ul style={{ margin: '6px 0 0 18px', listStyle: 'disc' }}>
+                {confirmacao.resumo.map((linha) => <li key={linha}>{linha}</li>)}
+              </ul>
+              <div style={{ color: 'var(--text-secondary)', marginTop: 6 }}>O detalhe fica para completar depois, no item da visita.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setConfirmacao(null)} style={smallBtnStyle}>Cancelar</button>
+              <button type="button" onClick={confirmarAplicar} style={btnStyle}>Confirmar</button>
+            </div>
+          </div>
+        )}
       </div>
       {msg && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</p>}
 
