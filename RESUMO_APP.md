@@ -169,6 +169,15 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   deitado global, tabelas por tipo + materiais). Excel = `montarPlanilhaPendencias` (exceljs dinâmico,
   2 abas "Pendências"/"Materiais", paisagem, fitToWidth, cabeçalho vinho, filtro). Tudo respeita os
   filtros da tela.
+- **Tela TEMPORÁRIA "Classificar pendências"** (`components/ClassificarPendencias.jsx`, view
+  `classificar`, item no `NAV_ITEMS` só no papel admin + guard `navRole === 'admin'`): itens abertos
+  sem nenhuma pendência de TODOS os clientes visíveis (`listItensSemPendencia`: corretivas +
+  avulsos `manutencao_nao_cadastrada` corretiva). Filtros cliente (começa no atual)/painel/período
+  da visita, "marcar todos", barra fixa Tipo+Responsável → "Aplicar". `agruparParaPendencia`: itens
+  da mesma visita com mesma falha+descritivo viram 1 pendência compartilhada; o resto, 1 cada.
+  `desde` = data da 1ª visita do item (fallback `data_registro`). Pendência nasce sem detalhe
+  (completar no card em Visitas); contador `contarPendenciasSemDetalhe`. **Remover** (NAV_ITEMS +
+  NAV_KEYS_BY_ROLE.admin + render em App.jsx + o arquivo) quando a lista zerar.
 - Datas "hoje" das pendências usam data LOCAL (`hojeLocal`/`hojeISO`), não `toISOString` (UTC).
 
 ### `rvt_itens` (join Visita ↔ item)
@@ -563,8 +572,9 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 
 ## 19. Outras frentes explicitamente em aberto/adiadas
 
-- **Pendências para conclusão** — Fases 1 (cadastro em Visitas), 2 (RVT impresso) e 3 (aba no
-  Indicador) feitas. Falta: Fase 4 tela temporária
+- **Pendências para conclusão** — Fases 1 a 4 feitas (2026-10-02). Em aberto: remover a tela
+  temporária "Classificar pendências" quando os itens antigos forem classificados; Combate (SPCI)
+  fica para depois. Histórico da Fase 4 (feita): tela temporária
   só admin de classificação retroativa em massa (`desde` = data da 1ª visita da corretiva).
 
 - **Assinatura com validade jurídica** (ICP-Brasil/Lei 14.063) via provedor externo, preferência

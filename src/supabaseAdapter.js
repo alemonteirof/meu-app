@@ -1639,6 +1639,63 @@ export async function listPendenciasDetalhadas(clienteId) {
   }));
 }
 
+/** Classificação retroativa (tela temporária, só admin): itens ainda abertos (Aguardando/
+    Andamento) de TODOS os clientes visíveis que ainda não têm nenhuma pendência.
+    `desde` = data da 1ª visita em que o item apareceu (fallback: data de registro). */
+export async function listItensSemPendencia() {
+  const [{ data: ats, error: e1 }, { data: avs, error: e2 }, { data: alvos, error: e3 }, { data: clis, error: e4 }] = await Promise.all([
+    supabase.from('atendimentos')
+      .select(`id, cliente_id, status, falha, descritivo, data_registro,
+        dispositivos(etiqueta, endereco, lacos(nome, paineis(id, nome)), paineis(id, nome)),
+        paineis(id, nome), baterias_painel(paineis(id, nome)), fontes_auxiliares(nome),
+        rvt_itens(rvt_id, rvts(data_visita))`)
+      .neq('status', 'resolvido'),
+    supabase.from('rvt_itens')
+      .select('id, rvt_id, outro_descricao, outro_atividade_dados, rvts(data_visita, cliente_id, paineis(id, nome))')
+      .eq('outro_atividade', 'manutencao_nao_cadastrada'),
+    supabase.from('pendencia_alvos').select('atendimento_id, rvt_item_id'),
+    supabase.from('clientes').select('id, nome'),
+  ]);
+  const erro = e1 || e2 || e3 || e4;
+  if (erro) throw erro;
+  const comPendencia = new Set((alvos || []).map((a) => a.atendimento_id || a.rvt_item_id));
+  const nomeCliente = Object.fromEntries((clis || []).map((c) => [c.id, c.nome]));
+  const itens = [];
+  for (const a of ats || []) {
+    if (comPendencia.has(a.id)) continue;
+    const d = a.dispositivos;
+    const painel = d?.lacos?.paineis || d?.paineis || a.paineis || a.baterias_painel?.paineis || null;
+    const visitas = (a.rvt_itens || []).map((ri) => ({ rvtId: ri.rvt_id, data: ri.rvts?.data_visita })).filter((v) => v.data)
+      .sort((x, y) => x.data.localeCompare(y.data));
+    itens.push({
+      chave: `at:${a.id}`, alvo: { atendimentoId: a.id }, clienteId: a.cliente_id, cliente: nomeCliente[a.cliente_id] || '',
+      painelId: painel?.id || '', painel: painel?.nome || '', laco: d?.lacos?.nome || '',
+      alvoLabel: d ? `${d.etiqueta || 'Dispositivo'}${d.endereco ? ` (END ${d.endereco})` : ''}`
+        : a.baterias_painel ? 'Bateria do painel' : a.fontes_auxiliares ? (a.fontes_auxiliares.nome || 'Fonte auxiliar') : a.paineis ? 'Painel (falha geral)' : 'Item',
+      falha: a.falha || '', descritivo: a.descritivo || '', status: a.status,
+      rvtId: visitas[0]?.rvtId || null, dataVisita: visitas[0]?.data || (a.data_registro || '').slice(0, 10),
+    });
+  }
+  for (const ri of avs || []) {
+    const dados = ri.outro_atividade_dados || {};
+    if (dados.tipoManutencao !== 'corretiva' || dados.status === 'resolvido' || comPendencia.has(ri.id)) continue;
+    itens.push({
+      chave: `ri:${ri.id}`, alvo: { rvtItemId: ri.id }, clienteId: ri.rvts?.cliente_id || '', cliente: nomeCliente[ri.rvts?.cliente_id] || '',
+      painelId: ri.rvts?.paineis?.id || '', painel: ri.rvts?.paineis?.nome || '', laco: '',
+      alvoLabel: dados.nomeItem || 'Item não cadastrado', falha: '', descritivo: ri.outro_descricao || '', status: dados.status || 'aguardando',
+      rvtId: ri.rvt_id, dataVisita: ri.rvts?.data_visita || '',
+    });
+  }
+  return itens.sort((x, y) => (x.dataVisita || '').localeCompare(y.dataVisita || ''));
+}
+
+/** Quantas pendências abertas ainda estão sem detalhe (todas as visíveis). */
+export async function contarPendenciasSemDetalhe() {
+  const { data, error } = await supabase.from('pendencias').select('tipo, detalhe, materiais').is('baixa_em', null);
+  if (error) return 0;
+  return (data || []).filter((p) => (p.tipo === 'material' ? !(p.materiais || []).some((m) => (m?.item || '').trim()) : !(p.detalhe || '').trim())).length;
+}
+
 /** Nomes de material já usados em qualquer pendência visível (autocomplete do campo Item). */
 export async function listNomesMateriais() {
   const { data, error } = await supabase.from('pendencias').select('materiais').eq('tipo', 'material');
