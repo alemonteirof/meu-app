@@ -1609,6 +1609,41 @@ export async function listPendencias(clienteId) {
   return (data || []).map(rowToPendencia);
 }
 
+/** Pendências de um cliente já com o contexto de cada alvo (local, atividade, status) e a data
+    do RVT de origem — usado pela aba Pendências do Indicador. */
+export async function listPendenciasDetalhadas(clienteId) {
+  const { data, error } = await supabase
+    .from('pendencias')
+    .select(`*, origem:rvts!pendencias_origem_rvt_id_fkey(data_visita),
+      pendencia_alvos(id, atendimento_id, rvt_item_id,
+        atendimentos(id, status, falha, descritivo, data_registro,
+          dispositivos(etiqueta, endereco, lacos(nome, paineis(nome)), paineis(nome)),
+          paineis(nome), baterias_painel(paineis(nome)), fontes_auxiliares(nome)),
+        rvt_itens(id, outro_descricao, outro_atividade_dados, rvts(data_visita)))`)
+    .eq('cliente_id', clienteId)
+    .order('desde', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((r) => ({
+    ...rowToPendencia(r),
+    origemData: r.origem?.data_visita || '',
+    itens: (r.pendencia_alvos || []).map((a) => {
+      const at = a.atendimentos;
+      if (at) {
+        const d = at.dispositivos;
+        const painel = d?.lacos?.paineis?.nome || d?.paineis?.nome || at.paineis?.nome || at.baterias_painel?.paineis?.nome || '';
+        const alvo = d ? `${d.etiqueta || 'Dispositivo'}${d.endereco ? ` (END ${d.endereco})` : ''}`
+          : at.baterias_painel ? 'Bateria do painel'
+            : at.fontes_auxiliares ? (at.fontes_auxiliares.nome || 'Fonte auxiliar')
+              : at.paineis ? 'Painel (falha geral)' : 'Item';
+        return { painel, laco: d?.lacos?.nome || '', alvo, falha: at.falha || '', descritivo: at.descritivo || '', status: at.status };
+      }
+      const ri = a.rvt_itens;
+      const dados = ri?.outro_atividade_dados || {};
+      return { painel: '', laco: '', alvo: dados.nomeItem || 'Item não cadastrado', falha: '', descritivo: ri?.outro_descricao || '', status: dados.status || '' };
+    }),
+  }));
+}
+
 /** Nomes de material já usados em qualquer pendência visível (autocomplete do campo Item). */
 export async function listNomesMateriais() {
   const { data, error } = await supabase.from('pendencias').select('materiais').eq('tipo', 'material');

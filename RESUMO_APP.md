@@ -159,6 +159,16 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   antigo mostra a situação daquele dia. `agruparItensParaImpressao` inclui os ids das pendências na
   chave: corretivas só juntam no mesmo card se compartilham as mesmas pendências (efeito: o card
   "Itens registrados" pode subir quando um item do grupo ganha pendência própria).
+- Indicador → aba **Pendências** (`components/PendenciasIndicador.jsx`, 3ª aba ao lado de SDAI/SPCI,
+  todos os papéis veem; "Dar baixa" só `canEdit`). Dados: `listPendenciasDetalhadas(clienteId)`
+  (embed de alvos → painel/laço/etiqueta/END, falha+descritivo, `origem:rvts!pendencias_origem_rvt_id_fkey`).
+  Só abertas. 4 cards (total/cliente/MAJ/mais antiga), filtros responsável+tipo, grupos Cliente→MAJ
+  e por tipo (ordem de `PENDENCIA_TIPOS`, recolhíveis), mais antigas primeiro. `consolidarMateriais`
+  soma por item+especificação+unidade (ignora maiúsc./espaços; nome exibido = grafia com mais qtd),
+  separado por responsável. Imprimir = `PendenciasPrintView` (`.print-area` + `rvt-brand-band`, A4
+  deitado global, tabelas por tipo + materiais). Excel = `montarPlanilhaPendencias` (exceljs dinâmico,
+  2 abas "Pendências"/"Materiais", paisagem, fitToWidth, cabeçalho vinho, filtro). Tudo respeita os
+  filtros da tela.
 - Datas "hoje" das pendências usam data LOCAL (`hojeLocal`/`hojeISO`), não `toISOString` (UTC).
 
 ### `rvt_itens` (join Visita ↔ item)
@@ -553,9 +563,8 @@ Objetivo: tela com dispositivos plotados sobre blueprint do cliente, status em t
 
 ## 19. Outras frentes explicitamente em aberto/adiadas
 
-- **Pendências para conclusão** — Fase 1 (banco + cadastro em Visitas) e Fase 2 (bloco no RVT
-  impresso) feitas. Faltam: Fase 3 aba "Pendências" no Indicador (resumo, filtros, Cliente→MAJ, dias em aberto,
-  baixa, materiais somados por responsável, imprimir, Excel paisagem 2 abas), Fase 4 tela temporária
+- **Pendências para conclusão** — Fases 1 (cadastro em Visitas), 2 (RVT impresso) e 3 (aba no
+  Indicador) feitas. Falta: Fase 4 tela temporária
   só admin de classificação retroativa em massa (`desde` = data da 1ª visita da corretiva).
 
 - **Assinatura com validade jurídica** (ICP-Brasil/Lei 14.063) via provedor externo, preferência

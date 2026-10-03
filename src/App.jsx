@@ -12,6 +12,7 @@ import { rotuloCategoria, CATEGORIA_DIAGNOSTICO } from './lib/falhasPorMarca';
 import { logSecurityEvent } from './lib/securityLog';
 import { compressImageFile } from './lib/imagens';
 import ErrorScreen from './components/ErrorScreen';
+import PendenciasIndicador from './components/PendenciasIndicador';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -3536,7 +3537,13 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             <div className="flex gap-1 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
               <button className="nav-tab" data-active={indicadorTab === 'sdai'} onClick={() => setIndicadorTab('sdai')}>SDAI</button>
               <button className="nav-tab" data-active={indicadorTab === 'spci'} onClick={() => setIndicadorTab('spci')}>SPCI (Sistemas de Combate)</button>
+              <button className="nav-tab" data-active={indicadorTab === 'pendencias'} onClick={() => setIndicadorTab('pendencias')}>Pendências</button>
             </div>
+            {indicadorTab === 'pendencias' && (
+              <div key="pendencias" className="fade-in-up">
+                <PendenciasIndicador clientId={client.id} client={client} canEdit={canEdit} />
+              </div>
+            )}
             {indicadorTab === 'sdai' && (
               <div key="sdai" className="fade-in-up">
                 <IndicadorView data={data} canEdit={canEdit} client={client}
