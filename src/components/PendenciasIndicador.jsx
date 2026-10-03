@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { listPendenciasDetalhadas, darBaixaPendencias, PENDENCIA_TIPOS } from '../supabaseAdapter';
 import { tipoPendenciaLabel, responsavelLabel, pendenciaSemDetalhe, diasEmAberto, formatQtd } from './Pendencias';
+import { hojeLocal as hojeISO } from '../lib/datas';
 
 // Indicador → aba "Pendências": visão consolidada do que está travando a conclusão dos itens
 // abertos. Só leitura + baixa (MAJ). Cadastro continua em Atendimentos → Visitas.
@@ -15,10 +16,6 @@ const smallBtnStyle = { padding: '5px 10px', borderRadius: 6, border: '1px solid
 const cardStyle = { border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface)' };
 const RESP_ORDEM = ['cliente', 'maj'];
 
-function hojeISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 function formatDateBR(s) {
   if (!s) return '—';
   const [y, m, d] = s.slice(0, 10).split('-');
