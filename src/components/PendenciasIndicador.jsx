@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
-import { listPendenciasDetalhadas, darBaixaPendencias, PENDENCIA_TIPOS } from '../supabaseAdapter';
+import { listPendenciasDetalhadas, listItensProvisorios, darBaixaPendencias, PENDENCIA_TIPOS } from '../supabaseAdapter';
 import { tipoPendenciaLabel, responsavelLabel, pendenciaSemDetalhe, diasEmAberto, formatQtd } from './Pendencias';
 import { hojeLocal as hojeISO } from '../lib/datas';
 
@@ -282,6 +282,7 @@ async function exportarExcel({ pendencias, materiais, client }) {
 
 export default function PendenciasIndicador({ clientId, client, canEdit, onRefresh }) {
   const [lista, setLista] = useState([]);
+  const [provisorios, setProvisorios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   const [msg, setMsg] = useState('');
@@ -294,7 +295,9 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
   const carregar = useCallback(async () => {
     setLoading(true); setErro('');
     try {
-      setLista(await listPendenciasDetalhadas(clientId));
+      const [l, prov] = await Promise.all([listPendenciasDetalhadas(clientId), listItensProvisorios(clientId).catch(() => [])]);
+      setLista(l);
+      setProvisorios(prov);
     } catch (e) {
       console.error(e);
       setErro('Não foi possível carregar as pendências.');
@@ -373,6 +376,7 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
         <StatCard label="Com a MAJ" valor={resumo.maj} />
         <StatCard label="Mais antiga" valor={resumo.maisAntiga != null ? `${resumo.maisAntiga} dias` : '—'} />
         <StatCard label="Prontos p/ executar" valor={prontos.length} destaque={prontos.length ? 'var(--status-ok)' : undefined} />
+        <StatCard label="Em solução provisória" valor={provisorios.length} destaque={provisorios.length ? 'var(--status-warn, #b07000)' : undefined} />
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -428,6 +432,27 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
           })}
         </div>
       ))}
+
+      {provisorios.length > 0 && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--status-warn, #b07000)' }}>
+            Em solução provisória <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>· {provisorios.length}</span>
+          </h3>
+          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: -4 }}>
+            Funcionando com paliativo — ainda falta a solução definitiva.
+          </p>
+          <div style={{ ...cardStyle, overflow: 'hidden' }}>
+            {provisorios.map((x) => (
+              <div key={x.id} style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: 13, color: 'var(--text-primary)' }}>
+                <div style={{ fontWeight: 600, wordBreak: 'break-word' }}>{[x.painel, x.laco, x.alvo].filter(Boolean).join(' · ')}</div>
+                {x.descricao && <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, wordBreak: 'break-word' }}>Paliativo: {x.descricao.slice(0, 200)}</div>}
+                {x.falta && <div style={{ fontSize: 12.5, wordBreak: 'break-word' }}>Falta para a definitiva: {x.falta}</div>}
+                <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 2 }}>Desde {formatDateBR(x.desde)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {prontos.length > 0 && (
         <div style={{ display: 'grid', gap: 8 }}>

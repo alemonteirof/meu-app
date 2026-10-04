@@ -395,6 +395,17 @@ function buildCombateOptions(data) {
   return options;
 }
 
+/** Selo "Solução provisória" (paliativo): item funcionando, mas ainda devendo a solução definitiva. */
+function SeloProvisoria({ provisoria }) {
+  if (!provisoria) return null;
+  return (
+    <div style={{ marginTop: 4, padding: '4px 8px', borderRadius: 6, background: 'rgba(245,159,0,.14)', border: '1px solid rgba(245,159,0,.45)', fontSize: 12.5, color: 'var(--text-primary)' }}>
+      <strong style={{ color: 'var(--status-warn, #b07000)' }}>⚠ Solução provisória</strong> desde {formatDateBR(provisoria.desde)}
+      {provisoria.falta && <div style={{ color: 'var(--text-secondary)' }}>Falta para a definitiva: {provisoria.falta}</div>}
+    </div>
+  );
+}
+
 function ItemResumo({ item }) {
   const nFotos = (item.fotos || []).length;
     if (item.tipo === 'outro') {
@@ -416,6 +427,7 @@ function ItemResumo({ item }) {
         </strong> · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
         {item.falha && <div style={{ color: 'var(--text-secondary)' }}>Problema original: {item.falha}</div>}
         {item.descricao && <div style={{ color: 'var(--text-secondary)' }}>O que foi feito: {item.descricao}</div>}
+        <SeloProvisoria provisoria={item.provisoria} />
       </div>
     );
   }
@@ -426,6 +438,7 @@ function ItemResumo({ item }) {
           {item.falha ? 'Corretiva' : 'Preventiva'}
         </strong> · {item.status} · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
         {item.falha && <div style={{ color: 'var(--text-secondary)' }}>{item.falha}</div>}
+        <SeloProvisoria provisoria={item.provisoria} />
       </div>
     );
   }
@@ -982,6 +995,8 @@ function itemsFromVisita(v) {
         status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : '',
         fotos: a.fotos || [],
         pendenciaAlvo: { atendimentoId: a.id }, alvoAberto: a.status !== 'resolvido',
+        // RVT mostra a situação do dia: só marca provisório se o paliativo já existia nesta visita.
+        provisoria: a._provisoria && a._provisoria.desde <= v.data_visita ? a._provisoria : null,
       };
     }
     if (it.inspecoes) {
@@ -1011,6 +1026,7 @@ function itemsFromVisita(v) {
         status: interv.status_resultante === 'resolvido' ? 'Resolvido' : 'Andamento',
         fotos: interv.fotos || [],
         pendenciaAlvo: a.id ? { atendimentoId: a.id } : null, alvoAberto: !!a.id && a.status !== 'resolvido',
+        provisoria: interv.provisoria ? { desde: interv.data, falta: interv.falta_definitiva || '' } : null,
       };
     }
     return null;
@@ -1030,7 +1046,7 @@ function agruparItensParaImpressao(itens) {
   for (const it of itens) {
     // Pendências entram na chave: só junta no mesmo card quem compartilha as mesmas pendências.
     const chave = it.tipo === 'atendimento'
-      ? JSON.stringify([it.falha, it.descritivo, it.status, it.fotos, (it.pendencias || []).map((p) => p.id)])
+      ? JSON.stringify([it.falha, it.descritivo, it.status, it.fotos, (it.pendencias || []).map((p) => p.id), it.provisoria])
       : null;
     if (!chave) { grupos.push({ ...it, dispositivos: [{ etiqueta: it.etiqueta, endereco: it.endereco }] }); continue; }
     const existente = porChave.get(chave);
@@ -1609,6 +1625,15 @@ export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = 
                         </div>
                       )}
                     </div>
+                    {it.provisoria && (
+                      <div style={{ marginTop: 10, border: '1px dashed var(--text-primary)', padding: '6px 10px', breakInside: 'avoid' }}>
+                        <p style={{ fontSize: 11.5, color: 'var(--text-primary)' }}>
+                          <strong>SOLUÇÃO PROVISÓRIA</strong> (paliativo aplicado em {formatDateBR(it.provisoria.desde)}) — o sistema está
+                          funcionando, mas ainda falta a solução definitiva.
+                        </p>
+                        {it.provisoria.falta && <p style={{ fontSize: 11.5, color: 'var(--text-primary)', marginTop: 2 }}><strong>Falta para a definitiva:</strong> {it.provisoria.falta}</p>}
+                      </div>
+                    )}
                     <PendenciasPrintBlock pendencias={it.pendencias} dia={dia} />
                   </div>
                   );
@@ -2253,6 +2278,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
   async function salvarIntervencao() {
     if (!intervencaoForm?.descricao?.trim()) { setMsg('Descreva o que foi feito.'); return; }
+    const provisoria = intervencaoForm.statusResultante === 'provisoria';
+    if (provisoria && !(intervencaoForm.falta || '').trim()) { setMsg('Diga o que falta para a solução definitiva.'); return; }
     const p = pendentes.find((x) => x.id === intervencaoAbertaId);
     if (!p) return;
     const pergunta = intervencaoForm.statusResultante === 'resolvido'
@@ -2263,19 +2290,24 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     try {
       await registrarIntervencaoAtendimento({
         atendimentoId: p.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
-        tecnico: visita.tecnico, statusResultante: intervencaoForm.statusResultante,
+        tecnico: visita.tecnico, statusResultante: provisoria ? 'andamento' : intervencaoForm.statusResultante,
         descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
+        provisoria, faltaDefinitiva: intervencaoForm.falta,
       });
       if (pergunta.decisao === 'baixa') await baixaJuntoComResolucao(pergunta.ids, { data: visita.data_visita, rvtId: visita.id });
       setItensVisita((prev) => [...prev, {
         tipo: 'intervencao', falha: p.falha, dispositivoLabel: labelDaPendencia(p),
         descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
         status: intervencaoForm.statusResultante === 'resolvido' ? 'Resolvido' : 'Andamento',
+        provisoria: provisoria ? { desde: visita.data_visita, falta: intervencaoForm.falta } : null,
       }]);
       if (intervencaoForm.statusResultante === 'resolvido') {
         setPendentes((prev) => prev.filter((x) => x.id !== p.id));
       } else {
-        setPendentes((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'andamento' } : x)));
+        setPendentes((prev) => prev.map((x) => (x.id === p.id ? {
+          ...x, status: 'andamento',
+          _provisoria: provisoria ? { desde: visita.data_visita, falta: intervencaoForm.falta, descricao: intervencaoForm.descricao } : null,
+        } : x)));
       }
       cancelarIntervencao();
       if (onRefresh) onRefresh();
@@ -3032,6 +3064,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                         {p.data_registro && <span style={{ color: 'var(--text-secondary)' }}> · desde {formatDateBR((p.data_registro || '').slice(0, 10))}</span>}
                         {p.falha && <div style={{ color: 'var(--text-secondary)' }}>{p.falha}</div>}
                         {p.descritivo && <div style={{ color: 'var(--text-secondary)' }}>{p.descritivo}</div>}
+                        <SeloProvisoria provisoria={p._provisoria} />
                       </div>
                       <PendenciasItem ctx={pendCtx} alvo={{ atendimentoId: p.id }} aberto canEdit={canEdit}
                         dataPadrao={(p.data_registro || '').slice(0, 10)} rvtId={p.rvt_itens?.[0]?.rvt_id || null} />
@@ -3046,8 +3079,17 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                               onChange={(e) => setIntervencaoForm((f) => ({ ...f, statusResultante: e.target.value }))}>
                               <option value="resolvido">Resolvido</option>
                               <option value="andamento">Ainda em andamento</option>
+                              <option value="provisoria">Solução provisória (paliativo)</option>
                             </select>
                           </Field>
+                          {intervencaoForm.statusResultante === 'provisoria' && (
+                            <Field label="O que falta para a solução definitiva *">
+                              <textarea style={{ ...inputStyle, minHeight: 50 }} value={intervencaoForm.falta || ''}
+                                placeholder="Ex.: comprar fonte 24 V certificada para este local"
+                                onChange={(e) => setIntervencaoForm((f) => ({ ...f, falta: e.target.value }))} />
+                              <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>O item fica em Andamento com o selo "Solução provisória" até a definitiva.</span>
+                            </Field>
+                          )}
                           <FotosField fotos={intervencaoForm.fotos}
                             setFotos={(next) => setIntervencaoForm((f) => ({ ...f, fotos: typeof next === 'function' ? next(f.fotos) : next }))} />
                           <div style={{ display: 'flex', gap: 8 }}>

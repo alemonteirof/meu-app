@@ -611,6 +611,8 @@ export async function listAtendimentosAbertos(clienteId) {
     .neq('status', 'resolvido')
     .order('data_registro', { ascending: false });
   if (error) throw error;
+  const intervs = data?.length ? await listAtendimentoIntervencoesRaw(data.map((a) => a.id)) : [];
+  anexarProvisoria(data, intervs);
   return resolverFotosEmLinhas(data, 'fotos');
 }
 
@@ -620,11 +622,14 @@ export async function listAtendimentosAbertos(clienteId) {
     grava um registro novo, append-only, e só atualiza o status/data de resolução
     "cache" no atendimento (pra filtros e pro Indicador). Pode haver várias
     intervenções ao longo de visitas diferentes até uma delas fechar Resolvido. */
-export async function registrarIntervencaoAtendimento({ atendimentoId, clienteId, rvtId, data, tecnico, statusResultante, descricao, fotos }) {
+export async function registrarIntervencaoAtendimento({ atendimentoId, clienteId, rvtId, data, tecnico, statusResultante, descricao, fotos, provisoria, faltaDefinitiva }) {
+  // Solução provisória (paliativo): o item segue em Andamento, com o que falta pra definitiva.
+  if (provisoria) statusResultante = 'andamento';
   const { data: interv, error } = await supabase.from('atendimento_intervencoes').insert({
     atendimento_id: atendimentoId, cliente_id: clienteId || null, rvt_id: rvtId || null,
     data: data || hojeLocal(), tecnico: tecnico || null,
     status_resultante: statusResultante, descricao,
+    provisoria: !!provisoria, falta_definitiva: provisoria ? ((faltaDefinitiva || '').trim() || null) : null,
     fotos: await prepararFotos(fotos || [], clienteId || (() => clienteDaLinha('atendimentos', atendimentoId))),
   }).select().single();
   if (error) throw error;
@@ -646,6 +651,42 @@ export async function listInspecoes(clienteId) {
     .order('data_inspecao', { ascending: false });
   if (error) throw error;
   return resolverFotosEmLinhas(data, 'fotos');
+}
+
+/** Solução provisória: o item está "em provisório" quando a ÚLTIMA intervenção dele foi
+    provisória e ele ainda não foi resolvido. Anexa `_provisoria = { desde, falta, descricao }`
+    (ou null) em cada atendimento — derivado, não é coluna. */
+function anexarProvisoria(atendimentos, intervencoes) {
+  const ultima = new Map();
+  for (const iv of intervencoes || []) {
+    const atual = ultima.get(iv.atendimento_id);
+    if (!atual || (iv.criado_em || '') > (atual.criado_em || '')) ultima.set(iv.atendimento_id, iv);
+  }
+  for (const a of atendimentos || []) {
+    const iv = ultima.get(a.id);
+    a._provisoria = iv && iv.provisoria && a.status !== 'resolvido'
+      ? { desde: iv.data, falta: iv.falta_definitiva || '', descricao: iv.descricao || '' }
+      : null;
+  }
+  return atendimentos;
+}
+
+/** Itens do cliente hoje em solução provisória (Indicador → Pendências). */
+export async function listItensProvisorios(clienteId) {
+  const { data, error } = await supabase.from('atendimentos')
+    .select(`id, status, falha, descritivo, ${ATENDIMENTO_EMBEDS}, atendimento_intervencoes(id, data, criado_em, provisoria, falta_definitiva, descricao)`)
+    .eq('cliente_id', clienteId).neq('status', 'resolvido');
+  if (error) throw error;
+  const lista = data || [];
+  anexarProvisoria(lista, lista.flatMap((a) => (a.atendimento_intervencoes || []).map((iv) => ({ ...iv, atendimento_id: a.id }))));
+  return lista.filter((a) => a._provisoria).map((a) => {
+    const d = a.dispositivos;
+    return {
+      id: a.id, painel: d?.lacos?.paineis?.nome || d?.paineis?.nome || a.paineis?.nome || a.baterias_painel?.paineis?.nome || '',
+      laco: d?.lacos?.nome || '', alvo: d ? `${d.etiqueta || 'Dispositivo'}${d.endereco ? ` (END ${d.endereco})` : ''}` : (a.fontes_auxiliares?.nome || (a.baterias_painel ? 'Bateria do painel' : 'Painel')),
+      falha: a.falha || '', ...a._provisoria,
+    };
+  }).sort((x, y) => (x.desde || '').localeCompare(y.desde || ''));
 }
 
 /** Intervenções (sem embed) de um conjunto de atendimentos — usado só pra "costurar" em JS
@@ -695,6 +736,7 @@ async function fetchVisitasEnriquecidas(clienteId, { atendimentos, inspecoes } =
   const inspecaoById = new Map(inspecoesNovos.map((i) => [i.id, i]));
 
   const intervencoesNovas = await listAtendimentoIntervencoesRaw(atendimentosNovos.map((a) => a.id));
+  anexarProvisoria(atendimentosNovos, intervencoesNovas);
   const intervencaoById = new Map(intervencoesNovas.map((iv) => [iv.id, { ...iv, atendimentos: atendimentoById.get(iv.atendimento_id) || null }]));
 
   const { data: rvts, error } = await rvtsPromise;

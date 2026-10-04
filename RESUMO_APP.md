@@ -110,6 +110,20 @@ Nunca sobrescreve o atendimento original — só atualiza `atendimentos.status` 
 RVT que contém a intervenção que resolveu a pendência reverte `atendimentos.status` (lógica em
 `deleteVisita`, em torno de [supabaseAdapter.js:1295](src/supabaseAdapter.js:1295)).
 
+**Solução provisória** (2026-10-04, `migracao_provisoria_e_nao_conformidades.sql`):
+`atendimento_intervencoes.provisoria` + `falta_definitiva`. Na intervenção, 3ª opção "Solução provisória
+(paliativo)" → grava `status_resultante='andamento'`, `provisoria=true` e exige "o que falta para a
+definitiva". Item "em provisório" = última intervenção (por `criado_em`) provisória e item não resolvido —
+derivado por `anexarProvisoria` (vira `atendimento._provisoria = {desde, falta, descricao}` em
+`fetchVisitasEnriquecidas`/`listAtendimentosAbertos`). Selo `SeloProvisoria` no card (Visitas e
+pendências anteriores), bloco tracejado "SOLUÇÃO PROVISÓRIA" no RVT impresso (só se o paliativo já
+existia no dia da visita) e card/lista "Em solução provisória" no Indicador → Pendências
+(`listItensProvisorios`). Remanejamento de peça: decidido NÃO tratar (fica no texto da intervenção).
+Itens avulsos (sem intervenção) ficam fora.
+**Bug antigo corrigido no mesmo dia**: CHECK `rvt_itens.um_dos_tres` recusava item de intervenção (o
+"Registrar intervenção" nunca tinha gravado nada — 0 intervenções no banco) e "Outro" só com atividade
+(Diagnóstico sem texto). Agora aceita exatamente 1 de atendimento/inspeção/intervenção/outro.
+
 ### `rvts` (Visita/RVT)
 `id, cliente_id, painel_id, tecnico, data_visita, assinatura_cliente, assinatura_cliente_tipo,
 assinatura_cliente_data, assinatura_cliente_login, assinatura_cliente_user_id,
@@ -557,6 +571,9 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
   `trg_log_assinatura_tecnico_rvt`/`trg_bloqueia_assinatura_tecnico_insert`. **Rodada** (2026-10-02).
 - `migracao_pendencias.sql` — tabelas `pendencias`/`pendencia_alvos` + RLS + triggers de carimbo da
   baixa e limpeza de órfã. **Rodada** (2026-10-02).
+- `migracao_provisoria_e_nao_conformidades.sql` — intervenção provisória, tabela `nao_conformidades`,
+  `pendencia_alvos.nao_conformidade_id` e correção do CHECK `rvt_itens.um_dos_tres`. **Rodada**
+  (2026-10-04, aplicada pelo Claude via MCP com autorização do Alexandre).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
