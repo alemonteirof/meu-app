@@ -1523,8 +1523,10 @@ async function recalcularStatusAtendimento(atendimentoId) {
     .order('criado_em', { ascending: false })
     .limit(1);
   const ultima = restantes?.[0];
+  // Sem intervenção: baixa em alguma pendência do item já o deixa em Andamento.
+  const semIntervencao = (await alvoTemBaixa({ atendimentoId })) ? 'andamento' : 'aguardando';
   await updateAtendimento(atendimentoId, {
-    status: ultima ? ultima.status_resultante : 'aguardando',
+    status: ultima ? ultima.status_resultante : semIntervencao,
     resolvidoRvtId: ultima && ultima.status_resultante === 'resolvido' ? ultima.rvt_id : null,
     dataResolucao: ultima && ultima.status_resultante === 'resolvido' ? ultima.data : null,
   });
@@ -1630,11 +1632,11 @@ export async function listPendenciasDetalhadas(clienteId) {
           : at.baterias_painel ? 'Bateria do painel'
             : at.fontes_auxiliares ? (at.fontes_auxiliares.nome || 'Fonte auxiliar')
               : at.paineis ? 'Painel (falha geral)' : 'Item';
-        return { painel, laco: d?.lacos?.nome || '', alvo, falha: at.falha || '', descritivo: at.descritivo || '', status: at.status };
+        return { chave: `at:${a.atendimento_id}`, painel, laco: d?.lacos?.nome || '', alvo, falha: at.falha || '', descritivo: at.descritivo || '', status: at.status };
       }
       const ri = a.rvt_itens;
       const dados = ri?.outro_atividade_dados || {};
-      return { painel: '', laco: '', alvo: dados.nomeItem || 'Item não cadastrado', falha: '', descritivo: ri?.outro_descricao || '', status: dados.status || '' };
+      return { chave: `ri:${a.rvt_item_id}`, painel: '', laco: '', alvo: dados.nomeItem || 'Item não cadastrado', falha: '', descritivo: ri?.outro_descricao || '', status: dados.status || '' };
     }),
   }));
 }
@@ -1756,17 +1758,63 @@ export async function salvarPendencia(p) {
 
 /** Remove uma pendência cadastrada por engano (não é a baixa — baixa usa darBaixaPendencias). */
 export async function excluirPendencia(id) {
+  const alvos = await alvosDasPendencias([id]);
   const { error } = await supabase.from('pendencias').delete().eq('id', id);
   if (error) throw error;
+  await sincronizarStatusPorPendencias(alvos);
 }
 
-/** Dá baixa (resolvida) em 1+ pendências. Quem deu baixa é carimbado pelo servidor. */
+/** Dá baixa (resolvida) em 1+ pendências. Quem deu baixa é carimbado pelo servidor.
+    Item que estava Aguardando passa a Andamento (sincronizarStatusPorPendencias). */
 export async function darBaixaPendencias(ids, { data, obs, rvtId } = {}) {
   if (!ids?.length) return;
   const { error } = await supabase.from('pendencias').update({
     baixa_em: data || hojeLocal(), baixa_obs: (obs || '').trim() || null, baixa_rvt_id: rvtId || null,
   }).in('id', ids);
   if (error) throw error;
+  await sincronizarStatusPorPendencias(await alvosDasPendencias(ids));
+}
+
+async function alvosDasPendencias(ids) {
+  const { data } = await supabase.from('pendencia_alvos').select('atendimento_id, rvt_item_id').in('pendencia_id', ids);
+  const vistos = new Set();
+  return (data || []).map((a) => ({ atendimentoId: a.atendimento_id, rvtItemId: a.rvt_item_id }))
+    .filter((a) => { const k = a.atendimentoId || a.rvtItemId; if (vistos.has(k)) return false; vistos.add(k); return true; });
+}
+
+/** O item tem alguma pendência com baixa? */
+async function alvoTemBaixa({ atendimentoId, rvtItemId }) {
+  const { data: links } = await supabase.from('pendencia_alvos').select('pendencia_id')
+    .eq(atendimentoId ? 'atendimento_id' : 'rvt_item_id', atendimentoId || rvtItemId);
+  if (!links?.length) return false;
+  const { count } = await supabase.from('pendencias').select('id', { count: 'exact', head: true })
+    .in('id', links.map((l) => l.pendencia_id)).not('baixa_em', 'is', null);
+  return (count || 0) > 0;
+}
+
+/** Regra do status pelas pendências (combinada com o Alexandre em 2026-10-04):
+    - Resolvido nunca é tocado (resolver continua sendo decisão do técnico).
+    - Corretiva com intervenção registrada: vale o status da última intervenção (fluxo de sempre).
+    - Sem intervenção: alguma pendência com baixa → Andamento; nenhuma → Aguardando
+      (reabrir/excluir a única baixa devolve o item a Aguardando).
+    - Item avulso (Manutenção não cadastrada, status no jsonb): mesma regra, sem intervenção. */
+async function sincronizarStatusPorPendencias(alvos) {
+  for (const alvo of alvos || []) {
+    if (alvo.atendimentoId) {
+      const { data: at } = await supabase.from('atendimentos').select('status').eq('id', alvo.atendimentoId).single();
+      if (!at || at.status === 'resolvido') continue;
+      const { count } = await supabase.from('atendimento_intervencoes').select('id', { count: 'exact', head: true }).eq('atendimento_id', alvo.atendimentoId);
+      if (count) continue;
+      const novo = (await alvoTemBaixa(alvo)) ? 'andamento' : 'aguardando';
+      if (novo !== at.status) await updateAtendimento(alvo.atendimentoId, { status: novo });
+    } else if (alvo.rvtItemId) {
+      const { data: ri } = await supabase.from('rvt_itens').select('outro_atividade_dados').eq('id', alvo.rvtItemId).single();
+      const dados = ri?.outro_atividade_dados || {};
+      if (!ri || dados.status === 'resolvido') continue;
+      const novo = (await alvoTemBaixa(alvo)) ? 'andamento' : 'aguardando';
+      if (novo !== dados.status) await supabase.from('rvt_itens').update({ outro_atividade_dados: { ...dados, status: novo } }).eq('id', alvo.rvtItemId);
+    }
+  }
 }
 
 /** Pendências abertas ligadas a um alvo que ficariam sem nenhum item aberto se este alvo
@@ -1795,4 +1843,5 @@ export async function pendenciasQueFechariam({ atendimentoId, rvtItemId }) {
 export async function reabrirPendencia(id) {
   const { error } = await supabase.from('pendencias').update({ baixa_em: null }).eq('id', id);
   if (error) throw error;
+  await sincronizarStatusPorPendencias(await alvosDasPendencias([id]));
 }

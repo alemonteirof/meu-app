@@ -2519,7 +2519,15 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     }
   }, [clientId]);
   useEffect(() => { recarregarPendencias(); }, [recarregarPendencias, visitas]);
-  const pendCtx = { lista: pendenciasLista, clienteId: clientId, nomesMateriais, recarregar: recarregarPendencias };
+  // Baixa/reabrir/excluir pendência pode mudar o status do item (Aguardando ↔ Andamento):
+  // além das pendências, recarrega visitas, a lista de pendentes da visita e o Dashboard.
+  async function recarregarAposPendencia() {
+    await recarregarPendencias();
+    refreshVisitas();
+    if (visita) carregarPendentes();
+    if (onRefresh) onRefresh();
+  }
+  const pendCtx = { lista: pendenciasLista, clienteId: clientId, nomesMateriais, recarregar: recarregarAposPendencia };
 
   // Aviso ao resolver uma corretiva com pendência aberta: 'baixa' | 'sem' | 'voltar'.
   const { dialog: perguntaBaixaDialog, perguntar: perguntarBaixa } = usePerguntaBaixa();

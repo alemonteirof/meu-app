@@ -280,7 +280,7 @@ async function exportarExcel({ pendencias, materiais, client }) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export default function PendenciasIndicador({ clientId, client, canEdit }) {
+export default function PendenciasIndicador({ clientId, client, canEdit, onRefresh }) {
   const [lista, setLista] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
@@ -305,6 +305,23 @@ export default function PendenciasIndicador({ clientId, client, canEdit }) {
   useEffect(() => { carregar(); }, [carregar]);
 
   const abertas = useMemo(() => lista.filter((p) => !p.baixaEm), [lista]);
+
+  // "Sem impedimentos — pronto para executar": item ainda não resolvido, com pendência(s)
+  // e todas já com baixa. Não é status no banco — o item segue em Andamento até o técnico resolver.
+  const prontos = useMemo(() => {
+    const porItem = new Map();
+    for (const p of lista) {
+      for (const it of p.itens || []) {
+        const atual = porItem.get(it.chave) || { item: it, pendencias: [] };
+        atual.pendencias.push(p);
+        porItem.set(it.chave, atual);
+      }
+    }
+    return [...porItem.values()]
+      .filter((x) => x.item.status !== 'resolvido' && x.pendencias.every((p) => p.baixaEm))
+      .map((x) => ({ ...x, ultimaBaixa: x.pendencias.map((p) => p.baixaEm).sort().pop() }))
+      .sort((a, b) => a.ultimaBaixa.localeCompare(b.ultimaBaixa));
+  }, [lista]);
   const filtradas = useMemo(() => abertas
     .filter((p) => !filtroResp || p.responsavel === filtroResp)
     .filter((p) => !filtroTipo || p.tipo === filtroTipo)
@@ -333,8 +350,9 @@ export default function PendenciasIndicador({ clientId, client, canEdit }) {
   async function baixa(p, { data, obs }) {
     try {
       await darBaixaPendencias([p.id], { data, obs });
-      setMsg('Baixa registrada.');
+      setMsg('Baixa registrada. Se o item estava Aguardando, agora está em Andamento.');
       await carregar();
+      if (onRefresh) onRefresh();
       return true;
     } catch (e) {
       console.error(e);
@@ -354,6 +372,7 @@ export default function PendenciasIndicador({ clientId, client, canEdit }) {
         <StatCard label="Com o cliente" valor={resumo.cliente} />
         <StatCard label="Com a MAJ" valor={resumo.maj} />
         <StatCard label="Mais antiga" valor={resumo.maisAntiga != null ? `${resumo.maisAntiga} dias` : '—'} />
+        <StatCard label="Prontos p/ executar" valor={prontos.length} destaque={prontos.length ? 'var(--status-ok)' : undefined} />
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -409,6 +428,32 @@ export default function PendenciasIndicador({ clientId, client, canEdit }) {
           })}
         </div>
       ))}
+
+      {prontos.length > 0 && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--status-ok)' }}>
+            Sem impedimentos — pronto para executar <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>· {prontos.length}</span>
+          </h3>
+          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: -4 }}>
+            Itens com todas as pendências já com baixa. Continuam em Andamento até o técnico executar e registrar a resolução na visita.
+          </p>
+          <div style={{ ...cardStyle, overflow: 'hidden' }}>
+            {prontos.map(({ item, pendencias, ultimaBaixa }) => (
+              <div key={item.chave} style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: 13, color: 'var(--text-primary)' }}>
+                <div style={{ fontWeight: 600, wordBreak: 'break-word' }}>{[item.painel, item.laco, item.alvo].filter(Boolean).join(' · ')}</div>
+                {(item.falha || item.descritivo) && (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, wordBreak: 'break-word' }}>
+                    {[item.falha, item.descritivo].filter(Boolean).join(' — ').slice(0, 200)}
+                  </div>
+                )}
+                <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 2 }}>
+                  Baixa: {pendencias.map((p) => tipoPendenciaLabel(p)).join(', ')} · última em {formatDateBR(ultimaBaixa)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {Object.keys(materiais).length > 0 && (
         <div style={{ display: 'grid', gap: 8 }}>

@@ -3542,7 +3542,8 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
             </div>
             {indicadorTab === 'pendencias' && (
               <div key="pendencias" className="fade-in-up">
-                <PendenciasIndicador clientId={client.id} client={client} canEdit={canEdit} />
+                <PendenciasIndicador clientId={client.id} client={client} canEdit={canEdit}
+                  onRefresh={async () => setData(await loadClientData(client.id))} />
               </div>
             )}
             {indicadorTab === 'sdai' && (

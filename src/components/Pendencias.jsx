@@ -271,8 +271,13 @@ export function PendenciasItem({ ctx, alvo, aberto, canEdit, dataPadrao, rvtId, 
           <button type="button" onClick={novaPendencia} style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>+ Adicionar</button>
         )}
       </div>
-      {aberto && abertas.length === 0 && !form && (
+      {aberto && minhas.length === 0 && !form && (
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Nenhuma pendência cadastrada.</p>
+      )}
+      {aberto && minhas.length > 0 && abertas.length === 0 && (
+        <p style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, padding: '4px 8px', borderRadius: 6, display: 'inline-block', background: 'rgba(39,174,96,.15)', color: 'var(--status-ok)' }}>
+          ✓ Sem impedimentos — pronto para executar
+        </p>
       )}
 
       <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>

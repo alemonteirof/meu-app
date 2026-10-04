@@ -189,6 +189,16 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   Alexandre em 2026-10-02: NAV_ITEMS + NAV_KEYS_BY_ROLE.admin + render em App.jsx + o arquivo +
   exports só usados por ela (`visitaTemPendencias`, export de `VisitaPrintView`,
   `listItensSemPendencia`, `contarPendenciasSemDetalhe`).
+- **Status do item pelas pendências** (decisão 2026-10-04, `sincronizarStatusPorPendencias` no
+  adapter, chamado por `darBaixaPendencias`/`reabrirPendencia`/`excluirPendencia`; também em
+  `recalcularStatusAtendimento`): Resolvido nunca é tocado; corretiva com intervenção segue a última
+  intervenção; sem intervenção → alguma pendência com baixa = **Andamento**, nenhuma = **Aguardando**
+  (reabrir/excluir a única baixa devolve a Aguardando). Avulso (status no jsonb): mesma regra.
+  Baixa em TODAS **não resolve** o item (resolver = técnico, via intervenção/editar item).
+  **"Sem impedimentos — pronto para executar"**: categoria derivada (não é status no banco) = item
+  não resolvido com pendência(s) e todas com baixa. Aparece como selo verde no card do item
+  (`PendenciasItem`) e no Indicador → Pendências (card "Prontos p/ executar" + seção própria;
+  `listPendenciasDetalhadas` agora devolve `itens[].chave` = `at:<id>`/`ri:<id>`).
 - Datas "hoje" das pendências usam data LOCAL (`hojeLocal`/`hojeISO`), não `toISOString` (UTC).
 
 ### `rvt_itens` (join Visita ↔ item)
