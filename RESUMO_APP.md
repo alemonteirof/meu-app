@@ -129,7 +129,8 @@ Em INSERT as colunas são zeradas (`bloqueia_assinatura_tecnico_insert`). App gr
 O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, não ao RVT (o
 `desde` nunca zera quando o item reaparece em outra visita).
 - `pendencias`: `id uuid, cliente_id, tipo` (`material|liberacao|parada_maquina|condicao_seguranca|
-  decisao_cliente|outro` + `tipo_outro`), `responsavel` (`cliente|maj`), `detalhe` (texto livre),
+  decisao_cliente|outro` + `tipo_outro`; rótulos em `PENDENCIA_TIPOS` — `parada_maquina` aparece
+  como "Dia não produtivo/Parada de máquina" desde 2026-10-04), `responsavel` (`cliente|maj`), `detalhe` (texto livre),
   `materiais` jsonb `[{item, qtd, unidade, especificacao, marca, obs}]` (só tipo material), `desde`,
   `previsao`, `origem_rvt_id`, baixa: `baixa_em, baixa_obs, baixa_rvt_id, baixa_por_uid/email/nome`
   (carimbo pelo trigger `pendencia_carimbo`, servidor). "Sem detalhe" é derivado (sem materiais /
