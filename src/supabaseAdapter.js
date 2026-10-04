@@ -1573,7 +1573,7 @@ export async function deleteVisita(rvtId) {
 export const PENDENCIA_TIPOS = [
   { value: 'material', label: 'Material' },
   { value: 'liberacao', label: 'Liberação' },
-  { value: 'parada_maquina', label: 'Parada de máquina' },
+  { value: 'parada_maquina', label: 'Dia não produtivo/Parada de máquina' },
   { value: 'condicao_seguranca', label: 'Condição de segurança' },
   { value: 'decisao_cliente', label: 'Decisão do cliente' },
   { value: 'outro', label: 'Outro' },
