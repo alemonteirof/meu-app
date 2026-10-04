@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   listItensSemPendencia, contarPendenciasSemDetalhe, salvarPendencia,
   listPendenciasDetalhadas, listPendencias, listNomesMateriais, listVisitas,
-  PENDENCIA_TIPOS, PENDENCIA_RESPONSAVEIS,
+  listCorretivasParaConversao, converterCorretivasEmNC, listNaoConformidades,
+  PENDENCIA_TIPOS, PENDENCIA_RESPONSAVEIS, NC_CLASSIFICACOES, NC_RISCOS, NC_NORMAS_SUGERIDAS,
 } from '../supabaseAdapter';
 import { PendenciaForm, pendenciaSemDetalhe, tipoPendenciaLabel, responsavelLabel } from './Pendencias';
 import { localDaPendencia } from './PendenciasIndicador';
@@ -88,10 +89,12 @@ export default function ClassificarPendencias({ clienteAtualId, client }) {
         <button type="button" style={tabBtn(aba === 'classificar')} onClick={() => setAba('classificar')}>Classificar</button>
         <button type="button" style={tabBtn(aba === 'completar')} onClick={() => setAba('completar')}>Completar detalhe</button>
         <button type="button" style={tabBtn(aba === 'reenviar')} onClick={() => setAba('reenviar')}>Reenviar RVTs</button>
+        <button type="button" style={tabBtn(aba === 'converter')} onClick={() => setAba('converter')}>Converter em NC</button>
       </div>
       {aba === 'classificar' && <AbaClassificar clienteAtualId={clienteAtualId} />}
       {aba === 'completar' && <AbaCompletar clientId={clienteAtualId} client={client} />}
       {aba === 'reenviar' && <AbaReenviar clientId={clienteAtualId} client={client} />}
+      {aba === 'converter' && <AbaConverter clienteAtualId={clienteAtualId} />}
     </div>
   );
 }
@@ -201,6 +204,7 @@ function AbaReenviar({ clientId, client }) {
   const [mod, setMod] = useState(null);
   const [visitas, setVisitas] = useState([]);
   const [pendencias, setPendencias] = useState([]);
+  const [ncs, setNcs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [marcadas, setMarcadas] = useState(() => new Set());
@@ -209,8 +213,8 @@ function AbaReenviar({ clientId, client }) {
   const carregar = useCallback(async () => {
     setLoading(true);
     try {
-      const [m, v, p] = await Promise.all([import('../AtendimentosNovo'), listVisitas(clientId), listPendencias(clientId)]);
-      setMod(m); setVisitas(v); setPendencias(p);
+      const [m, v, p, n] = await Promise.all([import('../AtendimentosNovo'), listVisitas(clientId), listPendencias(clientId), listNaoConformidades(clientId).catch(() => [])]);
+      setMod(m); setVisitas(v); setPendencias(p); setNcs(n);
     } catch (e) {
       console.error(e);
       setMsg('Não foi possível carregar as visitas.');
@@ -234,7 +238,7 @@ function AbaReenviar({ clientId, client }) {
 
   if (imprimir && mod) {
     const Print = mod.VisitaPrintView;
-    return <Print visitas={imprimir} client={client} pendencias={pendencias} podeAssinarTecnico onBack={() => { setImprimir(null); carregar(); }} />;
+    return <Print visitas={imprimir} client={client} pendencias={pendencias} ncs={ncs} podeAssinarTecnico onBack={() => { setImprimir(null); carregar(); }} />;
   }
 
   const selecionadas = comPendencia.filter((x) => marcadas.has(x.v.id)).map((x) => x.v);
@@ -283,6 +287,156 @@ function AbaReenviar({ clientId, client }) {
             </div>
             <button type="button" onClick={() => setImprimir([v])} style={{ ...smallBtnStyle, border: '1px solid #8B2F2F', color: '#8B2F2F' }}>Ver / Imprimir</button>
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Aba "Converter em NC": corretivas que na verdade são não conformidade (ex.: dimensionamento
+    das fontes de 12/09) viram UMA NC. As corretivas deixam de existir (decisão do Alexandre,
+    2026-10-04) — por isso a confirmação lista exatamente o que some. */
+function AbaConverter({ clienteAtualId }) {
+  const [itens, setItens] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
+  const [filtroCliente, setFiltroCliente] = useState(clienteAtualId || '');
+  const [filtroPainel, setFiltroPainel] = useState('');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+  const [marcados, setMarcados] = useState(() => new Set());
+  const ncVazia = { titulo: '', classificacao: '', risco: '', norma: '', normaItem: '', localTexto: '', descricao: '', recomendacao: '' };
+  const [nc, setNc] = useState(ncVazia);
+  const [confirmando, setConfirmando] = useState(false);
+  const [convertendo, setConvertendo] = useState(false);
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    try { setItens(await listCorretivasParaConversao()); } catch (e) { console.error(e); setMsg('Não foi possível carregar as corretivas.'); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const clientes = useMemo(() => [...new Map(itens.map((i) => [i.clienteId, i.cliente])).entries()], [itens]);
+  const paineis = useMemo(() => [...new Map(itens.filter((i) => (!filtroCliente || i.clienteId === filtroCliente) && i.painelId)
+    .map((i) => [i.painelId, i.painel])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [itens, filtroCliente]);
+  const filtrados = itens.filter((i) => (!filtroCliente || i.clienteId === filtroCliente) && (!filtroPainel || i.painelId === filtroPainel)
+    && (!de || i.dataVisita >= de) && (!ate || i.dataVisita <= ate));
+  const selecionados = itens.filter((i) => marcados.has(i.id));
+  const setN = (patch) => { setMsg(''); setConfirmando(false); setNc((p) => ({ ...p, ...patch })); };
+
+  function toggle(id) {
+    setConfirmando(false);
+    setMarcados((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  function puxarTexto() {
+    const textos = [...new Set(selecionados.flatMap((s) => [s.falha, s.descritivo]).filter(Boolean))];
+    setN({ descricao: textos.join('\n\n') });
+  }
+  function preparar() {
+    if (!selecionados.length) { setMsg('Marque ao menos 1 corretiva.'); return; }
+    if (new Set(selecionados.map((s) => s.clienteId)).size > 1) { setMsg('Marque corretivas de um mesmo cliente.'); return; }
+    if (!nc.titulo.trim()) { setMsg('Dê um título para a não conformidade.'); return; }
+    if (!nc.classificacao) { setMsg('Escolha a classificação.'); return; }
+    setMsg(''); setConfirmando(true);
+  }
+  async function converter() {
+    setConvertendo(true); setMsg('');
+    try {
+      await converterCorretivasEmNC({ corretivas: selecionados, nc: { ...nc, rvtId: undefined, painelId: undefined } });
+      setMsg(`${selecionados.length} corretiva(s) convertida(s) em 1 não conformidade. Veja em "Não conformidades".`);
+      setMarcados(new Set()); setNc(ncVazia); setConfirmando(false);
+      await carregar();
+    } catch (e) {
+      console.error(e);
+      setMsg(`Erro na conversão: ${e.message || 'tente de novo'}. Confira em "Não conformidades" antes de repetir.`);
+    } finally {
+      setConvertendo(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>Converter corretivas em não conformidade</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          Para corretivas que na verdade são não conformidade (estão fora da regra, não quebradas). As marcadas viram UMA NC na
+          mesma visita, com textos, fotos e pendências — e <strong>deixam de existir como corretiva</strong>.
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div><span style={labelStyle}>Cliente</span>
+          <select style={inputStyle} value={filtroCliente} onChange={(e) => { setFiltroCliente(e.target.value); setFiltroPainel(''); }}>
+            <option value="">Todos</option>{clientes.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+          </select></div>
+        <div><span style={labelStyle}>Painel</span>
+          <select style={inputStyle} value={filtroPainel} onChange={(e) => setFiltroPainel(e.target.value)}>
+            <option value="">Todos</option>{paineis.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+          </select></div>
+        <div><span style={labelStyle}>Visita de</span><input type="date" style={inputStyle} value={de} onChange={(e) => setDe(e.target.value)} /></div>
+        <div><span style={labelStyle}>até</span><input type="date" style={inputStyle} value={ate} onChange={(e) => setAte(e.target.value)} /></div>
+      </div>
+
+      <div style={{ border: '1px solid var(--border)', borderLeft: '4px solid #8B2F2F', borderRadius: 0, padding: '10px 12px', background: 'var(--surface)', display: 'grid', gap: 8 }}>
+        <strong style={{ fontSize: 13, color: 'var(--text-primary)' }}>{selecionados.length} corretiva(s) marcada(s) → 1 não conformidade</strong>
+        <input style={inputStyle} value={nc.titulo} onChange={(e) => setN({ titulo: e.target.value })} placeholder="Título da NC * (ex.: Fontes auxiliares sem certificação e subdimensionadas)" />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <select style={{ ...inputStyle, flex: '1 1 150px' }} value={nc.classificacao} onChange={(e) => setN({ classificacao: e.target.value })} aria-label="Classificação">
+            <option value="">Classificação *</option>{NC_CLASSIFICACOES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          <select style={{ ...inputStyle, flex: '1 1 120px' }} value={nc.risco} onChange={(e) => setN({ risco: e.target.value })} aria-label="Risco">
+            <option value="">Risco</option>{NC_RISCOS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <input style={{ ...inputStyle, flex: '2 1 220px' }} list="nc-normas-conv" value={nc.norma} onChange={(e) => setN({ norma: e.target.value })} placeholder="Norma / referência" />
+          <datalist id="nc-normas-conv">{NC_NORMAS_SUGERIDAS.map((n) => <option key={n} value={n} />)}</datalist>
+          <input style={{ ...inputStyle, flex: '1 1 110px' }} value={nc.normaItem} onChange={(e) => setN({ normaItem: e.target.value })} placeholder="Item da norma" />
+        </div>
+        <input style={inputStyle} value={nc.localTexto} onChange={(e) => setN({ localTexto: e.target.value })} placeholder="Local / área (ex.: Áreas Trim, Body e Plastic)" />
+        <div>
+          <textarea style={{ ...inputStyle, minHeight: 80, width: '100%' }} value={nc.descricao} onChange={(e) => setN({ descricao: e.target.value })} placeholder="Constatação / evidência" />
+          <button type="button" onClick={puxarTexto} disabled={!selecionados.length} style={{ ...smallBtnStyle, marginTop: 4 }}>Puxar texto das corretivas marcadas</button>
+        </div>
+        <textarea style={{ ...inputStyle, minHeight: 50, width: '100%' }} value={nc.recomendacao} onChange={(e) => setN({ recomendacao: e.target.value })} placeholder="Recomendação" />
+        {!confirmando && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={preparar} style={btnStyle}>Converter {selecionados.length || ''} em NC</button>
+          </div>
+        )}
+        {confirmando && (
+          <div role="alertdialog" style={{ padding: 12, borderRadius: 8, border: '1px solid var(--status-danger)', background: 'rgba(192,57,43,.08)', display: 'grid', gap: 8, fontSize: 13, color: 'var(--text-primary)' }}>
+            <strong>Estas {selecionados.length} corretiva(s) vão deixar de existir como corretiva:</strong>
+            <ul style={{ margin: '0 0 0 18px', listStyle: 'disc' }}>
+              {selecionados.map((s) => <li key={s.id}>{[s.painel, s.laco, s.alvoLabel].filter(Boolean).join(' · ')} — visita {formatDateBR(s.dataVisita)}</li>)}
+            </ul>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Saem do Dashboard de falhas e do RVT como corretiva. Viram a NC "{nc.titulo}", que aparece no RVT da visita mais antiga
+              na seção de não conformidades, com os textos, fotos e pendências delas. Isso não tem desfazer.
+            </span>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setConfirmando(false)} style={smallBtnStyle}>Cancelar</button>
+              <button type="button" onClick={converter} disabled={convertendo} style={{ ...btnStyle, background: 'var(--status-danger)', opacity: convertendo ? 0.7 : 1 }}>
+                {convertendo ? 'Convertendo...' : 'Confirmar conversão'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {msg && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</p>}
+
+      <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--surface)' }}>
+        {loading && <p style={{ padding: 12, fontSize: 13, color: 'var(--text-secondary)' }}>Carregando...</p>}
+        {!loading && filtrados.length === 0 && <p style={{ padding: 12, fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma corretiva aberta com esse filtro.</p>}
+        {filtrados.map((it) => (
+          <label key={it.id} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0,1fr)', alignItems: 'start', gap: 8, padding: '10px 12px', borderTop: '1px solid var(--border)', cursor: 'pointer', background: marcados.has(it.id) ? 'rgba(139,47,47,.10)' : 'transparent' }}>
+            <input type="checkbox" checked={marcados.has(it.id)} onChange={() => toggle(it.id)} style={{ marginTop: 3 }} />
+            <div style={{ minWidth: 0, fontSize: 13, color: 'var(--text-primary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <strong style={{ wordBreak: 'break-word' }}>{[it.painel, it.laco, it.alvoLabel].filter(Boolean).join(' · ')}</strong>
+                <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Visita {formatDateBR(it.dataVisita)}{it.fotos.length ? ` · ${it.fotos.length} foto(s)` : ''}</span>
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{it.cliente}</div>
+              <TextoLongo texto={[it.falha && `Falha: ${it.falha}`, it.descritivo && `Descritivo: ${it.descritivo}`].filter(Boolean).join('\n')} />
+            </div>
+          </label>
         ))}
       </div>
     </div>

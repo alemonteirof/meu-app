@@ -218,10 +218,15 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   item da visita) · **Reenviar RVTs** (visitas cujo RVT agora mostra pendências —
   `visitaTemPendencias` exportado de AtendimentosNovo; "Ver / Imprimir" individual ou "Imprimir
   juntas" via `VisitaPrintView` exportado, import dinâmico; avisa "N sem detalhe").
-  **REMOVER A TELA INTEIRA (as 3 abas) quando tudo estiver classificado** — combinado com o
-  Alexandre em 2026-10-02: NAV_ITEMS + NAV_KEYS_BY_ROLE.admin + render em App.jsx + o arquivo +
+  4ª aba (2026-10-04) **Converter em NC**: marca corretivas abertas (mesmo cliente) → 1 NC
+  (`converterCorretivasEmNC`: cria a NC na visita mais antiga com fotos/texto + snapshot em
+  `origem_conversao`, move as pendências pra NC — insere alvo NC antes de apagar o antigo — e apaga as
+  corretivas). Confirmação inline lista o que deixa de existir.
+  **REMOVER A TELA INTEIRA (as 4 abas) quando tudo estiver classificado** — combinado com o
+  Alexandre em 2026-10-02/04: NAV_ITEMS + NAV_KEYS_BY_ROLE.admin + render em App.jsx + o arquivo +
   exports só usados por ela (`visitaTemPendencias`, export de `VisitaPrintView`,
-  `listItensSemPendencia`, `contarPendenciasSemDetalhe`).
+  `listItensSemPendencia`, `contarPendenciasSemDetalhe`, `listCorretivasParaConversao`,
+  `converterCorretivasEmNC`). A tabela/menu de NC e `origem_conversao` FICAM.
 - **Status do item pelas pendências** (decisão 2026-10-04, `sincronizarStatusPorPendencias` no
   adapter, chamado por `darBaixaPendencias`/`reabrirPendencia`/`excluirPendencia`; também em
   `recalcularStatusAtendimento`): Resolvido nunca é tocado; corretiva com intervenção segue a última

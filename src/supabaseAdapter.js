@@ -1996,6 +1996,75 @@ export async function excluirNaoConformidade(id) {
   if (error) throw error;
 }
 
+/** TELA TEMPORÁRIA (Converter em NC): corretivas abertas de todos os clientes visíveis, com contexto. */
+export async function listCorretivasParaConversao() {
+  const [{ data, error }, { data: clis }] = await Promise.all([
+    supabase.from('atendimentos')
+      .select(`id, cliente_id, status, falha, descritivo, data_registro, fotos, dispositivo_id, painel_id,
+        dispositivos(etiqueta, endereco, painel_id, lacos(nome, painel_id, paineis(id, nome)), paineis(id, nome)),
+        paineis(id, nome), baterias_painel(paineis(id, nome)), fontes_auxiliares(nome),
+        rvt_itens(rvt_id, rvts(data_visita))`)
+      .neq('status', 'resolvido'),
+    supabase.from('clientes').select('id, nome'),
+  ]);
+  if (error) throw error;
+  await resolverFotosEmLinhas(data, 'fotos');
+  const nomeCliente = Object.fromEntries((clis || []).map((c) => [c.id, c.nome]));
+  return (data || []).map((a) => {
+    const d = a.dispositivos;
+    const painel = d?.lacos?.paineis || d?.paineis || a.paineis || a.baterias_painel?.paineis || null;
+    const visitas = (a.rvt_itens || []).map((ri) => ({ rvtId: ri.rvt_id, data: ri.rvts?.data_visita })).filter((v) => v.data)
+      .sort((x, y) => x.data.localeCompare(y.data));
+    return {
+      id: a.id, clienteId: a.cliente_id, cliente: nomeCliente[a.cliente_id] || '', status: a.status,
+      painelId: painel?.id || '', painel: painel?.nome || '', laco: d?.lacos?.nome || '',
+      dispositivoId: a.dispositivo_id || '',
+      alvoLabel: d ? `${d.etiqueta || 'Dispositivo'}${d.endereco ? ` (END ${d.endereco})` : ''}`
+        : a.baterias_painel ? 'Bateria do painel' : a.fontes_auxiliares ? (a.fontes_auxiliares.nome || 'Fonte auxiliar') : a.paineis ? 'Painel (falha geral)' : 'Item',
+      falha: a.falha || '', descritivo: a.descritivo || '', fotos: a.fotos || [],
+      rvtId: visitas[0]?.rvtId || null, dataVisita: visitas[0]?.data || (a.data_registro || '').slice(0, 10),
+    };
+  }).sort((x, y) => (x.dataVisita || '').localeCompare(y.dataVisita || ''));
+}
+
+/** TELA TEMPORÁRIA: converte corretivas (mesmo cliente) em UMA não conformidade.
+    1. cria a NC (visita/data = a mais antiga; fotos = todas; snapshot das corretivas em origem_conversao)
+    2. passa as pendências das corretivas pra NC (insere alvo NC ANTES de remover o alvo antigo,
+       senão o trigger de órfã apagaria a pendência)
+    3. apaga as corretivas (cascata: item no RVT, intervenções) — no RVT elas passam a aparecer
+       na seção de NC da mesma visita. */
+export async function converterCorretivasEmNC({ corretivas, nc }) {
+  if (!corretivas?.length) throw new Error('Nenhuma corretiva selecionada.');
+  const clienteId = corretivas[0].clienteId;
+  if (corretivas.some((c) => c.clienteId !== clienteId)) throw new Error('Selecione corretivas de um mesmo cliente.');
+  const ordenadas = [...corretivas].sort((a, b) => (a.dataVisita || '').localeCompare(b.dataVisita || ''));
+  const paineis = [...new Set(corretivas.map((c) => c.painelId).filter(Boolean))];
+  const fotos = [...new Set(corretivas.flatMap((c) => c.fotos || []))];
+  const origem = corretivas.map((c) => ({
+    atendimento_id: c.id, item: [c.painel, c.laco, c.alvoLabel].filter(Boolean).join(' · '),
+    falha: c.falha, descritivo: c.descritivo, status: c.status, visita: c.dataVisita, rvt_id: c.rvtId,
+  }));
+  const ncId = await salvarNaoConformidade({
+    ...nc, clienteId, rvtId: nc.rvtId ?? ordenadas[0].rvtId, dataConstatacao: nc.dataConstatacao || ordenadas[0].dataVisita,
+    painelId: nc.painelId ?? (paineis.length === 1 ? paineis[0] : ''),
+    dispositivoId: corretivas.length === 1 ? corretivas[0].dispositivoId : '',
+    fotos: [...(nc.fotos || []), ...fotos], origemConversao: origem, status: nc.status || 'aberta',
+  });
+
+  const ids = corretivas.map((c) => c.id);
+  const { data: links, error: eL } = await supabase.from('pendencia_alvos').select('id, pendencia_id').in('atendimento_id', ids);
+  if (eL) throw eL;
+  const pendIds = [...new Set((links || []).map((l) => l.pendencia_id))];
+  if (pendIds.length) {
+    const { error: eI } = await supabase.from('pendencia_alvos').insert(pendIds.map((pid) => ({ pendencia_id: pid, cliente_id: clienteId, nao_conformidade_id: ncId })));
+    if (eI) throw eI;
+    const { error: eD } = await supabase.from('pendencia_alvos').delete().in('id', links.map((l) => l.id));
+    if (eD) throw eD;
+  }
+  for (const id of ids) await deleteAtendimento(id);
+  return ncId;
+}
+
 /** Visitas do cliente (só data/técnico) — p/ escolher a visita de uma NC. */
 export async function listVisitasResumo(clienteId) {
   const { data, error } = await supabase.from('rvts').select('id, data_visita, tecnico')
