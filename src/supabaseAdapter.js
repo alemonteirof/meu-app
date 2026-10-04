@@ -1626,6 +1626,12 @@ export const PENDENCIA_RESPONSAVEIS = [
 ];
 export const MATERIAL_UNIDADES = ['un', 'm', 'pç', 'cx', 'par', 'jogo', 'rolo', 'kg', 'L'];
 
+export function chaveAlvoPendencia(a) {
+  if (a.atendimentoId) return `at:${a.atendimentoId}`;
+  if (a.naoConformidadeId) return `nc:${a.naoConformidadeId}`;
+  return `ri:${a.rvtItemId}`;
+}
+
 function rowToPendencia(r) {
   return {
     id: r.id, clienteId: r.cliente_id, tipo: r.tipo, tipoOutro: r.tipo_outro || '',
@@ -1633,7 +1639,7 @@ function rowToPendencia(r) {
     desde: r.desde || '', previsao: r.previsao || '', origemRvtId: r.origem_rvt_id || null,
     baixaEm: r.baixa_em || '', baixaObs: r.baixa_obs || '', baixaRvtId: r.baixa_rvt_id || null,
     baixaPorNome: r.baixa_por_nome || r.baixa_por_email || '',
-    alvos: (r.pendencia_alvos || []).map((a) => ({ id: a.id, atendimentoId: a.atendimento_id || null, rvtItemId: a.rvt_item_id || null })),
+    alvos: (r.pendencia_alvos || []).map((a) => ({ id: a.id, atendimentoId: a.atendimento_id || null, rvtItemId: a.rvt_item_id || null, naoConformidadeId: a.nao_conformidade_id || null })),
   };
 }
 
@@ -1641,7 +1647,7 @@ function rowToPendencia(r) {
 export async function listPendencias(clienteId) {
   const { data, error } = await supabase
     .from('pendencias')
-    .select('*, pendencia_alvos(id, atendimento_id, rvt_item_id)')
+    .select('*, pendencia_alvos(id, atendimento_id, rvt_item_id, nao_conformidade_id)')
     .eq('cliente_id', clienteId)
     .order('desde', { ascending: true });
   if (error) throw error;
@@ -1658,7 +1664,8 @@ export async function listPendenciasDetalhadas(clienteId) {
         atendimentos(id, status, falha, descritivo, data_registro,
           dispositivos(etiqueta, endereco, lacos(nome, paineis(nome)), paineis(nome)),
           paineis(nome), baterias_painel(paineis(nome)), fontes_auxiliares(nome)),
-        rvt_itens(id, outro_descricao, outro_atividade_dados, rvts(data_visita)))`)
+        rvt_itens(id, outro_descricao, outro_atividade_dados, rvts(data_visita)),
+        nao_conformidade_id, nao_conformidades(titulo, status, classificacao, local_texto, paineis(nome)))`)
     .eq('cliente_id', clienteId)
     .order('desde', { ascending: true });
   if (error) throw error;
@@ -1675,6 +1682,14 @@ export async function listPendenciasDetalhadas(clienteId) {
             : at.fontes_auxiliares ? (at.fontes_auxiliares.nome || 'Fonte auxiliar')
               : at.paineis ? 'Painel (falha geral)' : 'Item';
         return { chave: `at:${a.atendimento_id}`, painel, laco: d?.lacos?.nome || '', alvo, falha: at.falha || '', descritivo: at.descritivo || '', status: at.status };
+      }
+      if (a.nao_conformidade_id) {
+        const nc = a.nao_conformidades || {};
+        return {
+          chave: `nc:${a.nao_conformidade_id}`, painel: nc.paineis?.nome || '', laco: '', alvo: `Não conformidade: ${nc.titulo || ''}`,
+          falha: NC_CLASSIFICACAO_LABEL[nc.classificacao] || '', descritivo: nc.local_texto || '',
+          status: nc.status === 'encerrada' ? 'resolvido' : (nc.status || ''),
+        };
       }
       const ri = a.rvt_itens;
       const dados = ri?.outro_atividade_dados || {};
@@ -1774,18 +1789,19 @@ export async function salvarPendencia(p) {
     : await supabase.from('pendencias').insert(row).select().single();
   if (error) throw error;
 
-  const desejados = (p.alvos || []).map((a) => ({ atendimentoId: a.atendimentoId || null, rvtItemId: a.rvtItemId || null }));
-  const chave = (a) => (a.atendimentoId ? `at:${a.atendimentoId}` : `ri:${a.rvtItemId}`);
+  const desejados = (p.alvos || []).map((a) => ({ atendimentoId: a.atendimentoId || null, rvtItemId: a.rvtItemId || null, naoConformidadeId: a.naoConformidadeId || null }));
+  const chave = chaveAlvoPendencia;
   const { data: atuais, error: errAtuais } = await supabase.from('pendencia_alvos')
-    .select('id, atendimento_id, rvt_item_id').eq('pendencia_id', salvo.id);
+    .select('id, atendimento_id, rvt_item_id, nao_conformidade_id').eq('pendencia_id', salvo.id);
   if (errAtuais) throw errAtuais;
-  const atuaisPorChave = new Map((atuais || []).map((a) => [chave({ atendimentoId: a.atendimento_id, rvtItemId: a.rvt_item_id }), a]));
+  const atuaisPorChave = new Map((atuais || []).map((a) => [chave({ atendimentoId: a.atendimento_id, rvtItemId: a.rvt_item_id, naoConformidadeId: a.nao_conformidade_id }), a]));
   const desejadasChaves = new Set(desejados.map(chave));
 
   const novos = desejados.filter((a) => !atuaisPorChave.has(chave(a)));
   if (novos.length) {
     const { error: e } = await supabase.from('pendencia_alvos').insert(novos.map((a) => ({
       pendencia_id: salvo.id, cliente_id: p.clienteId, atendimento_id: a.atendimentoId, rvt_item_id: a.rvtItemId,
+      nao_conformidade_id: a.naoConformidadeId,
     })));
     if (e) throw e;
   }
@@ -1820,7 +1836,9 @@ export async function darBaixaPendencias(ids, { data, obs, rvtId } = {}) {
 async function alvosDasPendencias(ids) {
   const { data } = await supabase.from('pendencia_alvos').select('atendimento_id, rvt_item_id').in('pendencia_id', ids);
   const vistos = new Set();
-  return (data || []).map((a) => ({ atendimentoId: a.atendimento_id, rvtItemId: a.rvt_item_id }))
+  // Alvo NC não tem status de item — fica de fora da sincronização de status.
+  return (data || []).filter((a) => a.atendimento_id || a.rvt_item_id)
+    .map((a) => ({ atendimentoId: a.atendimento_id, rvtItemId: a.rvt_item_id }))
     .filter((a) => { const k = a.atendimentoId || a.rvtItemId; if (vistos.has(k)) return false; vistos.add(k); return true; });
 }
 
@@ -1886,4 +1904,102 @@ export async function reabrirPendencia(id) {
   const { error } = await supabase.from('pendencias').update({ baixa_em: null }).eq('id', id);
   if (error) throw error;
   await sincronizarStatusPorPendencias(await alvosDasPendencias([id]));
+}
+
+// ---------------------------------------------------------------------------
+// Não conformidades (migracao_provisoria_e_nao_conformidades.sql)
+// "Fora da regra mesmo funcionando" — separado de corretiva ("quebrou"). Cliente vê; só MAJ grava.
+// ---------------------------------------------------------------------------
+
+export const NC_CLASSIFICACOES = [
+  { value: 'normativa', label: 'Normativa' },
+  { value: 'regras_internas', label: 'Regras internas' },
+  { value: 'seguradora', label: 'Seguradora' },
+];
+export const NC_CLASSIFICACAO_LABEL = Object.fromEntries(NC_CLASSIFICACOES.map((c) => [c.value, c.label]));
+export const NC_RISCOS = [
+  { value: 'alto', label: 'Alto' },
+  { value: 'medio', label: 'Médio' },
+  { value: 'baixo', label: 'Baixo' },
+];
+export const NC_STATUS = [
+  { value: 'aberta', label: 'Aberta' },
+  { value: 'em_tratamento', label: 'Em tratamento' },
+  { value: 'encerrada', label: 'Encerrada' },
+];
+// Só nomes de norma (sugestão no campo). O ITEM da norma é preenchido pela MAJ a partir do texto
+// oficial — o app nunca sugere número de item, pra não embasar errado um documento do cliente.
+export const NC_NORMAS_SUGERIDAS = [
+  'ABNT NBR 17240 — Sistemas de detecção e alarme de incêndio',
+  'ABNT NBR ISO 7240-4 — Equipamentos de fonte de alimentação',
+  'ABNT NBR ISO 7240 (série) — Sistemas de detecção e alarme de incêndio',
+  'CBMERJ — Corpo de Bombeiros do RJ (Nota Técnica / COSCIP)',
+  'NFPA 72 — National Fire Alarm and Signaling Code',
+  'NR-23 — Proteção contra incêndios',
+  'NR-10 — Segurança em instalações elétricas',
+  'Regra interna do cliente',
+  'Exigência da seguradora',
+];
+
+function rowToNaoConformidade(r) {
+  const d = r.dispositivos;
+  return {
+    id: r.id, clienteId: r.cliente_id, rvtId: r.rvt_id || '', dataVisita: r.rvts?.data_visita || '',
+    classificacao: r.classificacao, norma: r.norma || '', normaItem: r.norma_item || '',
+    titulo: r.titulo || '', descricao: r.descricao || '', localTexto: r.local_texto || '',
+    painelId: r.painel_id || '', painel: r.paineis?.nome || '',
+    dispositivoId: r.dispositivo_id || '', dispositivo: d ? `${d.etiqueta || 'Dispositivo'}${d.endereco ? ` (END ${d.endereco})` : ''}` : '',
+    risco: r.risco || '', recomendacao: r.recomendacao || '', fotos: r.fotos || [],
+    dataConstatacao: r.data_constatacao || '', status: r.status,
+    encerradaEm: r.encerrada_em || '', solucao: r.solucao || '', fotosSolucao: r.fotos_solucao || [],
+    encerradaPor: r.encerrada_por_nome || r.encerrada_por_email || '',
+    origemConversao: r.origem_conversao || null,
+  };
+}
+
+export async function listNaoConformidades(clienteId) {
+  const { data, error } = await supabase.from('nao_conformidades')
+    .select('*, paineis(nome), dispositivos(etiqueta, endereco), rvts(data_visita)')
+    .eq('cliente_id', clienteId)
+    .order('data_constatacao', { ascending: false });
+  if (error) throw error;
+  await resolverFotosEmLinhas(data, 'fotos');
+  await resolverFotosEmLinhas(data, 'fotos_solucao');
+  return (data || []).map(rowToNaoConformidade);
+}
+
+/** Cria/atualiza 1 NC (fotos novas sobem pro Storage). Encerrar = status 'encerrada' + solução;
+    quem encerrou é carimbado pelo servidor. Devolve o id. */
+export async function salvarNaoConformidade(nc) {
+  const row = {
+    cliente_id: nc.clienteId, rvt_id: nc.rvtId || null, classificacao: nc.classificacao,
+    norma: (nc.norma || '').trim() || null, norma_item: (nc.normaItem || '').trim() || null,
+    titulo: (nc.titulo || '').trim(), descricao: (nc.descricao || '').trim() || null,
+    local_texto: (nc.localTexto || '').trim() || null, painel_id: nc.painelId || null, dispositivo_id: nc.dispositivoId || null,
+    risco: nc.risco || null, recomendacao: (nc.recomendacao || '').trim() || null,
+    fotos: await prepararFotos(nc.fotos || [], nc.clienteId),
+    data_constatacao: nc.dataConstatacao || hojeLocal(), status: nc.status || 'aberta',
+    encerrada_em: nc.status === 'encerrada' ? (nc.encerradaEm || hojeLocal()) : null,
+    solucao: (nc.solucao || '').trim() || null,
+    fotos_solucao: await prepararFotos(nc.fotosSolucao || [], nc.clienteId),
+    ...(nc.origemConversao ? { origem_conversao: nc.origemConversao } : {}),
+  };
+  const { data, error } = nc.id
+    ? await supabase.from('nao_conformidades').update(row).eq('id', nc.id).select('id').single()
+    : await supabase.from('nao_conformidades').insert(row).select('id').single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function excluirNaoConformidade(id) {
+  const { error } = await supabase.from('nao_conformidades').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Visitas do cliente (só data/técnico) — p/ escolher a visita de uma NC. */
+export async function listVisitasResumo(clienteId) {
+  const { data, error } = await supabase.from('rvts').select('id, data_visita, tecnico')
+    .eq('cliente_id', clienteId).order('data_visita', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }

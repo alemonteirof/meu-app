@@ -9,8 +9,9 @@ import {
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
   salvarAssinaturaVisita, salvarAssinaturaTecnicoVisita, listAssinaturaAuditoria,
   getAssinaturaSalva, salvarAssinaturaSalva, apagarAssinaturaSalva,
-  listPendencias, listNomesMateriais, pendenciasQueFechariam, darBaixaPendencias,
+  listPendencias, listNomesMateriais, pendenciasQueFechariam, darBaixaPendencias, listNaoConformidades,
 } from './supabaseAdapter';
+import { NcPrintBlock } from './components/NaoConformidades';
 import MajSignatureField from './components/MajSignatureField';
 import { PendenciasItem, usePerguntaBaixa, PendenciasPrintBlock, pendenciasVigentesNoDia } from './components/Pendencias';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
@@ -1458,7 +1459,7 @@ export function visitaTemPendencias(v, pendencias) {
     .flatMap((it) => pendenciasVigentesNoDia(pendencias, it.pendenciaAlvo, v.data_visita));
 }
 
-export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false, pendencias = [] }) {
+export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = false, pendencias = [], ncs = [] }) {
   const dias = [...new Set(visitas.map((v) => v.data_visita))].sort();
   const isPeriodo = dias.length > 1;
   // Itens da visita + pendências vigentes no dia dela (só itens ainda não resolvidos).
@@ -1641,6 +1642,20 @@ export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = 
               </div>
             );
           })}
+
+          {(() => {
+            const idsVisitas = new Set(visitas.map((v) => v.id));
+            const ncsDoRvt = (ncs || []).filter((nc) => nc.rvtId && idsVisitas.has(nc.rvtId));
+            if (!ncsDoRvt.length) return null;
+            return (
+              <div className="flex flex-col gap-3">
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', borderBottom: '2px solid var(--text-primary)', paddingBottom: 4 }}>
+                  NÃO CONFORMIDADES IDENTIFICADAS ({ncsDoRvt.length})
+                </p>
+                {ncsDoRvt.map((nc, i) => <NcPrintBlock key={nc.id} nc={nc} numero={i + 1} />)}
+              </div>
+            );
+          })()}
 
           {!isPeriodo && <SignatureField visita={visitas[0]} onConfirmada={setAssCliente} />}
 
@@ -2540,12 +2555,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   // ---- Pendências para conclusão (o que cada item aberto está aguardando) ----
   const [pendenciasLista, setPendenciasLista] = useState([]);
   const [nomesMateriais, setNomesMateriais] = useState([]);
+  const [ncsLista, setNcsLista] = useState([]); // não conformidades (saem no RVT da visita delas)
   const recarregarPendencias = useCallback(async () => {
     if (!clientId) return;
     try {
-      const [lista, nomes] = await Promise.all([listPendencias(clientId), listNomesMateriais()]);
+      const [lista, nomes, ncs] = await Promise.all([listPendencias(clientId), listNomesMateriais(), listNaoConformidades(clientId).catch(() => [])]);
       setPendenciasLista(lista);
       setNomesMateriais(nomes);
+      setNcsLista(ncs);
     } catch (err) {
       console.error(err); // tabela ainda não migrada → a tela segue funcionando sem pendências
     }
@@ -2739,7 +2756,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
   }
 
   if (printTarget) {
-    return <VisitaPrintView visitas={printTarget} client={client} podeAssinarTecnico={canEdit} pendencias={pendenciasLista} onBack={() => { setPrintTarget(null); refreshVisitas(); }} />;
+    return <VisitaPrintView visitas={printTarget} client={client} podeAssinarTecnico={canEdit} pendencias={pendenciasLista} ncs={ncsLista} onBack={() => { setPrintTarget(null); refreshVisitas(); }} />;
   }
 
   return (

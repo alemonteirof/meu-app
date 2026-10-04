@@ -15,6 +15,7 @@ import { hojeLocal, dataLocalISO } from './lib/datas';
 import ErrorScreen from './components/ErrorScreen';
 import PendenciasIndicador from './components/PendenciasIndicador';
 import ClassificarPendencias from './components/ClassificarPendencias';
+import NaoConformidades from './components/NaoConformidades';
 import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, Cpu, Wind, Clock, Plus, X, Pencil, Trash2,
@@ -987,6 +988,7 @@ const NAV_ITEMS = [
   { key: 'report', label: 'Inspeções', icon: ClipboardList },
   { key: 'relatorios', label: 'Relatórios', icon: FileText },
   { key: 'indicador', label: 'Indicador', icon: Activity },
+  { key: 'naoconformidades', label: 'Não conformidades', icon: ShieldAlert },
   { key: 'settings', label: 'Configurações', icon: Settings },
   // TEMPORÁRIO: classificação retroativa das pendências — remover quando a lista zerar.
   { key: 'classificar', label: 'Classificar pendências', icon: ClipboardList },
@@ -995,10 +997,10 @@ const NAV_ITEMS = [
 // Admin vê tudo. Operador (técnico) e Visualizador (cliente) têm menu restrito —
 // mesma lista no mobile e no desktop.
 const NAV_KEYS_BY_ROLE = {
-  admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'settings', 'classificar'],
-  operador: ['dashboard', 'atendimentos', 'sdai', 'combate', 'report', 'indicador'],
+  admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades', 'settings', 'classificar'],
+  operador: ['dashboard', 'atendimentos', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades'],
   // "relatorios" só pro visualizador: Admin/Operador acessam o mesmo RVT por dentro de Atendimentos.
-  visualizador: ['dashboard', 'relatorios', 'sdai', 'combate', 'report', 'indicador'],
+  visualizador: ['dashboard', 'relatorios', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades'],
 };
 function navItemsForRole(role) {
   const keys = NAV_KEYS_BY_ROLE[role] || NAV_KEYS_BY_ROLE.visualizador;
@@ -3564,6 +3566,10 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
               </div>
             )}
           </div>
+        )}
+
+        {view === 'naoconformidades' && (
+          <NaoConformidades clientId={client.id} client={client} data={data} canEdit={canEdit} />
         )}
 
         {view === 'classificar' && navRole === 'admin' && (

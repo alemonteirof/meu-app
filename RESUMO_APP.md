@@ -124,6 +124,24 @@ Itens avulsos (sem intervenção) ficam fora.
 "Registrar intervenção" nunca tinha gravado nada — 0 intervenções no banco) e "Outro" só com atividade
 (Diagnóstico sem texto). Agora aceita exatamente 1 de atendimento/inspeção/intervenção/outro.
 
+### `nao_conformidades` (NC — 2026-10-04, mesma migração)
+"Fora da regra mesmo funcionando" (ex.: fontes Nissan sem certificação/subdimensionadas) — separado de
+corretiva ("quebrou"), não entra no Dashboard de falhas. Colunas: `cliente_id, rvt_id` (visita opcional →
+sai no RVT dela), `classificacao` (`normativa|regras_internas|seguradora`), `norma`, `norma_item`, `titulo`,
+`descricao` (constatação), `local_texto`, `painel_id`, `dispositivo_id`, `risco` (`alto|medio|baixo`),
+`recomendacao`, `fotos` (Storage), `data_constatacao`, `status` (`aberta|em_tratamento|encerrada`),
+encerramento `encerrada_em, solucao, fotos_solucao` + `encerrada_por_*` (trigger `nao_conformidade_carimbo`),
+`origem_conversao` jsonb (snapshot das corretivas convertidas). RLS: SELECT `has_client_access`; escrita
+`is_maj_staff()`. Pendências: `pendencia_alvos.nao_conformidade_id` (alvo NC não entra na regra de status).
+- Adapter: `listNaoConformidades`, `salvarNaoConformidade` (encerrar = status encerrada + solução),
+  `excluirNaoConformidade`, `listVisitasResumo`, constantes `NC_CLASSIFICACOES/NC_RISCOS/NC_STATUS/
+  NC_NORMAS_SUGERIDAS` (só nomes de norma; o ITEM é digitado pela MAJ do texto oficial — nunca sugerido).
+- UI: menu "Não conformidades" (`components/NaoConformidades.jsx`, todos os papéis; edição só `canEdit`):
+  4 cards, filtros status/classificação/risco, form, fotos, pendências da NC (`PendenciasItem` com
+  `{naoConformidadeId}`), encerrar (solução + fotos), reabrir, excluir (confirmação inline), impressão
+  (`NcPrintView`) e Excel. RVT: seção "NÃO CONFORMIDADES IDENTIFICADAS" (`NcPrintBlock`) com as NCs
+  cuja `rvt_id` está nas visitas impressas.
+
 ### `rvts` (Visita/RVT)
 `id, cliente_id, painel_id, tecnico, data_visita, assinatura_cliente, assinatura_cliente_tipo,
 assinatura_cliente_data, assinatura_cliente_login, assinatura_cliente_user_id,

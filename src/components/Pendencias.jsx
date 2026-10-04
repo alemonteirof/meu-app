@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   PENDENCIA_TIPOS, PENDENCIA_RESPONSAVEIS, MATERIAL_UNIDADES,
-  salvarPendencia, excluirPendencia, darBaixaPendencias, reabrirPendencia,
+  salvarPendencia, excluirPendencia, darBaixaPendencias, reabrirPendencia, chaveAlvoPendencia,
 } from '../supabaseAdapter';
 import { hojeLocal as hojeISO } from '../lib/datas';
 
@@ -46,7 +46,7 @@ function formatDateBR(s) {
   const [y, m, d] = s.slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 }
-const chaveAlvo = (a) => (a.atendimentoId ? `at:${a.atendimentoId}` : `ri:${a.rvtItemId}`);
+const chaveAlvo = chaveAlvoPendencia;
 
 /** Pendências ligadas a um alvo ({atendimentoId} ou {rvtItemId}). */
 export function pendenciasDoAlvo(lista, alvo) {
