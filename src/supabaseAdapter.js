@@ -410,16 +410,17 @@ export async function createVisita({ clienteId, painelId, tecnico, dataVisita })
 }
 
 async function addItemToVisita(rvtId, { atendimentoId, inspecaoId, outroDescricao, outroFotos, outroAtividade, outroAtividadeDados, intervencaoId }) {
-  if (!rvtId) return;
-  const { error } = await supabase.from('rvt_itens').insert({
+  if (!rvtId) return null;
+  const { data, error } = await supabase.from('rvt_itens').insert({
     rvt_id: rvtId, atendimento_id: atendimentoId || null,
     inspecao_id: inspecaoId || null, outro_descricao: outroDescricao || null,
     outro_fotos: await prepararFotos(outroFotos || [], () => clienteDaVisita(rvtId)),
     outro_atividade: outroAtividade || null,
     outro_atividade_dados: outroAtividadeDados || {},
     intervencao_id: intervencaoId || null,
-  });
+  }).select('id').single();
   if (error) throw error;
+  return data; // { id } — a tela usa pra já abrir as pendências do item recém-criado
 }
 
 export async function addOutroToVisita(rvtId, descricao, fotos, atividade, atividadeDados) {

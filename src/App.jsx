@@ -8367,8 +8367,12 @@ function PageStyles() {
       .login-submit:active:not(:disabled) { transform: translateY(0); }
       .login-submit:disabled { opacity: 0.75; cursor: default; }
 
+      /* Pendência do cliente no RVT: tom vinho que funciona na tela escura e no papel (ver @media print). */
+      .rvt-pend-cliente { --pend-bg: rgba(139,47,47,0.16); --pend-borda: rgba(139,47,47,0.45); --pend-txt: #E0A3A3; }
+
       @media print {
         @page { size: A4 landscape; margin: 12mm; }
+        .print-area .rvt-pend-cliente { --pend-bg: #F6EAEA; --pend-borda: #E3C9C9; --pend-txt: #6E2424; }
         body * { visibility: hidden; }
         .print-area, .print-area * { visibility: visible; }
         .print-area {

@@ -359,28 +359,93 @@ export function pendenciasVigentesNoDia(lista, alvo, dia) {
 const thPrint = { textAlign: 'left', fontWeight: 600, fontSize: 10, padding: '3px 6px', borderBottom: '1px solid var(--text-primary)' };
 const tdPrint = { fontSize: 11, padding: '3px 6px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', wordBreak: 'break-word' };
 
-/** Bloco "Pendências para conclusão" no fim do card do item no RVT impresso.
-    Legível em preto e branco: borda escura e responsável escrito por extenso (não só cor). */
+const ehDoCliente = (p) => p.responsavel === 'cliente';
+
+/** Resumo no topo do RVT impresso: o que aguarda o cliente em destaque, o que está com a
+    MAJ (ou sem responsável) só numa linha discreta. Conta cada pendência 1x (pode ser
+    compartilhada entre itens). */
+export function PendenciasResumoPrint({ pendencias }) {
+  const unicas = [...new Map((pendencias || []).map((p) => [p.id, p])).values()];
+  if (!unicas.length) return null;
+  const nCliente = unicas.filter(ehDoCliente).length;
+  const nMaj = unicas.length - nCliente;
+  const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+  if (!nCliente) {
+    return (
+      <p className="rvt-pend-resumo-maj" style={{ fontSize: 11.5, color: 'var(--text-secondary)', borderLeft: '2px solid var(--border)', padding: '2px 10px' }}>
+        {plural(nMaj, 'pendência em andamento', 'pendências em andamento')} com a MAJ
+      </p>
+    );
+  }
+  return (
+    <div className="rvt-pend-cliente" style={{ borderLeft: '4px solid #8B2F2F', background: 'var(--pend-bg)', padding: '7px 12px', breakInside: 'avoid' }}>
+      <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--pend-txt)' }}>
+        {plural(nCliente, 'pendência aguardando o cliente', 'pendências aguardando o cliente')}
+      </p>
+      {nMaj > 0 && <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>+ {nMaj} em andamento com a MAJ</p>}
+    </div>
+  );
+}
+
+/** Bloco de pendências no fim do card do item no RVT impresso. As do cliente ganham destaque
+    (moldura vinho, selo do responsável, dias aguardando); as da MAJ/sem responsável ficam num
+    bloco discreto, sem contagem de dias. Legível em P&B: a diferença é de peso de borda/fundo. */
 export function PendenciasPrintBlock({ pendencias, dia }) {
   if (!pendencias?.length) return null;
+  const doCliente = pendencias.filter(ehDoCliente);
+  const daMaj = pendencias.filter((p) => !ehDoCliente(p));
+  return (
+    <>
+      {doCliente.length > 0 && (
+        <div className="rvt-pendencias rvt-pend-cliente" style={{ marginTop: 10, border: '1px solid #8B2F2F', borderLeftWidth: 4, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+          <div style={{ background: 'var(--pend-bg)', padding: '5px 10px', borderBottom: '1px solid var(--pend-borda)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--pend-txt)' }}>AGUARDANDO O CLIENTE</span>
+            <span style={{ fontSize: 10, color: 'var(--pend-txt)' }}>{doCliente.length} {doCliente.length === 1 ? 'aberta' : 'abertas'}</span>
+          </div>
+          <div style={{ padding: '8px 10px' }}><PendenciasLinhas lista={doCliente} dia={dia} forte /></div>
+        </div>
+      )}
+      {daMaj.length > 0 && (
+        <div className="rvt-pendencias" style={{ marginTop: 10, border: '1px solid var(--border)', borderLeft: '2px solid var(--text-secondary)', padding: '7px 10px', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+          <p style={{ fontSize: 10, letterSpacing: '0.06em', color: 'var(--text-secondary)', marginBottom: 4 }}>
+            {daMaj.length === 1 ? 'PENDÊNCIA EM ANDAMENTO (MAJ)' : 'PENDÊNCIAS EM ANDAMENTO (MAJ)'}
+          </p>
+          <PendenciasLinhas lista={daMaj} dia={dia} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function PendenciasLinhas({ lista, dia, forte = false }) {
   const diasAte = (p) => {
     if (!p.desde) return null;
     return Math.max(0, Math.round((new Date(`${dia}T00:00:00`) - new Date(`${p.desde}T00:00:00`)) / 86400000));
   };
   return (
-    <div className="rvt-pendencias" style={{ marginTop: 10, border: '1px solid var(--text-primary)', padding: '8px 10px', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-primary)', marginBottom: 6 }}>PENDÊNCIAS PARA CONCLUSÃO</p>
       <div style={{ display: 'grid', gap: 8 }}>
-        {pendencias.map((p, i) => {
+        {lista.map((p, i) => {
           const d = diasAte(p);
           return (
             <div key={p.id} style={{ breakInside: 'avoid', paddingTop: i ? 6 : 0, borderTop: i ? '1px dashed var(--border)' : 'none' }}>
-              <p style={{ fontSize: 11.5, color: 'var(--text-primary)', wordBreak: 'break-word' }}>
-                <strong>{i + 1}. {tipoPendenciaLabel(p)}</strong>
-                {' — Responsável: '}<strong>{responsavelLabel(p).toUpperCase()}</strong>
-                {' · Desde '}{formatDateBR(p.desde)}{d ? ` (${d} dia${d === 1 ? '' : 's'} aguardando)` : ''}
-                {' · Previsão '}{p.previsao ? formatDateBR(p.previsao) : '—'}
-              </p>
+              {forte ? (
+                <p style={{ fontSize: 11.5, color: 'var(--text-primary)', wordBreak: 'break-word' }}>
+                  <strong>{i + 1}. {tipoPendenciaLabel(p)}</strong>
+                  {' · Desde '}{formatDateBR(p.desde)}
+                  {d ? <>{' · '}<strong style={{ color: 'var(--pend-txt)' }}>{d} dia{d === 1 ? '' : 's'} aguardando</strong></> : null}
+                  <br />
+                  {'Responsável: '}
+                  <span style={{ border: '1px solid var(--text-primary)', padding: '0 6px', fontWeight: 700, fontSize: 10.5 }}>{responsavelLabel(p).toUpperCase()}</span>
+                  {' · Previsão: '}{p.previsao ? formatDateBR(p.previsao) : '—'}
+                </p>
+              ) : (
+                <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', wordBreak: 'break-word' }}>
+                  {i + 1}. {tipoPendenciaLabel(p)}
+                  {' · Responsável: '}{p.responsavel ? responsavelLabel(p) : 'a definir'}
+                  {' · Desde '}{formatDateBR(p.desde)}
+                  {' · Previsão: '}{p.previsao ? formatDateBR(p.previsao) : '—'}
+                </p>
+              )}
               {p.tipo === 'material' && p.materiais?.length > 0 ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, tableLayout: 'fixed', color: 'var(--text-primary)' }}>
                   <thead>
@@ -411,7 +476,6 @@ export function PendenciasPrintBlock({ pendencias, dia }) {
           );
         })}
       </div>
-    </div>
   );
 }
 

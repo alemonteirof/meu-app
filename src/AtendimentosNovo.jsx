@@ -13,7 +13,7 @@ import {
 } from './supabaseAdapter';
 import { NcPrintBlock } from './components/NaoConformidades';
 import MajSignatureField from './components/MajSignatureField';
-import { PendenciasItem, usePerguntaBaixa, PendenciasPrintBlock, pendenciasVigentesNoDia } from './components/Pendencias';
+import { PendenciasItem, usePerguntaBaixa, PendenciasPrintBlock, PendenciasResumoPrint, pendenciasVigentesNoDia } from './components/Pendencias';
 import { falhasParaMarca, getFalhaPorCodigo, normalizarMarca, CATEGORIAS_FALHA, FALHAS_SIRENE } from './lib/falhasPorMarca';
 import { compressImageFile, assinaturaDeImagem } from './lib/imagens';
 import { hojeLocal } from './lib/datas';
@@ -1590,6 +1590,8 @@ export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = 
             </div>
           </div>
 
+          <PendenciasResumoPrint pendencias={todosItens.flatMap((it) => it.pendencias || [])} />
+
           {dias.map((dia) => {
             const itensDoDia = agruparItensParaImpressao(visitas.filter((v) => v.data_visita === dia).flatMap(itensDaVisita));
             return (
@@ -2359,6 +2361,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
         status: intervencaoForm.statusResultante === 'resolvido' ? 'Resolvido' : 'Andamento',
         provisoria: provisoria ? { desde: visita.data_visita, falta: intervencaoForm.falta } : null,
+        pendenciaAlvo: { atendimentoId: p.id }, alvoAberto: intervencaoForm.statusResultante !== 'resolvido',
       }]);
       if (intervencaoForm.statusResultante === 'resolvido') {
         setPendentes((prev) => prev.filter((x) => x.id !== p.id));
@@ -2578,7 +2581,8 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
           ...prev,
           { tipo: 'outro', atividade: 'diagnostico', descricao: '',
             atividadeDados: { falha: outroDiagFalha.trim(), dataAgendamento: outroDiagAgendamento, dispositivos: labels }, fotos: [] },
-          ...criados.map((a, i) => ({ tipo: 'atendimento', falha: a.falha, status: a.status, dispositivoLabel: labels[i] || '', fotos: a.fotos })),
+          ...criados.map((a, i) => ({ tipo: 'atendimento', falha: a.falha, status: a.status, dispositivoLabel: labels[i] || '', fotos: a.fotos,
+            descritivo: a.descritivo, pendenciaAlvo: { atendimentoId: a.id }, alvoAberto: a.status !== 'resolvido' })),
         ]);
         setMsg(`Diagnóstico registrado — ${criados.length} corretiva(s) criada(s) (Aguardando).`);
       } else {
@@ -2595,8 +2599,14 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
           if (outroItemTipoManutencao === 'corretiva') dados.status = outroItemStatus;
         }
 
-        await addOutroToVisita(visita.id, outroTexto.trim(), outroFotos, outroAtividade || null, dados);
-        setItensVisita((prev) => [...prev, { tipo: 'outro', descricao: outroTexto.trim(), fotos: outroFotos, atividade: outroAtividade, atividadeDados: dados }]);
+        const criado = await addOutroToVisita(visita.id, outroTexto.trim(), outroFotos, outroAtividade || null, dados);
+        // Corretiva de item não cadastrado (Aguardando/Andamento): já abre as pendências aqui,
+        // igual à corretiva de dispositivo (mesmo alvo rvtItemId que itemsFromVisita usa).
+        const corretivaAvulsa = outroAtividade === 'manutencao_nao_cadastrada' && dados.tipoManutencao === 'corretiva' && criado?.id;
+        setItensVisita((prev) => [...prev, {
+          tipo: 'outro', descricao: outroTexto.trim(), fotos: outroFotos, atividade: outroAtividade, atividadeDados: dados,
+          ...(corretivaAvulsa ? { pendenciaAlvo: { rvtItemId: criado.id }, alvoAberto: dados.status !== 'resolvido' } : {}),
+        }]);
         setMsg('Item adicionado à visita.');
       }
       limparFormOutro();

@@ -193,8 +193,13 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   baixa) chamado em `salvarIntervencao` e `saveEditItem` quando o item passa a Resolvido. Edição
   pelo Indicador (App.jsx `submitIndicador`) usa `window.confirm` simples (sem "Voltar").
 - RVT impresso (`VisitaPrintView`, prop `pendencias`): `PendenciasPrintBlock` no fim do card de item
-  não resolvido — Tipo, Responsável em MAIÚSCULAS, Desde (+ "N dias aguardando" até a data da
-  visita, omitido se 0), Previsão, detalhe ou tabela de materiais; borda escura (P&B), classe
+  não resolvido, **separado por responsável (decisão 2026-10-07, "puxar sardinha pra MAJ")**:
+  cliente = bloco "AGUARDANDO O CLIENTE" com moldura vinho (borda esq. 4px), cabeçalho tingido,
+  selo CLIENTE e "N dias aguardando" em vinho; MAJ/sem responsável = bloco discreto cinza, sem
+  contagem de dias. `PendenciasResumoPrint` no topo (abaixo dos 4 cards): "N pendências aguardando
+  o cliente" em destaque + "+ N em andamento com a MAJ" em cinza. Cores via `--pend-bg/-borda/-txt`
+  na classe `.rvt-pend-cliente` (versão tela escura e versão papel no `@media print`, App.jsx).
+  Campos: Tipo, Desde, Previsão, detalhe ou tabela de materiais; classe
   `.rvt-pendencias` com `break-inside: avoid` no `@media print`. Mostra as pendências **vigentes no
   dia da visita** (`pendenciasVigentesNoDia`: `desde <= dia` e sem baixa até o dia) — reimprimir RVT
   antigo mostra a situação daquele dia. `agruparItensParaImpressao` inclui os ids das pendências na
@@ -207,9 +212,19 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   e por tipo (ordem de `PENDENCIA_TIPOS`, recolhíveis), mais antigas primeiro. `consolidarMateriais`
   soma por item+especificação+unidade (ignora maiúsc./espaços; nome exibido = grafia com mais qtd),
   separado por responsável. Imprimir = `PendenciasPrintView` (`.print-area` + `rvt-brand-band`, A4
-  deitado global, tabelas por tipo + materiais). Excel = `montarPlanilhaPendencias` (exceljs dinâmico,
-  2 abas "Pendências"/"Materiais", paisagem, fitToWidth, cabeçalho vinho, filtro). Tudo respeita os
-  filtros da tela.
+  deitado global, tabelas por tipo + materiais). Excel = `montarPlanilhaPendencias` (wrapper no
+  componente formata as linhas; gerador puro em `lib/pendenciasXlsx.js`, carregado dinâmico com
+  exceljs+jszip). 3 abas: **Dashboard** (faixa vinho, lista suspensa Todos/Cliente/MAJ em D5 que
+  recalcula tudo via COUNTIFS/MAXIFS — auxiliares na coluna O oculta; 6 cards; tabelas por
+  responsável/situação da previsão/tipo/faixa de dias; top 10 mais antigas fixo; impressão 1 página),
+  **Pendências** (base com Faixa + Situação da previsão, filtro, zebra, destaque 31–90/+90 dias e
+  Vencida) e **Materiais**. Gráficos nativos (rosca + 2 barras empilhadas Cliente/MAJ): o ExcelJS
+  não faz gráfico, então o DrawingML é injetado no .zip depois (`injetarGraficos`) apontando para as
+  tabelas do Dashboard — mudar linhas/colunas das tabelas exige ajustar as âncoras e refs dos
+  gráficos. Tipo "Outro" sai como "Outro — <texto>" e é contado com curinga `Outro*`. Pendências
+  da MAJ ficam **visualmente discretas** de propósito (cinza claro `MAJ_COR`/`MAJ_TXT` nos gráficos,
+  card e linhas; destaque de atraso/Vencida só nas do Cliente) — os números continuam completos. Tudo respeita
+  os filtros da tela.
 - **Tela TEMPORÁRIA "Classificar pendências"** (`components/ClassificarPendencias.jsx`, view
   `classificar`, item no `NAV_ITEMS` só no papel admin + guard `navRole === 'admin'`): itens abertos
   sem nenhuma pendência de TODOS os clientes visíveis (`listItensSemPendencia`: corretivas +
