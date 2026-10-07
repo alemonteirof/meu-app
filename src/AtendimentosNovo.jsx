@@ -439,6 +439,7 @@ function ItemResumo({ item }) {
           {item.falha ? 'Corretiva' : 'Preventiva'}
         </strong> · {item.status} · {item.dispositivoLabel}{nFotos > 0 && ` · ${nFotos} foto(s)`}
         {item.falha && <div style={{ color: 'var(--text-secondary)' }}>{item.falha}</div>}
+        {item.paliativo && <div style={{ color: 'var(--text-secondary)' }}>Paliativo: {item.paliativo}</div>}
         <SeloProvisoria provisoria={item.provisoria} />
       </div>
     );
@@ -971,7 +972,7 @@ function CombateMultiSelect({ options, selectedIds, setSelectedIds }) {
 /** Achata os rvt_itens de uma visita (formato bruto vindo do listVisitas) num array
     de itens de exibição — usado tanto no resumo colapsado quanto na impressão. */
 function itemsFromVisita(v) {
-  return (v.rvt_itens || []).map((it) => {
+  const itens = (v.rvt_itens || []).map((it) => {
         if (it.outro_descricao || it.outro_atividade) {
       const atividade = it.outro_atividade || '';
       const atividadeDados = it.outro_atividade_dados || {};
@@ -1032,6 +1033,26 @@ function itemsFromVisita(v) {
     }
     return null;
   }).filter(Boolean);
+  return fundirIntervencoesDaMesmaVisita(itens);
+}
+
+/** Corretiva aberta já com "Solução provisória" grava 2 rvt_itens na mesma visita (o
+    atendimento + a intervenção do paliativo). É 1 atividade só: a intervenção some da
+    lista e o paliativo (texto + fotos) entra no item da corretiva. Só exibição — o banco
+    continua com os 2 registros (a intervenção é a trilha append-only). */
+function fundirIntervencoesDaMesmaVisita(itens) {
+  const corretivaPorAtendimento = new Map(
+    itens.filter((it) => it.tipo === 'atendimento' && it.pendenciaAlvo?.atendimentoId)
+      .map((it) => [it.pendenciaAlvo.atendimentoId, it]),
+  );
+  return itens.reduce((acc, it) => {
+    const alvo = it.tipo === 'intervencao' && corretivaPorAtendimento.get(it.pendenciaAlvo?.atendimentoId);
+    if (!alvo) { acc.push(it); return acc; }
+    alvo.paliativo = it.descricao || '';
+    alvo.fotos = [...(alvo.fotos || []), ...(it.fotos || [])];
+    if (it.provisoria) alvo.provisoria = it.provisoria;
+    return acc;
+  }, []);
 }
 
 /** Agrupa, só para exibição/impressão do RVT, itens de "atendimento" (corretiva) que
@@ -1632,6 +1653,7 @@ export function VisitaPrintView({ visitas, client, onBack, podeAssinarTecnico = 
                           <strong>SOLUÇÃO PROVISÓRIA</strong> (paliativo aplicado em {formatDateBR(it.provisoria.desde)}) — o sistema está
                           funcionando, mas ainda falta a solução definitiva.
                         </p>
+                        {it.paliativo && <p style={{ fontSize: 11.5, color: 'var(--text-primary)', marginTop: 2, whiteSpace: 'pre-wrap' }}><strong>Paliativo aplicado:</strong> {it.paliativo}</p>}
                         {it.provisoria.falta && <p style={{ fontSize: 11.5, color: 'var(--text-primary)', marginTop: 2 }}><strong>Falta para a definitiva:</strong> {it.provisoria.falta}</p>}
                       </div>
                     )}
@@ -2406,21 +2428,23 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
           tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
         });
         const label = deviceOptions.find((o) => o.id === optId)?.label || '';
-        novosItens.push({
+        const novo = {
           tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos,
           descritivo: result.descritivo, pendenciaAlvo: { atendimentoId: result.id }, alvoAberto: result.status !== 'resolvido',
-        });
+        };
         if (provisoria) {
           await registrarIntervencaoAtendimento({
             atendimentoId: result.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
             tecnico: visita.tecnico, statusResultante: 'andamento', descricao: atForm.paliativo, fotos: palFotos,
             provisoria: true, faltaDefinitiva: atForm.falta,
           });
-          novosItens.push({
-            tipo: 'intervencao', falha: result.falha, dispositivoLabel: label, descricao: atForm.paliativo, fotos: palFotos,
-            status: 'Andamento', provisoria: { desde: visita.data_visita, falta: atForm.falta },
+          // 1 atividade só (mesma fusão de itemsFromVisita): o paliativo vai dentro da corretiva.
+          Object.assign(novo, {
+            status: 'Andamento', paliativo: atForm.paliativo, fotos: [...(novo.fotos || []), ...palFotos],
+            provisoria: { desde: visita.data_visita, falta: atForm.falta },
           });
         }
+        novosItens.push(novo);
       }
       setItensVisita((prev) => [...prev, ...novosItens]);
       setAtForm({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '', paliativo: '', falta: '' });
