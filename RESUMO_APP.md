@@ -464,7 +464,9 @@ não é fonte de verdade — a fonte é `rvt_itens` via `listVisitas`).
   `createInspecao`; se resultar em `atendimento` não-nulo, conta como corretiva automática gerada.
 - **Pendências de visitas anteriores** — `listAtendimentosAbertos(clienteId)` traz tudo
   `status != 'resolvido'` de qualquer visita; `registrarIntervencaoAtendimento` grava sem tocar no
-  atendimento original (só status "cache").
+  atendimento original (só status "cache"). Ao iniciar/reabrir a visita (2026-10-06), se houver
+  item em Aguardando/Andamento, a tela já abre nessa aba com aviso "N item(ns)… use Registrar
+  intervenção para classificar" — só na carga inicial (recargas não trocam a aba).
 - **Reabrir visita** — `reabrirVisita(v)`: seta `visita=v`, novos itens entram nela normalmente
   (mesmo `rvtId` usado por qualquer `submit*`).
 - **Cancelar visita** — `cancelarVisita()`: `deleteVisita(visita.id)` — apaga em cascata

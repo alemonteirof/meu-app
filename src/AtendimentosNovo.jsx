@@ -2271,15 +2271,25 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     try {
       const data = await listAtendimentosAbertos(clientId);
       setPendentes(data || []);
+      return data || [];
     } catch (err) {
       console.error(err);
+      return [];
     } finally {
       setLoadingPendentes(false);
     }
   }, [clientId]);
 
+  // Ao abrir (ou reabrir) a visita com itens em Aguardando/Andamento, já cai na aba de
+  // pendências pra classificar. Só nessa carga inicial — recargas posteriores (baixa de
+  // pendência, intervenção etc.) não arrancam o usuário da aba em que está.
   useEffect(() => {
-    if (visita) carregarPendentes();
+    if (!visita) return;
+    let ativo = true;
+    carregarPendentes().then((lista) => {
+      if (ativo && lista?.length > 0) setAba('pendentes');
+    });
+    return () => { ativo = false; };
   }, [visita?.id, carregarPendentes]);
 
   function abrirIntervencao(id) {
@@ -3067,6 +3077,12 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                 intervenção (o que foi feito, como e fotos) sem alterar o relato original do problema —
                 pode registrar mais de uma ao longo do tempo até fechar como Resolvido.
               </p>
+              {!loadingPendentes && pendentes.length > 0 && (
+                <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 12, padding: '8px 10px', borderLeft: '4px solid #8B2F2F', background: 'var(--surface)', borderRadius: 6 }}>
+                  <strong>{pendentes.length} item(ns) em Aguardando/Andamento.</strong> Em cada um, use
+                  "Registrar intervenção" para classificar: Resolvido, Ainda em andamento ou Solução provisória (paliativo).
+                </div>
+              )}
               {loadingPendentes && <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Carregando pendências...</p>}
               {!loadingPendentes && pendentes.length === 0 && (
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Nenhuma pendência aberta para este cliente.</p>
