@@ -2389,21 +2389,37 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (atForm.falha.trim() && !falhaClassificada(atForm.falhaSel)) {
       setMsg('Selecione a falha na lista ou escolha uma categoria antes de salvar a corretiva.'); return;
     }
+    // Solução provisória já na abertura: cria a corretiva em Andamento e, na mesma visita,
+    // registra a intervenção provisória (mesmo caminho de "Pendências de visitas anteriores").
+    const provisoria = atForm.status === 'provisoria';
+    if (provisoria && !(atForm.paliativo || '').trim()) { setMsg('Descreva o paliativo aplicado.'); return; }
+    if (provisoria && !(atForm.falta || '').trim()) { setMsg('Diga o que falta para a solução definitiva.'); return; }
     setSavingAtendimento(true);
     try {
       const novosItens = [];
       for (const optId of atForm.dispositivoIds) {
         const result = await createAtendimento({
           ...idsPorAlvo(optId), clienteId: clientId,
-          falha: atForm.falha, status: atForm.status, descritivo: atForm.descritivo,
+          falha: atForm.falha, status: provisoria ? 'andamento' : atForm.status, descritivo: atForm.descritivo,
           falhaCodigo: atForm.falhaSel?.codigo || null, falhaMarca: atForm.falhaSel?.marca || null, falhaCategoria: atForm.falhaSel?.categoria || null,
           tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
         });
         const label = deviceOptions.find((o) => o.id === optId)?.label || '';
         novosItens.push({ tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos });
+        if (provisoria) {
+          await registrarIntervencaoAtendimento({
+            atendimentoId: result.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
+            tecnico: visita.tecnico, statusResultante: 'andamento', descricao: atForm.paliativo, fotos: [],
+            provisoria: true, faltaDefinitiva: atForm.falta,
+          });
+          novosItens.push({
+            tipo: 'intervencao', falha: result.falha, dispositivoLabel: label, descricao: atForm.paliativo, fotos: [],
+            status: 'Andamento', provisoria: { desde: visita.data_visita, falta: atForm.falta },
+          });
+        }
       }
       setItensVisita((prev) => [...prev, ...novosItens]);
-      setAtForm({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '' });
+      setAtForm({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '', paliativo: '', falta: '' });
       setAtFotos([]);
       if (onRefresh) onRefresh();
       setMsg(`${novosItens.length} item(ns) adicionado(s) à visita.`);
@@ -2907,11 +2923,27 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                   <option value="aguardando">Aguardando</option>
                   <option value="andamento">Andamento</option>
                   <option value="resolvido">Resolvido</option>
+                  <option value="provisoria">Solução provisória (paliativo)</option>
                 </select>
               </Field>
               <Field label="Descritivo">
                 <textarea style={{ ...inputStyle, minHeight: 50 }} value={atForm.descritivo} onChange={(e) => setAtForm({ ...atForm, descritivo: e.target.value })} />
               </Field>
+              {atForm.status === 'provisoria' && (
+                <>
+                  <Field label="Paliativo aplicado (o que foi feito) *">
+                    <textarea style={{ ...inputStyle, minHeight: 50 }} value={atForm.paliativo || ''}
+                      placeholder="Ex.: instalada fonte temporária 24 V"
+                      onChange={(e) => setAtForm({ ...atForm, paliativo: e.target.value })} />
+                  </Field>
+                  <Field label="O que falta para a solução definitiva *">
+                    <textarea style={{ ...inputStyle, minHeight: 50 }} value={atForm.falta || ''}
+                      placeholder="Ex.: comprar fonte 24 V certificada para este local"
+                      onChange={(e) => setAtForm({ ...atForm, falta: e.target.value })} />
+                    <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>O item fica em Andamento com o selo "Solução provisória" até a definitiva.</span>
+                  </Field>
+                </>
+              )}
               <FotosField fotos={atFotos} setFotos={setAtFotos} />
               <button type="submit" disabled={!canEdit || savingAtendimento} style={{ ...btnStyle, opacity: savingAtendimento ? 0.7 : 1 }}>
                 {savingAtendimento ? 'Salvando...' : `Adicionar à visita${atForm.dispositivoIds.length > 1 ? ` (${atForm.dispositivoIds.length} itens)` : ''}`}

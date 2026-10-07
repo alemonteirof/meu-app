@@ -120,6 +120,10 @@ pendências anteriores), bloco tracejado "SOLUÇÃO PROVISÓRIA" no RVT impresso
 existia no dia da visita) e card/lista "Em solução provisória" no Indicador → Pendências
 (`listItensProvisorios`). Remanejamento de peça: decidido NÃO tratar (fica no texto da intervenção).
 Itens avulsos (sem intervenção) ficam fora.
+Também na abertura (2026-10-06): "+ Manutenção" tem Status "Solução provisória (paliativo)" com
+"Paliativo aplicado" + "O que falta para a definitiva" (obrigatórios) → `submitAtendimento` cria a
+corretiva em `andamento` e, na mesma visita, chama `registrarIntervencaoAtendimento({provisoria:true})`
+(o RVT mostra a corretiva e a intervenção paliativa).
 **Bug antigo corrigido no mesmo dia**: CHECK `rvt_itens.um_dos_tres` recusava item de intervenção (o
 "Registrar intervenção" nunca tinha gravado nada — 0 intervenções no banco) e "Outro" só com atividade
 (Diagnóstico sem texto). Agora aceita exatamente 1 de atendimento/inspeção/intervenção/outro.
