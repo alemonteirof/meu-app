@@ -223,50 +223,25 @@ function PendenciasPrintView({ grupos, materiais, resumo, client, onBack }) {
   );
 }
 
-/** Monta o .xlsx (paisagem, aba 1 pendências + aba 2 materiais) e devolve o buffer. */
+/** Monta o .xlsx (Dashboard com gráficos + base filtrável + materiais) e devolve o buffer. */
 export async function montarPlanilhaPendencias({ pendencias, materiais, client }) {
-  const { default: ExcelJS } = await import('exceljs');
-  const VINHO = 'FF8B2F2F';
-  const wb = new ExcelJS.Workbook();
-  const cabecalho = (ws, colunas) => {
-    ws.columns = colunas.map(([header, width]) => ({ header, width }));
-    const r = ws.getRow(1);
-    r.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: VINHO } };
-    r.alignment = { vertical: 'middle', wrapText: true };
-    r.height = 22;
-    ws.views = [{ state: 'frozen', ySplit: 1 }];
-    ws.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
-    ws.pageSetup.printTitlesRow = '1:1';
-  };
-  const bordas = (ws) => ws.eachRow((row) => row.eachCell((c) => {
-    c.border = { top: { style: 'thin', color: { argb: 'FFD7DADC' } }, bottom: { style: 'thin', color: { argb: 'FFD7DADC' } }, left: { style: 'thin', color: { argb: 'FFD7DADC' } }, right: { style: 'thin', color: { argb: 'FFD7DADC' } } };
-    c.alignment = { ...(c.alignment || {}), vertical: 'top', wrapText: true };
+  const { montarPlanilhaPendencias: montar } = await import('../lib/pendenciasXlsx');
+  const linhas = pendencias.map((p) => ({
+    responsavel: responsavelLabel(p),
+    tipo: p.tipo === 'outro' && p.tipoOutro ? `Outro — ${p.tipoOutro}` : (PENDENCIA_TIPOS.find((t) => t.value === p.tipo)?.label || tipoPendenciaLabel(p)),
+    local: localDaPendencia(p),
+    atividade: atividadeDaPendencia(p),
+    detalhe: detalheTexto(p) || (pendenciaSemDetalhe(p) ? 'A detalhar' : ''),
+    desde: p.desde, dias: diasEmAberto(p), previsao: p.previsao, origem: p.origemData,
   }));
-  const data = (s) => (s ? new Date(`${s}T00:00:00`) : null);
-
-  const ws1 = wb.addWorksheet('Pendências');
-  cabecalho(ws1, [['Cliente', 18], ['Local', 34], ['Atividade', 34], ['Tipo', 16], ['Detalhe', 44], ['Responsável', 12], ['Desde', 11], ['Dias aguardando', 10], ['Previsão', 11], ['RVT de origem', 12]]);
-  for (const p of pendencias) {
-    ws1.addRow([client?.name || '', localDaPendencia(p), atividadeDaPendencia(p), tipoPendenciaLabel(p),
-      detalheTexto(p) || (pendenciaSemDetalhe(p) ? 'A detalhar' : ''), responsavelLabel(p),
-      data(p.desde), diasEmAberto(p), data(p.previsao), data(p.origemData)]);
-  }
-  [7, 9, 10].forEach((i) => { ws1.getColumn(i).numFmt = 'dd/mm/yyyy'; });
-  ws1.autoFilter = { from: 'A1', to: 'J1' };
-  bordas(ws1);
-
-  const ws2 = wb.addWorksheet('Materiais');
-  cabecalho(ws2, [['Responsável', 12], ['Item', 34], ['Especificação', 30], ['Quantidade', 12], ['Unidade', 9], ['Nº de pendências', 12], ['Onde', 60]]);
-  for (const r of RESP_ORDEM) {
-    for (const m of materiais[r] || []) {
-      ws2.addRow([responsavelLabel({ responsavel: r }), m.item, m.especificacao, Math.round(m.qtd * 100) / 100, m.unidade + (m.semQtd ? ' (+ itens sem qtd)' : ''), m.pendencias, [...new Set(m.locais)].join('; ')]);
-    }
-  }
-  bordas(ws2);
-  return wb.xlsx.writeBuffer();
+  const mats = RESP_ORDEM.flatMap((r) => (materiais[r] || []).map((m) => ({
+    responsavel: responsavelLabel({ responsavel: r }), item: m.item, especificacao: m.especificacao,
+    qtd: Math.round(m.qtd * 100) / 100, unidade: m.unidade + (m.semQtd ? ' (+ itens sem qtd)' : ''),
+    pendencias: m.pendencias, onde: [...new Set(m.locais)].join('; '),
+  })));
+  const tipos = PENDENCIA_TIPOS.map((t) => ({ label: t.label, criterio: t.value === 'outro' ? 'Outro*' : t.label }));
+  return montar({ linhas, materiais: mats, clienteNome: client?.name || '', posicao: hojeISO(), tipos });
 }
-
 async function exportarExcel({ pendencias, materiais, client }) {
   const buf = await montarPlanilhaPendencias({ pendencias, materiais, client });
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
