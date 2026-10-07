@@ -121,7 +121,8 @@ existia no dia da visita) e card/lista "Em solução provisória" no Indicador �
 (`listItensProvisorios`). Remanejamento de peça: decidido NÃO tratar (fica no texto da intervenção).
 Itens avulsos (sem intervenção) ficam fora.
 Também na abertura (2026-10-06): "+ Manutenção" tem Status "Solução provisória (paliativo)" com
-"Paliativo aplicado" + "O que falta para a definitiva" (obrigatórios) → `submitAtendimento` cria a
+"Paliativo aplicado" + "O que falta para a definitiva" (obrigatórios) + "Fotos do paliativo"
+(`palFotos`, vão na intervenção; as fotos normais viram "Fotos do problema" e ficam na corretiva) → `submitAtendimento` cria a
 corretiva em `andamento` e, na mesma visita, chama `registrarIntervencaoAtendimento({provisoria:true})`
 (o RVT mostra a corretiva e a intervenção paliativa).
 **Bug antigo corrigido no mesmo dia**: CHECK `rvt_itens.um_dos_tres` recusava item de intervenção (o

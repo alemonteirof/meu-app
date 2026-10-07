@@ -172,7 +172,7 @@ function FotoLightbox({ src, nomeArquivo, onClose }) {
   );
 }
 
-function FotosField({ fotos, setFotos }) {
+function FotosField({ fotos, setFotos, label = 'Fotos (opcional)' }) {
   const inputRef = useRef(null);
   const [erroFoto, setErroFoto] = useState('');
   async function handleChange(e) {
@@ -187,7 +187,7 @@ function FotosField({ fotos, setFotos }) {
     e.target.value = '';
   }
   return (
-    <Field label="Fotos (opcional)">
+    <Field label={label}>
       <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleChange} style={{ display: 'none' }} />
       <button
         type="button"
@@ -2382,6 +2382,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
 
   const [atForm, setAtForm] = useState({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '' });
   const [atFotos, setAtFotos] = useState([]);
+  const [palFotos, setPalFotos] = useState([]); // fotos do paliativo (status "Solução provisória")
   const [savingAtendimento, setSavingAtendimento] = useState(false);
   async function submitAtendimento(e) {
     e.preventDefault();
@@ -2409,11 +2410,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         if (provisoria) {
           await registrarIntervencaoAtendimento({
             atendimentoId: result.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
-            tecnico: visita.tecnico, statusResultante: 'andamento', descricao: atForm.paliativo, fotos: [],
+            tecnico: visita.tecnico, statusResultante: 'andamento', descricao: atForm.paliativo, fotos: palFotos,
             provisoria: true, faltaDefinitiva: atForm.falta,
           });
           novosItens.push({
-            tipo: 'intervencao', falha: result.falha, dispositivoLabel: label, descricao: atForm.paliativo, fotos: [],
+            tipo: 'intervencao', falha: result.falha, dispositivoLabel: label, descricao: atForm.paliativo, fotos: palFotos,
             status: 'Andamento', provisoria: { desde: visita.data_visita, falta: atForm.falta },
           });
         }
@@ -2421,6 +2422,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       setItensVisita((prev) => [...prev, ...novosItens]);
       setAtForm({ dispositivoIds: [], falha: '', falhaSel: emptyFalha(), status: 'aguardando', descritivo: '', paliativo: '', falta: '' });
       setAtFotos([]);
+      setPalFotos([]);
       if (onRefresh) onRefresh();
       setMsg(`${novosItens.length} item(ns) adicionado(s) à visita.`);
     } catch (err) {
@@ -2942,9 +2944,11 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
                       onChange={(e) => setAtForm({ ...atForm, falta: e.target.value })} />
                     <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>O item fica em Andamento com o selo "Solução provisória" até a definitiva.</span>
                   </Field>
+                  <FotosField fotos={palFotos} setFotos={setPalFotos} label="Fotos do paliativo (opcional)" />
                 </>
               )}
-              <FotosField fotos={atFotos} setFotos={setAtFotos} />
+              <FotosField fotos={atFotos} setFotos={setAtFotos}
+                label={atForm.status === 'provisoria' ? 'Fotos do problema (opcional)' : undefined} />
               <button type="submit" disabled={!canEdit || savingAtendimento} style={{ ...btnStyle, opacity: savingAtendimento ? 0.7 : 1 }}>
                 {savingAtendimento ? 'Salvando...' : `Adicionar à visita${atForm.dispositivoIds.length > 1 ? ` (${atForm.dispositivoIds.length} itens)` : ''}`}
               </button>
