@@ -88,13 +88,15 @@ function LinhaPendencia({ p, canEdit, onBaixa }) {
   const [saving, setSaving] = useState(false);
   const dias = diasEmAberto(p);
   const detalhe = detalheTexto(p);
+  // Mesmo critério do RVT: cliente em destaque (dias em vinho), MAJ discreta (tudo em cinza).
+  const doCliente = p.responsavel === 'cliente';
   return (
     <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '64px minmax(0,1fr)', gap: 10 }}>
-      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 14 }}>
+      <div style={{ fontWeight: doCliente ? 700 : 400, color: doCliente ? 'var(--pend-txt)' : 'var(--text-secondary)', fontSize: doCliente ? 14 : 13 }}>
         {dias ?? '—'}<div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-secondary)' }}>dia{dias === 1 ? '' : 's'}</div>
       </div>
-      <div style={{ minWidth: 0, fontSize: 13, color: 'var(--text-primary)' }}>
-        <div style={{ fontWeight: 600, wordBreak: 'break-word' }}>{localDaPendencia(p)}</div>
+      <div style={{ minWidth: 0, fontSize: 13, color: doCliente ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+        <div style={{ fontWeight: doCliente ? 600 : 500, wordBreak: 'break-word' }}>{localDaPendencia(p)}</div>
         {atividadeDaPendencia(p) && <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, wordBreak: 'break-word' }}>{atividadeDaPendencia(p).slice(0, 220)}{atividadeDaPendencia(p).length > 220 ? '…' : ''}</div>}
         {detalhe
           ? <div style={{ marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{detalhe}</div>
@@ -158,17 +160,23 @@ function PendenciasPrintView({ grupos, materiais, resumo, client, onBack }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10 }}>
             <StatCard label="Total em aberto" valor={resumo.total} />
             <StatCard label="Com o cliente" valor={resumo.cliente} />
-            <StatCard label="Com a MAJ" valor={resumo.maj} />
+            <StatCard label="Com a MAJ" valor={resumo.maj} destaque="var(--text-secondary)" />
             <StatCard label="Mais antiga" valor={resumo.maisAntiga != null ? `${resumo.maisAntiga} dias` : '—'} />
           </div>
-          {grupos.map((g) => (
-            <div key={g.responsavel} style={{ breakInside: 'auto' }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', borderBottom: '2px solid var(--text-primary)', paddingBottom: 3, marginBottom: 6 }}>
-                RESPONSÁVEL: {responsavelLabel({ responsavel: g.responsavel }).toUpperCase()} ({g.total})
+          {grupos.map((g) => {
+            // Cliente em destaque (vinho), MAJ discreta (cinza, traço fino) — mesmo padrão do RVT.
+            const cli = g.responsavel === 'cliente';
+            const td = cli ? tdP : { ...tdP, color: 'var(--text-secondary)' };
+            return (
+            <div key={g.responsavel} className={cli ? 'rvt-pend-cliente' : undefined} style={{ breakInside: 'auto' }}>
+              <p style={cli
+                ? { fontSize: 13, fontWeight: 700, color: 'var(--pend-txt)', background: 'var(--pend-bg)', borderLeft: '4px solid #8B2F2F', borderBottom: '2px solid #8B2F2F', padding: '3px 8px', marginBottom: 6 }
+                : { fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', paddingBottom: 3, marginBottom: 6 }}>
+                {cli ? 'AGUARDANDO O CLIENTE' : 'EM ANDAMENTO COM A MAJ'} ({g.total})
               </p>
               {g.tipos.map((t) => (
                 <div key={t.tipo} style={{ marginBottom: 10 }}>
-                  <p style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{t.label} ({t.itens.length})</p>
+                  <p style={{ fontSize: 11.5, fontWeight: 600, color: cli ? 'var(--text-primary)' : 'var(--text-secondary)', marginBottom: 2 }}>{t.label} ({t.itens.length})</p>
                   <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <thead><tr>
                       <th style={{ ...thP, width: '20%' }}>Local</th><th style={{ ...thP, width: '20%' }}>Atividade</th>
@@ -178,13 +186,13 @@ function PendenciasPrintView({ grupos, materiais, resumo, client, onBack }) {
                     <tbody>
                       {t.itens.map((p) => (
                         <tr key={p.id} style={{ breakInside: 'avoid' }}>
-                          <td style={tdP}>{localDaPendencia(p)}</td>
-                          <td style={tdP}>{atividadeDaPendencia(p).slice(0, 160)}</td>
-                          <td style={tdP}>{detalheTexto(p) || (pendenciaSemDetalhe(p) ? 'A detalhar' : '—')}</td>
-                          <td style={tdP}>{formatDateBR(p.desde)}</td>
-                          <td style={tdP}>{diasEmAberto(p) ?? '—'}</td>
-                          <td style={tdP}>{p.previsao ? formatDateBR(p.previsao) : '—'}</td>
-                          <td style={tdP}>{p.origemData ? formatDateBR(p.origemData) : '—'}</td>
+                          <td style={td}>{localDaPendencia(p)}</td>
+                          <td style={td}>{atividadeDaPendencia(p).slice(0, 160)}</td>
+                          <td style={td}>{detalheTexto(p) || (pendenciaSemDetalhe(p) ? 'A detalhar' : '—')}</td>
+                          <td style={td}>{formatDateBR(p.desde)}</td>
+                          <td style={cli ? { ...td, fontWeight: 700, color: 'var(--pend-txt)' } : td}>{diasEmAberto(p) ?? '—'}</td>
+                          <td style={td}>{p.previsao ? formatDateBR(p.previsao) : '—'}</td>
+                          <td style={td}>{p.origemData ? formatDateBR(p.origemData) : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -192,25 +200,29 @@ function PendenciasPrintView({ grupos, materiais, resumo, client, onBack }) {
                 </div>
               ))}
             </div>
-          ))}
+            );
+          })}
           {Object.keys(materiais).length > 0 && (
             <div>
               <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', borderBottom: '2px solid var(--text-primary)', paddingBottom: 3, marginBottom: 6 }}>LISTA CONSOLIDADA DE MATERIAIS</p>
               {RESP_ORDEM.filter((r) => materiais[r]?.length).map((r) => (
                 <div key={r} style={{ marginBottom: 10, breakInside: 'avoid' }}>
-                  <p style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>Responsável: {responsavelLabel({ responsavel: r }).toUpperCase()}</p>
+                  <p style={{ fontSize: 11.5, fontWeight: 600, color: r === 'cliente' ? 'var(--text-primary)' : 'var(--text-secondary)', marginBottom: 2 }}>Responsável: {responsavelLabel({ responsavel: r }).toUpperCase()}</p>
                   <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <thead><tr>
                       <th style={{ ...thP, width: '30%' }}>Item</th><th style={{ ...thP, width: '28%' }}>Especificação</th>
                       <th style={{ ...thP, width: '14%' }}>Quantidade</th><th style={{ ...thP, width: '28%' }}>Onde</th>
                     </tr></thead>
                     <tbody>
-                      {materiais[r].map((m) => (
+                      {materiais[r].map((m) => {
+                        const td = r === 'cliente' ? tdP : { ...tdP, color: 'var(--text-secondary)' };
+                        return (
                         <tr key={`${m.item}|${m.especificacao}|${m.unidade}`}>
-                          <td style={tdP}>{m.item}</td><td style={tdP}>{m.especificacao || '—'}</td>
-                          <td style={tdP}>{qtdTotal(m)}</td><td style={tdP}>{[...new Set(m.locais)].join('; ')}</td>
+                          <td style={td}>{m.item}</td><td style={td}>{m.especificacao || '—'}</td>
+                          <td style={td}>{qtdTotal(m)}</td><td style={td}>{[...new Set(m.locais)].join('; ')}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -224,7 +236,7 @@ function PendenciasPrintView({ grupos, materiais, resumo, client, onBack }) {
 }
 
 /** Monta o .xlsx (Dashboard com gráficos + base filtrável + materiais) e devolve o buffer. */
-export async function montarPlanilhaPendencias({ pendencias, materiais, client }) {
+export async function montarPlanilhaPendencias({ pendencias, client }) {
   const { montarPlanilhaPendencias: montar } = await import('../lib/pendenciasXlsx');
   const linhas = pendencias.map((p) => ({
     responsavel: responsavelLabel(p),
@@ -233,17 +245,14 @@ export async function montarPlanilhaPendencias({ pendencias, materiais, client }
     atividade: atividadeDaPendencia(p),
     detalhe: detalheTexto(p) || (pendenciaSemDetalhe(p) ? 'A detalhar' : ''),
     desde: p.desde, dias: diasEmAberto(p), previsao: p.previsao, origem: p.origemData,
+    // Materiais crus, como cadastrados (aba Materiais é por atividade, sem consolidar nomes).
+    materiais: p.tipo === 'material' ? (p.materiais || []).filter((m) => (m.item || '').trim()) : [],
   }));
-  const mats = RESP_ORDEM.flatMap((r) => (materiais[r] || []).map((m) => ({
-    responsavel: responsavelLabel({ responsavel: r }), item: m.item, especificacao: m.especificacao,
-    qtd: Math.round(m.qtd * 100) / 100, unidade: m.unidade + (m.semQtd ? ' (+ itens sem qtd)' : ''),
-    pendencias: m.pendencias, onde: [...new Set(m.locais)].join('; '),
-  })));
   const tipos = PENDENCIA_TIPOS.map((t) => ({ label: t.label, criterio: t.value === 'outro' ? 'Outro*' : t.label }));
-  return montar({ linhas, materiais: mats, clienteNome: client?.name || '', posicao: hojeISO(), tipos });
+  return montar({ linhas, clienteNome: client?.name || '', posicao: hojeISO(), tipos });
 }
-async function exportarExcel({ pendencias, materiais, client }) {
-  const buf = await montarPlanilhaPendencias({ pendencias, materiais, client });
+async function exportarExcel({ pendencias, client }) {
+  const buf = await montarPlanilhaPendencias({ pendencias, client });
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -348,7 +357,7 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         <StatCard label="Total em aberto" valor={resumo.total} />
         <StatCard label="Com o cliente" valor={resumo.cliente} />
-        <StatCard label="Com a MAJ" valor={resumo.maj} />
+        <StatCard label="Com a MAJ" valor={resumo.maj} destaque="var(--text-secondary)" />
         <StatCard label="Mais antiga" valor={resumo.maisAntiga != null ? `${resumo.maisAntiga} dias` : '—'} />
         <StatCard label="Prontos p/ executar" valor={prontos.length} destaque={prontos.length ? 'var(--status-ok)' : undefined} />
         <StatCard label="Em solução provisória" valor={provisorios.length} destaque={provisorios.length ? 'var(--status-warn, #b07000)' : undefined} />
@@ -370,7 +379,7 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
         <button type="button" disabled={!filtradas.length || exportando} style={{ ...smallBtnStyle, padding: '8px 12px', fontSize: 13 }}
           onClick={async () => {
             setExportando(true);
-            try { await exportarExcel({ pendencias: filtradas, materiais, client }); } catch (e) { console.error(e); setMsg('Erro ao gerar o Excel.'); }
+            try { await exportarExcel({ pendencias: filtradas, client }); } catch (e) { console.error(e); setMsg('Erro ao gerar o Excel.'); }
             setExportando(false);
           }}>
           {exportando ? 'Gerando...' : 'Exportar Excel'}
@@ -386,18 +395,27 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
         </p>
       )}
 
-      {grupos.map((g) => (
-        <div key={g.responsavel} style={{ display: 'grid', gap: 8 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-            Com {g.responsavel === 'cliente' ? 'o cliente' : 'a MAJ'} <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>· {g.total}</span>
-          </h3>
+      {grupos.map((g) => {
+        // Cliente em destaque (moldura vinho), MAJ discreta (cinza) — mesmo padrão do RVT.
+        const cli = g.responsavel === 'cliente';
+        return (
+        <div key={g.responsavel} className={cli ? 'rvt-pend-cliente' : undefined} style={{ display: 'grid', gap: 8 }}>
+          {cli ? (
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--pend-txt)', background: 'var(--pend-bg)', borderLeft: '4px solid #8B2F2F', borderRadius: 6, padding: '6px 10px' }}>
+              Aguardando o cliente <span style={{ fontWeight: 400 }}>· {g.total}</span>
+            </h3>
+          ) : (
+            <h3 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Em andamento com a MAJ <span style={{ fontWeight: 400 }}>· {g.total}</span>
+            </h3>
+          )}
           {g.tipos.map((t) => {
             const chave = `${g.responsavel}|${t.tipo}`;
             const aberto = !fechados[chave];
             return (
-              <div key={chave} style={{ ...cardStyle, overflow: 'hidden' }}>
+              <div key={chave} style={{ ...cardStyle, overflow: 'hidden', ...(cli ? { borderLeft: '4px solid #8B2F2F' } : {}) }}>
                 <button type="button" onClick={() => setFechados((f) => ({ ...f, [chave]: aberto }))}
-                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--surface-raised, transparent)', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 600, fontSize: 13 }}>
+                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: 'var(--surface-raised, transparent)', border: 'none', cursor: 'pointer', color: cli ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: cli ? 600 : 500, fontSize: 13 }}>
                   <span>{aberto ? '▾' : '▸'} {t.label}</span>
                   <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>{t.itens.length}</span>
                 </button>
@@ -406,7 +424,8 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
             );
           })}
         </div>
-      ))}
+        );
+      })}
 
       {provisorios.length > 0 && (
         <div style={{ display: 'grid', gap: 8 }}>
@@ -461,9 +480,9 @@ export default function PendenciasIndicador({ clientId, client, canEdit, onRefre
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
             {RESP_ORDEM.filter((r) => materiais[r]?.length).map((r) => (
               <div key={r} style={{ ...cardStyle, padding: 12 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 6 }}>{r === 'cliente' ? 'Cliente providencia' : 'MAJ providencia'}</div>
+                <div style={{ fontWeight: r === 'cliente' ? 700 : 600, fontSize: 13, color: r === 'cliente' ? 'var(--text-primary)' : 'var(--text-secondary)', marginBottom: 6 }}>{r === 'cliente' ? 'Cliente providencia' : 'MAJ providencia'}</div>
                 {materiais[r].map((m) => (
-                  <div key={`${m.item}|${m.especificacao}|${m.unidade}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '3px 0', borderTop: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                  <div key={`${m.item}|${m.especificacao}|${m.unidade}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '3px 0', borderTop: '1px solid var(--border)', color: r === 'cliente' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                     <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{m.item}{m.especificacao ? <span style={{ color: 'var(--text-secondary)' }}> · {m.especificacao}</span> : null}</span>
                     <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{qtdTotal(m)}</span>
                   </div>

@@ -1,7 +1,7 @@
 // Excel das Pendências (Indicador → Pendências → Exportar Excel).
 // Aba "Dashboard": indicadores, filtro de responsável (lista suspensa que recalcula números e
 // gráficos), tabelas-resumo e gráficos nativos do Excel. Aba "Pendências": base completa com
-// filtro automático e destaque de atraso. Aba "Materiais": lista consolidada.
+// filtro automático e destaque de atraso. Aba "Materiais": um material por linha, agrupado por atividade.
 // O ExcelJS não gera gráficos — o arquivo sai do ExcelJS e os gráficos (DrawingML) são
 // injetados depois no .zip via JSZip, apontando para as tabelas-resumo (fórmulas) do Dashboard.
 // Módulo JS puro (sem React/Supabase): recebe linhas já formatadas pelo chamador.
@@ -34,14 +34,15 @@ const dataXl = (s) => {
   return new Date(Date.UTC(y, m - 1, d));
 };
 const dataBR = (s) => (s ? s.slice(0, 10).split('-').reverse().join('/') : '');
+const fx3 = (formula, result) => ({ formula, result });
 
 /**
- * @param linhas     [{ responsavel:'Cliente'|'MAJ', tipo, local, atividade, detalhe, desde, dias, previsao, origem }] (datas ISO)
- * @param materiais  [{ responsavel, item, especificacao, qtd, unidade, pendencias, onde }]
+ * @param linhas     [{ responsavel:'Cliente'|'MAJ', tipo, local, atividade, detalhe, desde, dias, previsao, origem,
+ *                     materiais: [{ item, especificacao, marca, qtd, unidade, obs }] }] (datas ISO)
  * @param tipos      [{ label, criterio }] — ordem fixa das categorias; criterio = texto do COUNTIFS (aceita curinga)
  * @param posicao    'YYYY-MM-DD' — data de referência (dias/vencimento já calculados até ela)
  */
-export async function montarPlanilhaPendencias({ linhas, materiais, clienteNome, posicao, tipos }) {
+export async function montarPlanilhaPendencias({ linhas, clienteNome, posicao, tipos }) {
   const [{ default: ExcelJS }, { default: JSZip }] = await Promise.all([import('exceljs'), import('jszip')]);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'CCM — MAJ Soluções';
@@ -100,11 +101,63 @@ export async function montarPlanilhaPendencias({ linhas, materiais, clienteNome,
     rules: [{ type: 'expression', formulae: ['AND($B2="Cliente",$K2="Vencida")'], priority: 3, style: { font: { bold: true, color: { argb: argb(VINHO) } } } }],
   });
 
-  // ---------- Aba de materiais ----------
-  cabecalho(wm, [['Responsável', 13], ['Item', 34], ['Especificação', 30], ['Quantidade', 12], ['Unidade', 12], ['Nº de pendências', 12], ['Onde', 60]]);
-  for (const m of materiais) wm.addRow([m.responsavel, m.item, m.especificacao, m.qtd, m.unidade, m.pendencias, m.onde]);
-  corpo(wm, [1, 4, 5, 6]);
-  wm.autoFilter = { from: 'A1', to: 'G1' };
+  // ---------- Aba de materiais (por atividade, sem somar nomes parecidos) ----------
+  // Cada material fica na linha da sua atividade, exatamente como foi cadastrado — nada de
+  // consolidar por nome (grafias diferentes do mesmo item confundiam o cliente). Blocos por
+  // atividade com faixa alternada; filtro em todas as colunas; linha 3 soma só o que está visível.
+  const colsMat = [['Nº da pendência', 10], ['Responsável', 13], ['Local', 32], ['Atividade', 36], ['Material', 30], ['Especificação', 24], ['Marca', 14], ['Quantidade', 11], ['Unidade', 9], ['Observação', 28]];
+  wm.columns = colsMat.map(([, width]) => ({ width }));
+  for (let c = 1; c <= colsMat.length; c++) wm.getCell(1, c).fill = fill(VINHO);
+  wm.getRow(1).height = 26;
+  wm.mergeCells(1, 1, 1, colsMat.length);
+  Object.assign(wm.getCell('A1'), { value: `MATERIAIS POR ATIVIDADE  ·  ${clienteNome || ''}  ·  Posição em ${dataBR(posicao)}`, font: { bold: true, size: 13, color: { argb: 'FFFFFFFF' } }, alignment: { vertical: 'middle', indent: 1 } });
+  wm.mergeCells(2, 1, 2, colsMat.length);
+  wm.getRow(2).height = 32;
+  Object.assign(wm.getCell('A2'), {
+    value: 'COMO USAR: cada bloco de cor é uma atividade, com os materiais que ela precisa. Para ver só um material, só uma atividade ou só o que é do Cliente, clique na setinha ▼ do cabeçalho (linha 4) e escolha. A linha 3 soma a quantidade só do que estiver aparecendo.',
+    font: { size: 10, color: { argb: argb(TEXTO) } }, fill: fill('FDF3D6'), alignment: { vertical: 'middle', wrapText: true, indent: 1 },
+  });
+  const matLinhas = [];
+  linhas.forEach((l, i) => {
+    (l.materiais || []).forEach((m) => matLinhas.push({ n: i + 1, l, m }));
+  });
+  matLinhas.sort((a, b) => (a.l.responsavel === b.l.responsavel ? a.n - b.n : a.l.responsavel === 'Cliente' ? -1 : 1));
+  const iniMat = 5;
+  const fimMat = Math.max(iniMat, iniMat + matLinhas.length - 1);
+  wm.getRow(3).height = 22;
+  wm.mergeCells(3, 1, 3, 7);
+  const estTot = { font: { bold: true, size: 11, color: { argb: argb(VINHO) } }, fill: fill(CARD_BG), alignment: { vertical: 'middle', horizontal: 'right' }, border: { bottom: { style: 'medium', color: { argb: argb(VINHO) } } } };
+  Object.assign(wm.getCell('A3'), { ...estTot, value: fx3(`"Linhas aparecendo: "&SUBTOTAL(103,E${iniMat}:E${fimMat})&"   ·   Quantidade somada (filtre por Material para somar 1 item):"`, `Linhas aparecendo: ${matLinhas.length}   ·   Quantidade somada (filtre por Material para somar 1 item):`) });
+  Object.assign(wm.getCell('H3'), { ...estTot, value: fx3(`SUBTOTAL(109,H${iniMat}:H${fimMat})`, matLinhas.reduce((a, x) => a + (Number(x.m.qtd) || 0), 0)), numFmt: 'General', alignment: { vertical: 'middle', horizontal: 'center' } });
+  for (const c of [9, 10]) Object.assign(wm.getCell(3, c), { fill: estTot.fill, border: estTot.border });
+  const cab = wm.getRow(4);
+  cab.height = 30;
+  colsMat.forEach(([h], i) => Object.assign(cab.getCell(i + 1), { value: h, font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: fill(VINHO), alignment: { vertical: 'middle', horizontal: 'center', wrapText: true }, border: bordaFina }));
+  let bloco = -1; let ultimoN = null;
+  matLinhas.forEach(({ n, l, m }, i) => {
+    const primeira = n !== ultimoN;
+    if (primeira) { bloco++; ultimoN = n; }
+    const row = wm.getRow(iniMat + i);
+    const qtd = m.qtd == null || m.qtd === '' ? null : Number(m.qtd);
+    row.values = [n, l.responsavel, l.local, l.atividade, m.item || '', m.especificacao || '', m.marca || '', qtd, qtd == null ? '' : (m.unidade || 'un'), [m.obs, qtd == null && 'quantidade a definir'].filter(Boolean).join(' · ')];
+    const maj = l.responsavel === 'MAJ';
+    row.eachCell({ includeEmpty: true }, (c, col) => {
+      c.border = { ...bordaFina, ...(primeira ? { top: { style: 'medium', color: { argb: argb(maj ? 'BFC3C8' : VINHO) } } } : {}) };
+      c.alignment = { vertical: 'top', wrapText: true, horizontal: [1, 2, 8, 9].includes(col) ? 'center' : undefined };
+      if (bloco % 2 === 1) c.fill = fill(ZEBRA);
+      // Repetição de Local/Atividade fica apagada (continua preenchida para o filtro funcionar).
+      const repetida = !primeira && col <= 4;
+      c.font = { bold: primeira && (col === 3 || col === 4) || col === 5 || col === 8, color: { argb: argb(repetida ? 'B4B9C0' : maj ? MAJ_TXT : TEXTO) } };
+    });
+  });
+  wm.views = [{ state: 'frozen', ySplit: 4 }];
+  wm.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: colsMat.length } };
+  wm.pageSetup = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '4:4', margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
+  wm.headerFooter = { oddFooter: `&L${clienteNome} — Materiais por atividade&RPágina &P de &N` };
+  if (!matLinhas.length) {
+    wm.mergeCells(iniMat, 1, iniMat, colsMat.length);
+    Object.assign(wm.getCell(iniMat, 1), { value: 'Nenhuma pendência de material nesta exportação.', font: { italic: true, color: { argb: argb(CINZA_TXT) } } });
+  }
 
   // ---------- Dashboard ----------
   const faixa = (col) => `'Pendências'!$${col}$2:$${col}$${ultima}`;
@@ -284,7 +337,7 @@ export async function montarPlanilhaPendencias({ linhas, materiais, clienteNome,
   });
   const rodape = 61 + Math.max(top.length, 1) + 1;
   merge(`B${rodape}:M${rodape}`);
-  celula(`B${rodape}`, 'Base completa (filtrável por qualquer coluna) na aba "Pendências"; materiais consolidados na aba "Materiais". Gerado pelo CCM — MAJ Soluções.', { font: { italic: true, size: 9, color: { argb: argb(CINZA_TXT) } } });
+  celula(`B${rodape}`, 'Base completa (filtrável por qualquer coluna) na aba "Pendências"; materiais de cada atividade na aba "Materiais". Gerado pelo CCM — MAJ Soluções.', { font: { italic: true, size: 9, color: { argb: argb(CINZA_TXT) } } });
   dash.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 1, printArea: `A1:N${rodape}`, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
 
   // ---------- Gráficos nativos ----------

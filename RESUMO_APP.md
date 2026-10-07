@@ -218,7 +218,12 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   recalcula tudo via COUNTIFS/MAXIFS — auxiliares na coluna O oculta; 6 cards; tabelas por
   responsável/situação da previsão/tipo/faixa de dias; top 10 mais antigas fixo; impressão 1 página),
   **Pendências** (base com Faixa + Situação da previsão, filtro, zebra, destaque 31–90/+90 dias e
-  Vencida) e **Materiais**. Gráficos nativos (rosca + 2 barras empilhadas Cliente/MAJ): o ExcelJS
+  Vencida) e **Materiais** ("a prova de burros": 1 linha por material, **por atividade**, exatamente
+  como cadastrado — SEM consolidar por nome, porque grafias diferentes do mesmo item confundiam o
+  cliente; blocos por pendência com traço superior e Local/Atividade repetidos apagados; faixa
+  "COMO USAR"; linha 3 com SUBTOTAL(103/109) que conta/soma só o que o filtro deixa visível; Nº da
+  pendência casa com a aba Pendências). A lista consolidada (`consolidarMateriais`) segue só na tela
+  e na impressão. Gráficos nativos (rosca + 2 barras empilhadas Cliente/MAJ): o ExcelJS
   não faz gráfico, então o DrawingML é injetado no .zip depois (`injetarGraficos`) apontando para as
   tabelas do Dashboard — mudar linhas/colunas das tabelas exige ajustar as âncoras e refs dos
   gráficos. Tipo "Outro" sai como "Outro — <texto>" e é contado com curinga `Outro*`. Pendências
