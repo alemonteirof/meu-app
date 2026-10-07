@@ -125,6 +125,9 @@ Também na abertura (2026-10-06): "+ Manutenção" tem Status "Solução provis�
 (`palFotos`, vão na intervenção; as fotos normais viram "Fotos do problema" e ficam na corretiva) → `submitAtendimento` cria a
 corretiva em `andamento` e, na mesma visita, chama `registrarIntervencaoAtendimento({provisoria:true})`
 (o RVT mostra a corretiva e a intervenção paliativa).
+"Itens adicionados agora" (workspace da visita) mostra `PendenciasItem` em cada corretiva aberta
+criada na hora (manutenção ou gerada por inspeção) — classifica pendências sem finalizar a visita
+nem passar pela tela temporária; sugere pendência compartilhada p/ itens com mesma falha+descritivo.
 **Bug antigo corrigido no mesmo dia**: CHECK `rvt_itens.um_dos_tres` recusava item de intervenção (o
 "Registrar intervenção" nunca tinha gravado nada — 0 intervenções no banco) e "Outro" só com atividade
 (Diagnóstico sem texto). Agora aceita exatamente 1 de atendimento/inspeção/intervenção/outro.

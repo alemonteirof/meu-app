@@ -2406,7 +2406,10 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
           tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
         });
         const label = deviceOptions.find((o) => o.id === optId)?.label || '';
-        novosItens.push({ tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos });
+        novosItens.push({
+          tipo: 'atendimento', falha: result.falha, status: result.status, dispositivoLabel: label, fotos: result.fotos,
+          descritivo: result.descritivo, pendenciaAlvo: { atendimentoId: result.id }, alvoAberto: result.status !== 'resolvido',
+        });
         if (provisoria) {
           await registrarIntervencaoAtendimento({
             atendimentoId: result.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
@@ -2471,6 +2474,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         novosItens.push({
           tipo: 'inspecao', resultado: result.inspecao.resultado_teste, dispositivoLabel: device?.label || '',
           criouCorretiva: !!result.atendimento, fotos: result.inspecao.fotos,
+          ...(result.atendimento ? { pendenciaAlvo: { atendimentoId: result.atendimento.id }, alvoAberto: result.atendimento.status !== 'resolvido' } : {}),
         });
       }
       setItensVisita((prev) => [...prev, ...novosItens]);
@@ -3191,6 +3195,17 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
               {itensVisita.map((it, idx) => (
                 <div key={idx} style={{ ...cardStyle, padding: 10 }}>
                   <ItemResumo item={it} />
+                  {/* Corretiva aberta criada agora: já classifica as pendências aqui (mesmo bloco do
+                      card da visita), sem precisar finalizar nem ir pra "Classificar pendências". */}
+                  {it.pendenciaAlvo && (
+                    <PendenciasItem ctx={pendCtx} alvo={it.pendenciaAlvo} aberto={it.alvoAberto} canEdit={canEdit}
+                      dataPadrao={visita.data_visita} rvtId={visita.id}
+                      sugestoes={it.alvoAberto && it.tipo === 'atendimento'
+                        ? itensVisita
+                          .filter((o) => o !== it && o.tipo === 'atendimento' && o.alvoAberto && o.falha === it.falha && o.descritivo === it.descritivo)
+                          .map((o) => ({ alvo: o.pendenciaAlvo, label: o.dispositivoLabel }))
+                        : []} />
+                  )}
                 </div>
               ))}
               {itensVisita.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Nenhum item ainda.</p>}
