@@ -3,7 +3,7 @@ import { ShieldAlert, Download, X, Maximize2 } from 'lucide-react';
 import {
   createVisita, createAtendimento, createInspecao, addOutroToVisita, createDiagnosticoOutro, listVisitas, deleteVisita,
   updateAtendimento, updateInspecao, updateOutroItem, converterOutroParaAtendimento,
-  listAtendimentosAbertos, registrarIntervencaoAtendimento,
+  listAtendimentosAbertos, registrarIntervencaoAtendimento, idsDoParDimm, prepararFotos,
   getMetodoTeste, FUNCTIONAL_CATEGORY_MAP, DEVICE_TYPE_LABELS,
   COMBATE_CONJUNTO_TIPOS, COMBATE_COMPONENTE_TIPO_MAP, conjuntoSubitemInfo,
   updateCombateSubitem, updateCombateComponente, updateCombateCilindro, createCombateHistorico, agendarInspecaoDispositivo, agendarInspecaoCombate,
@@ -737,7 +737,8 @@ function alvoDeRegistro(r) {
 function labelDaPendencia(a) {
   const al = alvoDeRegistro(a);
   if (al.alvoKind !== 'dispositivo') return al.alvoLabel;
-  return a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo';
+  const nome = a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo';
+  return a._dimmPar ? `${nome} (${a._dimmPar.enderecos})` : nome;
 }
 
 /** status bruto do banco ('aguardando'/'andamento') -> rótulo capitalizado usado na UI. */
@@ -987,16 +988,20 @@ function itemsFromVisita(v) {
     }
     if (it.atendimentos) {
       const a = it.atendimentos;
+      // DIMM com troca física: 1 item só, o do sub 1 (marcarParesDimmFisico no adapter).
+      if (a._dimmPrincipalId) return null;
       const al = alvoDeRegistro(a);
+      const status = a._dimmPar?.status || a.status;
       return {
         id: it.id, tipo: 'atendimento', dispositivoId: a.dispositivo_id || null,
         alvoKind: al.alvoKind, painelId: a.painel_id || null,
         etiqueta: al.alvoLabel || a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
-        endereco: a.dispositivos?.endereco || '',
+        endereco: a._dimmPar?.enderecos || a.dispositivos?.endereco || '',
+        dimmPar: !!a._dimmPar,
         falha: a.falha || '', descritivo: a.descritivo || '',
-        status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : '',
+        status: status ? status.charAt(0).toUpperCase() + status.slice(1) : '',
         fotos: a.fotos || [],
-        pendenciaAlvo: { atendimentoId: a.id }, alvoAberto: a.status !== 'resolvido',
+        pendenciaAlvo: { atendimentoId: a.id }, alvoAberto: status !== 'resolvido',
         // RVT mostra a situação do dia: só marca provisório se o paliativo já existia nesta visita.
         provisoria: a._provisoria && a._provisoria.desde <= v.data_visita ? a._provisoria : null,
       };
@@ -1017,12 +1022,14 @@ function itemsFromVisita(v) {
     if (it.atendimento_intervencoes) {
       const interv = it.atendimento_intervencoes;
       const a = interv.atendimentos || {};
+      // Intervenção no sub 2 do DIMM físico sai junto com a do sub 1 (salvarIntervencao grava nos 2).
+      if (a._dimmPrincipalId && (v.rvt_itens || []).some((o) => o.atendimento_intervencoes?.atendimento_id === a._dimmPrincipalId)) return null;
       const al = alvoDeRegistro(a);
       return {
         id: it.id, tipo: 'intervencao', dispositivoId: a.dispositivo_id || null,
         alvoKind: al.alvoKind, painelId: a.painel_id || null,
         etiqueta: al.alvoLabel || a.dispositivos?.etiqueta || a.dispositivos?.endereco || 'Dispositivo',
-        endereco: a.dispositivos?.endereco || '',
+        endereco: a._dimmPar?.enderecos || a.dispositivos?.endereco || '',
         falha: a.falha || '', falhaDesde: (a.data_registro || '').slice(0, 10),
         descritivo: interv.descricao || '', descricao: interv.descricao || '',
         status: interv.status_resultante === 'resolvido' ? 'Resolvido' : 'Andamento',
@@ -2291,9 +2298,10 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (!clientId) return;
     setLoadingPendentes(true);
     try {
-      const data = await listAtendimentosAbertos(clientId);
-      setPendentes(data || []);
-      return data || [];
+      // DIMM com troca física: 1 pendência só (o sub 1); a intervenção grava nos 2 sub-endereços.
+      const data = (await listAtendimentosAbertos(clientId) || []).filter((a) => !a._dimmPrincipalId);
+      setPendentes(data);
+      return data;
     } catch (err) {
       console.error(err);
       return [];
@@ -2335,12 +2343,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     if (pergunta.decisao === 'voltar') return;
     setSavingIntervencao(true);
     try {
-      await registrarIntervencaoAtendimento({
-        atendimentoId: p.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
-        tecnico: visita.tecnico, statusResultante: provisoria ? 'andamento' : intervencaoForm.statusResultante,
-        descricao: intervencaoForm.descricao, fotos: intervencaoForm.fotos,
-        provisoria, faltaDefinitiva: intervencaoForm.falta,
-      });
+      const ids = idsDoParDimm(p);
+      const fotos = ids.length > 1 ? await prepararFotos(intervencaoForm.fotos, clientId) : intervencaoForm.fotos;
+      for (const atendimentoId of ids) {
+        await registrarIntervencaoAtendimento({
+          atendimentoId, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
+          tecnico: visita.tecnico, statusResultante: provisoria ? 'andamento' : intervencaoForm.statusResultante,
+          descricao: intervencaoForm.descricao, fotos,
+          provisoria, faltaDefinitiva: intervencaoForm.falta,
+        });
+      }
       if (pergunta.decisao === 'baixa') await baixaJuntoComResolucao(pergunta.ids, { data: visita.data_visita, rvtId: visita.id });
       setItensVisita((prev) => [...prev, {
         tipo: 'intervencao', falha: p.falha, dispositivoLabel: labelDaPendencia(p),
@@ -2420,12 +2432,16 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
     setSavingAtendimento(true);
     try {
       const novosItens = [];
+      // Vários dispositivos: sobe as fotos 1x só (senão cada corretiva ganha uma cópia do mesmo arquivo).
+      const varios = atForm.dispositivoIds.length > 1;
+      const fotosCorretiva = varios ? await prepararFotos(atFotos, clientId) : atFotos;
+      const fotosPaliativo = varios && provisoria ? await prepararFotos(palFotos, clientId) : palFotos;
       for (const optId of atForm.dispositivoIds) {
         const result = await createAtendimento({
           ...idsPorAlvo(optId), clienteId: clientId,
           falha: atForm.falha, status: provisoria ? 'andamento' : atForm.status, descritivo: atForm.descritivo,
           falhaCodigo: atForm.falhaSel?.codigo || null, falhaMarca: atForm.falhaSel?.marca || null, falhaCategoria: atForm.falhaSel?.categoria || null,
-          tecnico: visita.tecnico, rvtId: visita.id, fotos: atFotos,
+          tecnico: visita.tecnico, rvtId: visita.id, fotos: fotosCorretiva,
         });
         const label = deviceOptions.find((o) => o.id === optId)?.label || '';
         const novo = {
@@ -2435,7 +2451,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         if (provisoria) {
           await registrarIntervencaoAtendimento({
             atendimentoId: result.id, clienteId: clientId, rvtId: visita.id, data: visita.data_visita,
-            tecnico: visita.tecnico, statusResultante: 'andamento', descricao: atForm.paliativo, fotos: palFotos,
+            tecnico: visita.tecnico, statusResultante: 'andamento', descricao: atForm.paliativo, fotos: fotosPaliativo,
             provisoria: true, faltaDefinitiva: atForm.falta,
           });
           // 1 atividade só (mesma fusão de itemsFromVisita): o paliativo vai dentro da corretiva.
@@ -2700,7 +2716,7 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
         visitaData: v.data_visita, visitaTecnico: v.tecnico || '' });
     } else if (raw.atendimentos) {
       const a = raw.atendimentos;
-      setEditForm({ kind: 'atendimento', rvtId: v.id, visitaData: v.data_visita, statusOriginal: a.status || 'aguardando', id: a.id, dispositivoId: a.dispositivo_id || null, painelId: a.painel_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
+      setEditForm({ kind: 'atendimento', rvtId: v.id, visitaData: v.data_visita, statusOriginal: a.status || 'aguardando', id: a.id, idsPar: idsDoParDimm(a), dispositivoId: a.dispositivo_id || null, painelId: a.painel_id || null, ...alvoDeRegistro(a), falha: a.falha || '', falhaSel: falhaSelFromRecord(a), status: a.status || 'aguardando', descritivo: a.descritivo || '', fotos: a.fotos || [] });
     } else if (raw.inspecoes) {
       const i = raw.inspecoes;
       setEditForm({
@@ -2737,11 +2753,18 @@ export default function AtendimentosNovo({ data, client, clientId, canEdit: canE
       // O alvo (dispositivo x bateria x fonte) é fixo na edição — só repassa dispositivoId quando o alvo é dispositivo.
       const alvoDispositivo = (editForm.alvoKind || 'dispositivo') === 'dispositivo';
       if (editForm.kind === 'atendimento') {
-        await updateAtendimento(editForm.id, {
-          falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo, fotos: editForm.fotos,
-          ...(alvoDispositivo ? { dispositivoId: editForm.dispositivoId } : {}),
+        const comum = {
+          falha: editForm.falha, status: editForm.status, descritivo: editForm.descritivo,
           falhaCodigo: editForm.falhaSel?.codigo || null, falhaMarca: editForm.falhaSel?.marca || null, falhaCategoria: editForm.falhaSel?.categoria || null,
+        };
+        await updateAtendimento(editForm.id, {
+          ...comum, fotos: editForm.fotos,
+          ...(alvoDispositivo ? { dispositivoId: editForm.dispositivoId } : {}),
         });
+        // DIMM com troca física: o outro sub-endereço acompanha (é o mesmo equipamento).
+        for (const irmaoId of (editForm.idsPar || []).filter((id) => id !== editForm.id)) {
+          await updateAtendimento(irmaoId, comum);
+        }
       } else if (editForm.kind === 'inspecao') {
         await updateInspecao(editForm.id, {
           resultadoTeste: editForm.resultadoTeste, aparencia: editForm.aparencia,

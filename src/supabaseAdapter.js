@@ -59,7 +59,7 @@ async function resolverFotosEmLinhas(linhas, campo) {
     URL assinada -> "storage:<caminho>"; o resto fica como está. `cliente` é o id ou uma
     função async que o descobre (só chamada se houver foto nova pra subir). Se não der pra
     saber o cliente, mantém o base64 — nunca perde a foto. */
-async function prepararFotos(fotos, cliente) {
+export async function prepararFotos(fotos, cliente) {
   if (!Array.isArray(fotos) || !supabase) return fotos;
   let clienteId;
   if (fotos.some((f) => typeof f === 'string' && f.startsWith('data:'))) {
@@ -589,7 +589,44 @@ export async function createInspecao({
 
 // Escopo por `atendimentos.cliente_id` (coluna denormalizada) — não mais pelo INNER JOIN
 // com dispositivos, pra que atendimentos de Bateria/Fonte (dispositivo_id nulo) também voltem.
-const ATENDIMENTO_EMBEDS = 'dispositivos(id, etiqueta, endereco, modelo, lacos(nome, paineis(nome)), paineis(nome)), baterias_painel(id, paineis(nome)), fontes_auxiliares(id, nome), paineis(id, nome), rvt_itens(rvt_id)';
+const ATENDIMENTO_EMBEDS = 'dispositivos(id, etiqueta, endereco, modelo, tipo_modulo, sub_endereco, laco_id, lacos(nome, paineis(nome)), paineis(nome)), baterias_painel(id, paineis(nome)), fontes_auxiliares(id, nome), paineis(id, nome), rvt_itens(rvt_id)';
+
+const ORDEM_STATUS = { aguardando: 0, andamento: 1, resolvido: 2 };
+
+/** Módulo de Entrada Duplo (DIMM/FDM-1): 2 endereços lógicos, 1 equipamento físico.
+    Corretiva lançada junta nos 2 sub-endereços do mesmo módulo (mesma visita, mesmo laço,
+    mesmo endereço base, mesma falha e descritivo) = troca/dano físico → conta como 1.
+    Os 2 registros continuam no banco (status/inspeção/lógica seguem por endereço); aqui só
+    marca o par: o sub 1 ganha `_dimmPar` (rótulo e status combinado) e o sub 2 ganha
+    `_dimmPrincipalId` — RVT, Dashboard e Indicador escondem o sub 2 e mostram o sub 1. */
+function marcarParesDimmFisico(atendimentos) {
+  const grupos = new Map();
+  for (const a of atendimentos || []) {
+    const d = a.dispositivos;
+    const rvtId = a.rvt_itens?.[0]?.rvt_id;
+    if (!d || d.tipo_modulo !== 'entrada_duplo' || !a.falha || !rvtId || !d.sub_endereco) continue;
+    const base = String(d.endereco || '').split('.')[0];
+    const chave = [rvtId, d.laco_id, base, a.falha, (a.descritivo || '').trim()].join('|');
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(a);
+  }
+  for (const par of grupos.values()) {
+    if (par.length !== 2 || par[0].dispositivos.sub_endereco === par[1].dispositivos.sub_endereco) continue;
+    const [principal, secundario] = [...par].sort((x, y) => x.dispositivos.sub_endereco - y.dispositivos.sub_endereco);
+    const status = (ORDEM_STATUS[principal.status] ?? 0) <= (ORDEM_STATUS[secundario.status] ?? 0) ? principal.status : secundario.status;
+    principal._dimmPar = {
+      irmaoId: secundario.id, status,
+      enderecos: `${principal.dispositivos.endereco} + ${secundario.dispositivos.endereco}`,
+    };
+    secundario._dimmPrincipalId = principal.id;
+  }
+  return atendimentos;
+}
+
+/** IDs que uma ação no item do DIMM físico precisa atingir (o próprio + o outro sub-endereço). */
+export function idsDoParDimm(a) {
+  return a?._dimmPar ? [a.id, a._dimmPar.irmaoId] : [a.id];
+}
 
 export async function listAtendimentos(clienteId) {
   const { data, error } = await supabase
@@ -598,7 +635,7 @@ export async function listAtendimentos(clienteId) {
     .eq('cliente_id', clienteId)
     .order('data_registro', { ascending: false });
   if (error) throw error;
-  return resolverFotosEmLinhas(data, 'fotos');
+  return marcarParesDimmFisico(await resolverFotosEmLinhas(data, 'fotos'));
 }
 
 /** Corretivas ainda abertas (Aguardando/Andamento) do cliente, de qualquer visita
@@ -613,7 +650,7 @@ export async function listAtendimentosAbertos(clienteId) {
   if (error) throw error;
   const intervs = data?.length ? await listAtendimentoIntervencoesRaw(data.map((a) => a.id)) : [];
   anexarProvisoria(data, intervs);
-  return resolverFotosEmLinhas(data, 'fotos');
+  return marcarParesDimmFisico(await resolverFotosEmLinhas(data, 'fotos'));
 }
 
 /** Registra 1 intervenção contra uma corretiva aberta (de qualquer visita) — o que
@@ -972,10 +1009,14 @@ export async function loadClientData(clienteId) {
       return {
       id: `novo-at-${a.id}`, tipo: 'manutencao', deviceId: al.deviceId,
       categoria: al.categoria,
-      etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
+      etiqueta: al.etiqueta, endereco: a._dimmPar?.enderecos || al.endereco, laco: al.laco, painel: al.painel,
       equipamento: al.equipamento, area: '',
       falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaCategoria: a.falha_categoria || '',
       descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+      // DIMM com troca física: o sub 2 fica no histórico do endereço, mas fora das contagens;
+      // o sub 1 conta pelo status combinado do módulo (o menos avançado dos 2).
+      dimmSecundario: !!a._dimmPrincipalId,
+      dimmStatus: a._dimmPar ? statusCapitalizado(a._dimmPar.status) : '',
       explanacao: '', dataDiagnostico: (a.data_registro || '').slice(0, 10),
       dataIntervencao1: (a.data_registro || '').slice(0, 10),
       dataIntervencao2: '', dataIntervencao3: '', dataIntervencao4: '',
@@ -1019,12 +1060,13 @@ export async function loadClientData(clienteId) {
       }
       if (it.atendimentos) {
         const a = it.atendimentos;
+        if (a._dimmPrincipalId) return null; // DIMM com troca física: 1 atividade só (o sub 1)
         const al = alvoLabelInfo(a);
         return { id: `novo-item-${it.id}`, deviceId: al.deviceId, categoria: al.categoria, tipo: 'manutencao',
-          etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,
+          etiqueta: al.etiqueta, endereco: a._dimmPar?.enderecos || al.endereco, laco: al.laco, painel: al.painel,
           equipamento: al.equipamento, area: '',
           falha: a.falha || '', falhaCodigo: a.falha_codigo || '', falhaMarca: a.falha_marca || '', falhaCategoria: a.falha_categoria || '',
-          descritivo: a.descritivo || '', status: statusCapitalizado(a.status),
+          descritivo: a.descritivo || '', status: statusCapitalizado(a._dimmPar?.status || a.status),
           dataAgendamento: a.data_agendamento || '',
           explanacao: '', dataIntervencao: v.data_visita, solucao: '', fotos: a.fotos || [] };
       }
@@ -1041,6 +1083,7 @@ export async function loadClientData(clienteId) {
       if (it.atendimento_intervencoes) {
         const interv = it.atendimento_intervencoes;
         const a = interv.atendimentos || {};
+        if (a._dimmPrincipalId && (v.rvt_itens || []).some((o) => o.atendimento_intervencoes?.atendimento_id === a._dimmPrincipalId)) return null;
         const al = alvoLabelInfo(a);
         return { id: `novo-item-${it.id}`, deviceId: al.deviceId, categoria: al.categoria, tipo: 'intervencao',
           etiqueta: al.etiqueta, endereco: al.endereco, laco: al.laco, painel: al.painel,

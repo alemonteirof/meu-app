@@ -3937,7 +3937,9 @@ function Dashboard({ data, counts, attentionItems, combateCounts, combateAttenti
     if (dashFiltroTipo === 'inspecao') return r.tipo === 'inspecao';
     return true;
   });
-  const corretivas = filtrado.filter(ehCorretivaReal);
+  // DIMM com troca física conta 1 só (o sub 2 vem marcado dimmSecundario, ver marcarParesDimmFisico).
+  const corretivas = filtrado.filter((r) => ehCorretivaReal(r) && !r.dimmSecundario)
+    .map((r) => (r.dimmStatus ? { ...r, status: r.dimmStatus } : r));
 
   // itens de visita (SDAI) no mesmo período, usados tanto pro Resumo de Visitas quanto
   // pra trazer as corretivas "sem cadastro" (Manutenção de Itens não cadastrados) pros
@@ -6085,7 +6087,8 @@ function IndicadorPrintView({ entries, client, onBack }) {
 }
 
 function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onImportFile, onLinkDevices, onBulkDelete, onDeleteByStatus, onDeleteAll }) {
-  const list = data.indicador || [];
+  // DIMM com troca física aparece 1 vez (sub 1, endereço "X.01 + X.02") — ver marcarParesDimmFisico.
+  const list = (data.indicador || []).filter((r) => !r.dimmSecundario);
   // indicador-print-area: classe usada pra liberar essa tela na impressão (ver CSS @media print)
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -6359,7 +6362,7 @@ function IndicadorView({ data, canEdit, client, onCreate, onEdit, onDelete, onIm
       if (diff < 0) return `↓ ${diff} vs mês anterior`;
       return '= igual ao mês anterior';
     }
-    const todosRegistros = data.indicador || [];
+    const todosRegistros = list;
     const todasFalhas = todosRegistros.filter((r) => (r.tipo || 'falha') === 'falha');
     const todasManut = todosRegistros.filter((r) => r.tipo === 'manutencao');
     const todasInsp = todosRegistros.filter((r) => r.tipo === 'inspecao');

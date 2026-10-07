@@ -571,6 +571,13 @@ Gráfico de tendência (linha) foi descartado, não entra.
 - **Notifier XLS/XLSX** (VeriFire Tools): SheetJS.
 - Import tem undo e export CSV do banco de dispositivos.
 - Tipo "Módulo de Entrada Duplo" (DIMM/FDM-1): import detecta 2 sub-endereços automaticamente.
+- **DIMM = 1 equipamento físico, 2 endereços lógicos.** Corretiva lançada junta nos 2 sub-endereços
+  do mesmo módulo (mesma visita, laço, endereço base, falha e descritivo) = troca/dano físico → conta
+  como **1** no RVT, card da visita, pendências, Dashboard e Indicador (rótulo "005.01 + 005.02",
+  status = o menos avançado dos 2). Banco continua com 2 atendimentos (lógica/inspeção/status por
+  endereço não muda). Regra única em `marcarParesDimmFisico` (supabaseAdapter.js): sub 1 ganha
+  `_dimmPar`, sub 2 ganha `_dimmPrincipalId`. Editar o item ou registrar intervenção grava nos 2.
+  Falha só em 1 sub-endereço, ou falhas diferentes = lógica → segue 2.
 
 ## 15. Migrações `.sql` na raiz do repo — status
 
