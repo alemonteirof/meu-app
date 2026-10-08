@@ -218,7 +218,11 @@ O que um item em Aguardando/Andamento está aguardando. Pertence ao **item**, n�
   recalcula tudo via COUNTIFS/MAXIFS — auxiliares na coluna O oculta; 6 cards; tabelas por
   responsável/situação da previsão/tipo/faixa de dias; top 10 mais antigas fixo; impressão 1 página),
   **Pendências** (base com Faixa + Situação da previsão, filtro, zebra, destaque 31–90/+90 dias e
-  Vencida) e **Materiais** ("a prova de burros": 1 linha por material, **por atividade**, exatamente
+  Vencida), **Materiais por atividade** (visual do RVT impresso: 1 quadro por pendência de material
+  com Nº/local/atividade/responsável/desde/previsão + tabelinha Item|Qtd|Un.|Especificação|Marca/
+  modelo|Obs.; Cliente primeiro com moldura vinho, MAJ em cinza; sem filtro, só leitura; quebra de
+  página manual para nenhum quadro partir — página útil ≈ 880 pt, 1º quadro leva o título da seção)
+  e **Lista de materiais** ("a prova de burros": 1 linha por material, **por atividade**, exatamente
   como cadastrado — SEM consolidar por nome, porque grafias diferentes do mesmo item confundiam o
   cliente; blocos por pendência com traço superior e Local/Atividade repetidos apagados; faixa
   "COMO USAR"; linha 3 com SUBTOTAL(103/109) que conta/soma só o que o filtro deixa visível; Nº da

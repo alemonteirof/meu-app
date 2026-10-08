@@ -52,7 +52,8 @@ export async function montarPlanilhaPendencias({ linhas, clienteNome, posicao, t
   const situacao = (l) => (!l.previsao ? 'Sem previsão' : l.previsao.slice(0, 10) < posicao ? 'Vencida' : 'No prazo');
   const dash = wb.addWorksheet('Dashboard', { views: [{ showGridLines: false }], properties: { tabColor: { argb: argb(VINHO) } } });
   const ws = wb.addWorksheet('Pendências', { views: [{ state: 'frozen', ySplit: 1 }] });
-  const wm = wb.addWorksheet('Materiais', { views: [{ state: 'frozen', ySplit: 1 }] });
+  const wr = wb.addWorksheet('Materiais por atividade', { views: [{ showGridLines: false }] });
+  const wm = wb.addWorksheet('Lista de materiais', { views: [{ state: 'frozen', ySplit: 1 }] });
 
   // ---------- Aba de dados ----------
   const cabecalho = (sheet, colunas) => {
@@ -101,7 +102,122 @@ export async function montarPlanilhaPendencias({ linhas, clienteNome, posicao, t
     rules: [{ type: 'expression', formulae: ['AND($B2="Cliente",$K2="Vencida")'], priority: 3, style: { font: { bold: true, color: { argb: argb(VINHO) } } } }],
   });
 
-  // ---------- Aba de materiais (por atividade, sem somar nomes parecidos) ----------
+  // ---------- Aba "Materiais por atividade" (mesmo visual do RVT impresso) ----------
+  // Um quadro por pendência de material: cabeçalho (Nº, local, atividade, responsável, datas) e
+  // a tabelinha só dela (Item | Qtd | Un. | Especificação | Marca/modelo | Obs.). Cliente primeiro,
+  // em destaque vinho; MAJ depois, em cinza discreto. Sem filtro de propósito — é pra só ler.
+  const colsR = [2, 34, 8, 7, 26, 18, 30, 2];
+  wr.columns = colsR.map((width) => ({ width }));
+  const ultCol = colsR.length - 1; // coluna G
+  for (let rr = 1; rr <= 2; rr++) for (let c = 1; c <= colsR.length; c++) wr.getCell(rr, c).fill = fill(VINHO);
+  wr.getRow(1).height = 26; wr.getRow(2).height = 18;
+  wr.mergeCells(1, 2, 1, ultCol);
+  Object.assign(wr.getCell(1, 2), { value: 'MATERIAIS POR ATIVIDADE', font: { bold: true, size: 15, color: { argb: 'FFFFFFFF' } }, alignment: { vertical: 'middle' } });
+  wr.mergeCells(2, 2, 2, ultCol);
+  Object.assign(wr.getCell(2, 2), { value: `${clienteNome || ''}  ·  Posição em ${dataBR(posicao)}`, font: { size: 10, color: { argb: 'FFF1DADA' } }, alignment: { vertical: 'top' } });
+  wr.mergeCells(4, 2, 4, ultCol);
+  wr.getRow(4).height = 30;
+  Object.assign(wr.getCell(4, 2), {
+    value: 'Cada quadro abaixo é UMA atividade, com a lista do que ela precisa. O Nº é o mesmo da aba "Pendências". Para filtrar ou somar um material, use a aba "Lista de materiais".',
+    font: { size: 10, color: { argb: argb(TEXTO) } }, fill: fill('FDF3D6'), alignment: { vertical: 'middle', wrapText: true, indent: 1 },
+  });
+  let rr = 6;
+  const borda = (c, lados) => { c.border = { ...(c.border || {}), ...lados }; };
+  const quadros = []; // [inicio, fim] de cada quadro, para as quebras de página
+  for (const [resp, titulo] of [['Cliente', 'AGUARDANDO O CLIENTE'], ['MAJ', 'EM ANDAMENTO COM A MAJ']]) {
+    const blocos = linhas.map((l, i) => ({ l, n: i + 1 })).filter((x) => x.l.responsavel === resp && x.l.materiais?.length);
+    if (!blocos.length) continue;
+    const cli = resp === 'Cliente';
+    const cor = cli ? VINHO : 'BFC3C8';
+    const txt = cli ? TEXTO : MAJ_TXT;
+    wr.mergeCells(rr, 2, rr, ultCol);
+    wr.getRow(rr).height = cli ? 24 : 20;
+    const tit = wr.getCell(rr, 2);
+    Object.assign(tit, {
+      value: `${titulo}  —  ${blocos.length} ${blocos.length === 1 ? 'atividade' : 'atividades'} com material`,
+      font: { bold: true, size: cli ? 13 : 11, color: { argb: argb(cli ? '6E2424' : MAJ_TXT) } },
+      alignment: { vertical: 'middle', indent: 1 },
+      ...(cli ? { fill: fill('F6EAEA') } : {}),
+    });
+    for (let c = 2; c <= ultCol; c++) {
+      if (cli) wr.getCell(rr, c).fill = fill('F6EAEA');
+      borda(wr.getCell(rr, c), { bottom: { style: cli ? 'medium' : 'thin', color: { argb: argb(cor) } } });
+    }
+    if (cli) borda(tit, { left: { style: 'thick', color: { argb: argb(VINHO) } } });
+    rr += 2;
+    let primeiroDaSecao = true;
+    for (const { l, n } of blocos) {
+      const inicio = rr;
+      // Linha 1: Nº + local.
+      wr.mergeCells(rr, 2, rr, ultCol);
+      wr.getRow(rr).height = 20;
+      Object.assign(wr.getCell(rr, 2), { value: `Nº ${n}   ·   ${l.local || '—'}`, font: { bold: true, size: 11, color: { argb: argb(cli ? '6E2424' : MAJ_TXT) } }, alignment: { vertical: 'middle', indent: 1 } });
+      for (let c = 2; c <= ultCol; c++) wr.getCell(rr, c).fill = fill(cli ? 'F6EAEA' : CARD_BG);
+      rr++;
+      // Linha 2: atividade + responsável + datas.
+      const partes = [`Atividade: ${l.atividade || '—'}`, `Responsável: ${resp.toUpperCase()}`, `Desde ${dataBR(l.desde) || '—'}`];
+      if (cli && l.dias) partes.push(`${l.dias} ${l.dias === 1 ? 'dia' : 'dias'} aguardando`);
+      partes.push(`Previsão: ${l.previsao ? dataBR(l.previsao) : '—'}`);
+      const linha2 = partes.join('   ·   ');
+      wr.mergeCells(rr, 2, rr, ultCol);
+      wr.getRow(rr).height = linha2.length > 120 ? 30 : 17;
+      Object.assign(wr.getCell(rr, 2), { value: linha2, font: { size: 10, color: { argb: argb(txt) } }, alignment: { vertical: 'middle', wrapText: true, indent: 1 } });
+      for (let c = 2; c <= ultCol; c++) wr.getCell(rr, c).fill = fill(cli ? 'F6EAEA' : CARD_BG);
+      rr++;
+      // Cabeçalho da tabelinha.
+      ['Item', 'Qtd', 'Un.', 'Especificação', 'Marca/modelo', 'Obs.'].forEach((h, i) => Object.assign(wr.getCell(rr, i + 2), {
+        value: h, font: { bold: true, size: 10, color: { argb: cli ? 'FFFFFFFF' : argb(GRAFITE) } }, fill: fill(cli ? GRAFITE : 'E5E7EA'),
+        alignment: { vertical: 'middle', horizontal: i === 1 || i === 2 ? 'center' : 'left', indent: i === 1 || i === 2 ? 0 : 1 },
+      }));
+      rr++;
+      for (const m of l.materiais) {
+        const semQtd = m.qtd == null || m.qtd === '';
+        const vals = [m.item || '', semQtd ? '—' : Number(m.qtd), semQtd ? '' : (m.unidade || 'un'), m.especificacao || '', m.marca || '', [m.obs, semQtd && 'quantidade a definir'].filter(Boolean).join(' · ')];
+        const compr = Math.max((m.item || '').length / 34, (m.obs || '').length / 30, (m.especificacao || '').length / 26);
+        wr.getRow(rr).height = compr > 1 ? 15 * Math.ceil(compr) : 17;
+        vals.forEach((v, i) => Object.assign(wr.getCell(rr, i + 2), {
+          value: v, font: { size: 10, bold: i <= 1, color: { argb: argb(txt) } },
+          alignment: { vertical: 'top', wrapText: true, horizontal: i === 1 || i === 2 ? 'center' : 'left', indent: i === 1 || i === 2 ? 0 : 1 },
+          border: { bottom: fino() },
+        }));
+        rr++;
+      }
+      // Moldura do quadro: traço grosso à esquerda (cliente) / fino (MAJ) + contorno.
+      for (let rI = inicio; rI < rr; rI++) {
+        borda(wr.getCell(rI, 2), { left: { style: cli ? 'thick' : 'thin', color: { argb: argb(cor) } } });
+        borda(wr.getCell(rI, ultCol), { right: { style: 'thin', color: { argb: argb(cor) } } });
+      }
+      for (let c = 2; c <= ultCol; c++) {
+        borda(wr.getCell(inicio, c), { top: { style: cli ? 'medium' : 'thin', color: { argb: argb(cor) } } });
+        borda(wr.getCell(rr - 1, c), { bottom: { style: cli ? 'medium' : 'thin', color: { argb: argb(cor) } } });
+      }
+      // O 1º quadro da seção leva junto o título dela (não fica título órfão no pé da página).
+      quadros.push([primeiroDaSecao ? inicio - 2 : inicio, rr - 1]);
+      primeiroDaSecao = false;
+      rr += 1; // espaço entre quadros
+    }
+    rr += 1;
+  }
+  if (rr === 6) {
+    wr.mergeCells(6, 2, 6, ultCol);
+    Object.assign(wr.getCell(6, 2), { value: 'Nenhuma pendência de material nesta exportação.', font: { italic: true, color: { argb: argb(CINZA_TXT) } } });
+    rr = 7;
+  }
+  // Quebra de página manual: quadro que não cabe no resto da página vai inteiro para a próxima.
+  // Página útil ≈ 880 pt na escala do "ajustar à largura" (A4 retrato, ~127 caracteres de largura).
+  const alt = (r) => wr.getRow(r).height || 15;
+  let usado = 0; let proxRow = 1;
+  for (const [ini, fim] of quadros) {
+    for (; proxRow < ini; proxRow++) usado += alt(proxRow);
+    let h = 0;
+    for (let r = ini; r <= fim; r++) h += alt(r);
+    if (usado + h > 880 && usado > 0) { wr.getRow(ini - 1).addPageBreak(); usado = 0; }
+    usado += h; proxRow = fim + 1;
+  }
+  wr.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, printArea: `A1:H${rr}`, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.5, header: 0.2, footer: 0.2 } };
+  wr.headerFooter = { oddFooter: `&L${clienteNome} — Materiais por atividade&RPágina &P de &N` };
+
+  // ---------- Aba "Lista de materiais" (mesmos dados em lista, para filtrar/somar) ----------
   // Cada material fica na linha da sua atividade, exatamente como foi cadastrado — nada de
   // consolidar por nome (grafias diferentes do mesmo item confundiam o cliente). Blocos por
   // atividade com faixa alternada; filtro em todas as colunas; linha 3 soma só o que está visível.
@@ -110,11 +226,11 @@ export async function montarPlanilhaPendencias({ linhas, clienteNome, posicao, t
   for (let c = 1; c <= colsMat.length; c++) wm.getCell(1, c).fill = fill(VINHO);
   wm.getRow(1).height = 26;
   wm.mergeCells(1, 1, 1, colsMat.length);
-  Object.assign(wm.getCell('A1'), { value: `MATERIAIS POR ATIVIDADE  ·  ${clienteNome || ''}  ·  Posição em ${dataBR(posicao)}`, font: { bold: true, size: 13, color: { argb: 'FFFFFFFF' } }, alignment: { vertical: 'middle', indent: 1 } });
+  Object.assign(wm.getCell('A1'), { value: `LISTA DE MATERIAIS (PARA FILTRAR E SOMAR)  ·  ${clienteNome || ''}  ·  Posição em ${dataBR(posicao)}`, font: { bold: true, size: 13, color: { argb: 'FFFFFFFF' } }, alignment: { vertical: 'middle', indent: 1 } });
   wm.mergeCells(2, 1, 2, colsMat.length);
   wm.getRow(2).height = 32;
   Object.assign(wm.getCell('A2'), {
-    value: 'COMO USAR: cada bloco de cor é uma atividade, com os materiais que ela precisa. Para ver só um material, só uma atividade ou só o que é do Cliente, clique na setinha ▼ do cabeçalho (linha 4) e escolha. A linha 3 soma a quantidade só do que estiver aparecendo.',
+    value: 'COMO USAR: (para só ler, prefira a aba "Materiais por atividade"). Aqui cada bloco é uma atividade, com os materiais que ela precisa. Para ver só um material, só uma atividade ou só o que é do Cliente, clique na setinha ▼ do cabeçalho (linha 4) e escolha. A linha 3 soma a quantidade só do que estiver aparecendo.',
     font: { size: 10, color: { argb: argb(TEXTO) } }, fill: fill('FDF3D6'), alignment: { vertical: 'middle', wrapText: true, indent: 1 },
   });
   const matLinhas = [];
@@ -337,7 +453,7 @@ export async function montarPlanilhaPendencias({ linhas, clienteNome, posicao, t
   });
   const rodape = 61 + Math.max(top.length, 1) + 1;
   merge(`B${rodape}:M${rodape}`);
-  celula(`B${rodape}`, 'Base completa (filtrável por qualquer coluna) na aba "Pendências"; materiais de cada atividade na aba "Materiais". Gerado pelo CCM — MAJ Soluções.', { font: { italic: true, size: 9, color: { argb: argb(CINZA_TXT) } } });
+  celula(`B${rodape}`, 'Base completa (filtrável por qualquer coluna) na aba "Pendências"; materiais de cada atividade na aba "Materiais por atividade" (e em lista filtrável em "Lista de materiais"). Gerado pelo CCM — MAJ Soluções.', { font: { italic: true, size: 9, color: { argb: argb(CINZA_TXT) } } });
   dash.pageSetup = { orientation: 'portrait', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 1, printArea: `A1:N${rodape}`, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
 
   // ---------- Gráficos nativos ----------
