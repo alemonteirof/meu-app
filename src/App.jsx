@@ -24,7 +24,7 @@ import {
   Loader2, Inbox, ShieldAlert, ClipboardList, ClipboardCheck, Settings,
   ImagePlus, UserCog, Building2, KeyRound, Printer, Upload, Palette, Users, UserPlus,
   FileSpreadsheet, FileText, Activity, BarChart3, PieChart, Camera, Zap, Menu, MoreHorizontal, Flame,
-  Mail, Eye, EyeOff, Database, User,
+  Mail, Eye, EyeOff, Database, User, Radar,
 } from 'lucide-react';
 // xlsx, exceljs, chart.js e pdfjs-dist são libs pesadas usadas só em
 // import/export pontuais — carregadas via import() dinâmico nos pontos de uso
@@ -41,6 +41,12 @@ const loadAtendimentosNovo = () => import('./AtendimentosNovo');
 const AtendimentosNovo = React.lazy(loadAtendimentosNovo);
 const ToolChecklistScreen = React.lazy(() => import('./components/ToolChecklistScreen'));
 const DdsScreen = React.lazy(() => import('./components/DdsScreen'));
+const OpsScreen = React.lazy(() => import('./components/OpsScreen'));
+const SupervisorioScreen = React.lazy(() => import('./components/SupervisorioScreen'));
+const OpsImpressaoPorId = React.lazy(() => import('./components/OpsScreen').then((m) => ({ default: m.OpsImpressaoPorId })));
+// Rota do OPS p/ impressão (robô do Box / link direto). Mesmo padrão de OPS_ROTA_RE em OpsScreen.jsx.
+const OPS_ROTA_RE = /^#\/ops\/([0-9a-f-]{36})\/imprimir$/i;
+const lerOpsPrintId = () => (window.location.hash.match(OPS_ROTA_RE) || [])[1] || null;
 
 
 import { supabase } from './supabaseClient';
@@ -989,6 +995,7 @@ const NAV_ITEMS = [
   { key: 'relatorios', label: 'Relatórios', icon: FileText },
   { key: 'indicador', label: 'Indicador', icon: Activity },
   { key: 'naoconformidades', label: 'Não conformidades', icon: ShieldAlert },
+  { key: 'supervisorio', label: 'Supervisório', icon: Radar },
   { key: 'settings', label: 'Configurações', icon: Settings },
   // TEMPORÁRIO: classificação retroativa das pendências — remover quando a lista zerar.
   { key: 'classificar', label: 'Classificar pendências', icon: ClipboardList },
@@ -997,7 +1004,8 @@ const NAV_ITEMS = [
 // Admin vê tudo. Operador (técnico) e Visualizador (cliente) têm menu restrito —
 // mesma lista no mobile e no desktop.
 const NAV_KEYS_BY_ROLE = {
-  admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades', 'settings', 'classificar'],
+  // 'supervisorio': piloto, só admin por enquanto (gateway FireNET em teste).
+  admin: ['atendimentos', 'dashboard', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades', 'supervisorio', 'settings', 'classificar'],
   operador: ['dashboard', 'atendimentos', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades'],
   // "relatorios" só pro visualizador: Admin/Operador acessam o mesmo RVT por dentro de Atendimentos.
   visualizador: ['dashboard', 'relatorios', 'sdai', 'combate', 'report', 'indicador', 'naoconformidades'],
@@ -3570,6 +3578,12 @@ function Workspace({ client, onUpdateClient, onSwitchClient }) {
 
         {view === 'naoconformidades' && (
           <NaoConformidades clientId={client.id} client={client} data={data} canEdit={canEdit} />
+        )}
+
+        {view === 'supervisorio' && navRole === 'admin' && (
+          <React.Suspense fallback={<LazyFallback />}>
+            <SupervisorioScreen client={client} data={data} canEdit={canEdit} />
+          </React.Suspense>
         )}
 
         {view === 'classificar' && navRole === 'admin' && (
@@ -8501,6 +8515,8 @@ function Root() {
   const [activeClientId, setActiveClientId] = useState(null);
   const [showToolChecklist, setShowToolChecklist] = useState(false);
   const [showDds, setShowDds] = useState(false);
+  const [showOps, setShowOps] = useState(false);
+  const [opsPrintId, setOpsPrintId] = useState(lerOpsPrintId);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [authedClientId, setAuthedClientId] = useState(null);
 
@@ -8513,7 +8529,13 @@ function Root() {
       setLoaded(true);
     })();
   }, []);
-  
+
+  useEffect(() => {
+    const onHash = () => setOpsPrintId(lerOpsPrintId());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
 
   // Um usuário que não é dono da plataforma só enxerga os clientes aos quais foi vinculado (memberships)
   const visibleClients = React.useMemo(() => {
@@ -8589,6 +8611,23 @@ function Root() {
     );
   }
 
+  // #/ops/<id>/imprimir: abre só a folha do OPS (robô do Box / "Gerar PDF" do Histórico)
+  if (opsPrintId) {
+    const fechar = () => {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setOpsPrintId(null);
+    };
+    if (!(isOwner || role === 'admin' || role === 'operador')) {
+      return (
+        <div className="p-6 space-y-3" style={{ color: 'var(--text-primary)' }}>
+          <p className="text-sm">OPS é restrito a membros da MAJ.</p>
+          <button type="button" onClick={fechar} className="text-sm underline" style={{ color: 'var(--accent)' }}>Voltar ao CCM</button>
+        </div>
+      );
+    }
+    return <React.Suspense fallback={<LazyFallback />}><OpsImpressaoPorId id={opsPrintId} onBack={() => { fechar(); setShowOps('historico'); }} /></React.Suspense>;
+  }
+
   // Usuário vinculado a um único cliente entra direto nele, sem precisar escolher
   if (!isOwner && !activeClientId && visibleClients.length === 1) {
     setTimeout(() => selectClient(visibleClients[0].id), 0);
@@ -8608,6 +8647,9 @@ const isMajStaff = isOwner || role === 'admin' || role === 'operador';
     if (showDds && isMajStaff) {
       return <React.Suspense fallback={<LazyFallback />}><DdsScreen role={role} nomeUsuario={nome || ''} onBack={() => setShowDds(false)} /></React.Suspense>;
     }
+    if (showOps && isMajStaff) {
+      return <React.Suspense fallback={<LazyFallback />}><OpsScreen role={role} nomeUsuario={nome || ''} abaInicial={showOps === 'historico' ? 'historico' : 'novo'} onBack={() => setShowOps(false)} /></React.Suspense>;
+    }
 
     return (
       <div>
@@ -8615,6 +8657,9 @@ const isMajStaff = isOwner || role === 'admin' || role === 'operador';
           <div className="p-4 flex justify-end gap-2 flex-wrap">
             <button onClick={() => setShowDds(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#8B2F2F' }}>
               DDS
+            </button>
+            <button onClick={() => setShowOps(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#8B2F2F' }}>
+              OPS
             </button>
             <button onClick={() => setShowToolChecklist(true)} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#8B2F2F' }}>
               Checklist de Ferramentas
