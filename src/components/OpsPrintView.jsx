@@ -90,7 +90,6 @@ export function OpsFolha({ registro }) {
     <div className="ops-folha" style={{ width: "186mm", margin: "0 auto", background: "#fff", color: "#000", fontFamily: TIMES, fontSize: "10pt", lineHeight: 1.2, padding: "0" }}>
       {/* Topo */}
       <div style={{ display: "flex", alignItems: "center", gap: "3mm", fontSize: "10.5pt" }}>
-        <span>Logo Empresa:</span>
         <img src="/maj-logo-full-lightbg.png" alt="MAJ Soluções" style={{ height: "12mm", width: "auto" }} />
       </div>
       <h1 style={{ textAlign: "center", fontFamily: TIMES, fontWeight: 700, fontSize: "16pt", margin: "0 0 0.5mm", lineHeight: 1.1 }}>
@@ -167,7 +166,6 @@ export function OpsFolha2({ registro }) {
   return (
     <div className="ops-folha ops-folha-2" style={{ width: "186mm", margin: "0 auto", background: "#fff", color: "#000", fontFamily: ARIAL, fontSize: "9.5pt", lineHeight: 1.2 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "3mm", fontFamily: TIMES, fontSize: "10.5pt" }}>
-        <span>Logo Empresa:</span>
         <img src="/maj-logo-full-lightbg.png" alt="MAJ Soluções" style={{ height: "12mm", width: "auto" }} />
       </div>
 
