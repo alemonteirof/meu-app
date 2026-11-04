@@ -673,7 +673,7 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
   `trg_ops_assinar`/`trg_ops_auditar` + RLS (só MAJ; UPDATE observador/admin; DELETE admin) + RPC
   `ops_membros_maj`. **Rodada** (2026-10-16, aplicada pelo Claude via MCP com autorização do Alexandre).
 - `migracao_ops_pagina2.sql` — página 2 do OPS (`conhece_perigos_riscos`, `riscos`, `medidas`) + assinatura
-  opcional (`ops_assinar` não exige mais; `ops_auditar` grava `registrada`). **Pendente** (2026-11-04).
+  opcional (`ops_assinar` não exige mais; `ops_auditar` grava `registrada`). **Rodada** (2026-11-04, aplicada pelo Claude via MCP com autorização do Alexandre).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 
