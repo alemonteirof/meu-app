@@ -3,18 +3,19 @@
 // Uso: <OpsScreen role={role} nomeUsuario={nome} onBack={() => ...} />
 //      <OpsImpressaoPorId id="..." onBack={...} />   (rota #/ops/<id>/imprimir)
 // OPS — Observação Preventiva de Segurança (exigência Nissan p/ terceiros, 2 por mês).
-// Só membros MAJ (admin/operador). Observador = quem assina (MajSignatureField);
-// uid/email/nome/data/hash e semana_iso são carimbados por trigger (migracao_ops.sql).
-// Correção: observador ou admin editam a qualquer momento; a assinatura original não
-// muda e cada correção vai pra assinatura_auditoria_maj (evento 'corrigida' + snapshot).
+// Só membros MAJ (admin/operador). Sem assinatura digital (decisão 04/11/2026): o PDF
+// (modelo Nissan, 2 páginas) é impresso e assinado no papel. Observador = quem registra;
+// uid/email/nome/data e semana_iso são carimbados por trigger (migracao_ops.sql +
+// migracao_ops_pagina2.sql). Correção: observador ou admin editam a qualquer momento;
+// cada correção vai pra assinatura_auditoria_maj (evento 'corrigida' + snapshot).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import {
   getOpsItens, OPS_FORM_VERSAO, OPS_PREDIOS, OPS_RESPOSTAS, OPS_TEXTOS, OPS_TEXTO_MAX, OPS_META_MES,
   OPS_ITENS_PNE, OPS_ITEM_DDS, semanaIso,
+  OPS_PAG2, OPS_SIM_NAO, OPS_RISCOS_LINHAS, OPS_RISCOS_LINHA_MAX, OPS_MEDIDAS_LINHAS, OPS_MEDIDA_MAX,
 } from "../lib/opsItens";
-import MajSignatureField from "./MajSignatureField";
 import OpsPrintView from "./OpsPrintView";
 import { hojeLocal as hoje } from "../lib/datas";
 
@@ -28,8 +29,11 @@ const rotulo = { display: "block", fontSize: 13, fontWeight: 500, marginBottom: 
 
 // Sem assinatura_valor (imagem base64) nas listas — não é exibida em lugar nenhum.
 const COLUNAS = "id, data_ops, semana_iso, ano_iso, funcionario_observado, funcionario_observado_uid, predio, empresa, respostas, "
-  + "comportamentos_preventivos, atos_inseguros, condicoes_inseguras, form_versao, assinatura_hash, observador_uid, observador_email, "
-  + "observador_nome, assinado_em, corrigido_por_nome, corrigido_em";
+  + "comportamentos_preventivos, atos_inseguros, condicoes_inseguras, conhece_perigos_riscos, riscos, medidas, "
+  + "form_versao, assinatura_hash, observador_uid, observador_email, observador_nome, assinado_em, corrigido_por_nome, corrigido_em";
+
+const MEDIDA_VAZIA = { acao: "", prazo: "", responsavel: "" };
+const MEDIDA_NA = { acao: "N/A", prazo: "N/A", responsavel: "N/A" };
 
 const dataBR = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 const dataHoraBR = (ts) => (ts ? new Date(ts).toLocaleString("pt-BR") : "—");
@@ -63,7 +67,10 @@ function OpsForm({ registros, membros, nomeUsuario, editando, onSalvo, onCancela
   const [predio, setPredio] = useState(editando?.predio || "");
   const [respostas, setRespostas] = useState(editando?.respostas || {});
   const [textos, setTextos] = useState(() => Object.fromEntries(OPS_TEXTOS.map((t) => [t.campo, editando?.[t.campo] || ""])));
-  const [assinatura, setAssinatura] = useState(null);
+  // Página 2
+  const [conhece, setConhece] = useState(editando?.conhece_perigos_riscos || "");
+  const [riscos, setRiscos] = useState(editando?.riscos || "");
+  const [medidas, setMedidas] = useState(() => (editando?.medidas?.length ? editando.medidas.map((m) => ({ ...MEDIDA_VAZIA, ...m })) : [{ ...MEDIDA_VAZIA }]));
   const [confirmaSemana, setConfirmaSemana] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -107,8 +114,15 @@ function OpsForm({ registros, membros, nomeUsuario, editando, onSalvo, onCancela
     if (faltando.length) return setErro(`Responda todos os itens. Faltando: ${faltando.join(", ")}.`);
     const vazio = OPS_TEXTOS.find((t) => !textos[t.campo].trim());
     if (vazio) return setErro(`Preencha "${vazio.titulo.replace(":", "")}". Se não houver nada, escreva isso (ex: "Nenhum ato inseguro observado").`);
+    if (!conhece) return setErro(`Página 2: responda SIM ou NÃO em "${OPS_PAG2.pergunta}"`);
+    const linhasRiscos = riscos.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!linhasRiscos.length) return setErro(`Página 2: preencha "${OPS_PAG2.riscosTitulo}" (um risco por linha).`);
+    if (linhasRiscos.length > OPS_RISCOS_LINHAS) return setErro(`Página 2: no máximo ${OPS_RISCOS_LINHAS} riscos (são ${OPS_RISCOS_LINHAS} linhas na folha).`);
+    if (linhasRiscos.some((l) => l.length > OPS_RISCOS_LINHA_MAX)) return setErro(`Página 2: cada risco com no máximo ${OPS_RISCOS_LINHA_MAX} caracteres (para caber na linha da folha).`);
+    const medidasOk = medidas.map((m) => ({ acao: m.acao.trim(), prazo: m.prazo.trim(), responsavel: m.responsavel.trim() }))
+      .filter((m) => m.acao || m.prazo || m.responsavel);
+    if (medidasOk.some((m) => !m.acao)) return setErro("Página 2: toda linha de medida corretiva precisa da ação (o que fazer).");
     if (mesmaSemana.length && !confirmaSemana) return setErro(`Já existe OPS na semana ${semana}. Escolha outra data ou confirme abaixo.`);
-    if (!editando && !assinatura) return setErro("Faça a assinatura do observador antes de salvar.");
 
     const campos = {
       data_ops: dataOps,
@@ -117,18 +131,15 @@ function OpsForm({ registros, membros, nomeUsuario, editando, onSalvo, onCancela
       predio: predio.trim(),
       respostas: Object.fromEntries(itens.map((i) => [String(i.n), respostas[String(i.n)]])),
       ...Object.fromEntries(OPS_TEXTOS.map((t) => [t.campo, textos[t.campo].trim()])),
+      conhece_perigos_riscos: conhece,
+      riscos: linhasRiscos.join("\n"),
+      medidas: medidasOk,
     };
     setSalvando(true);
     const q = editando
       ? supabase.from("ops_registros").update(campos).eq("id", editando.id)
-      : supabase.from("ops_registros").insert({
-        ...campos,
-        form_versao: OPS_FORM_VERSAO,
-        // observador/data/hash/semana são carimbados por trigger no banco
-        assinatura_tipo: assinatura.tipo,
-        assinatura_valor: assinatura.valor,
-        assinatura_origem: assinatura.origem,
-      });
+      // observador/data/semana são carimbados por trigger no banco; sem assinatura digital
+      : supabase.from("ops_registros").insert({ ...campos, form_versao: OPS_FORM_VERSAO });
     const { data, error } = await q.select(COLUNAS).single();
     setSalvando(false);
     if (error) return setErro(`Erro ao salvar: ${error.message}`);
@@ -151,7 +162,7 @@ function OpsForm({ registros, membros, nomeUsuario, editando, onSalvo, onCancela
         </p>
         {editando && (
           <p className="text-xs opacity-80 mt-1">
-            Assinado por {nomeObservador(editando)} em {dataHoraBR(editando.assinado_em)}. A assinatura original é mantida; a correção fica registrada na trilha.
+            Registrado por {nomeObservador(editando)} em {dataHoraBR(editando.assinado_em)}. A autoria original é mantida; a correção fica registrada na trilha.
           </p>
         )}
       </div>
@@ -242,13 +253,60 @@ function OpsForm({ registros, membros, nomeUsuario, editando, onSalvo, onCancela
         ))}
       </div>
 
-      {!editando && <MajSignatureField value={assinatura} onChange={setAssinatura} nomeSugerido={nomeUsuario} />}
+      {/* Página 2 do modelo Nissan */}
+      <div className="space-y-3">
+        <p className="text-sm font-semibold">Página 2 — {OPS_PAG2.titulo.replace(":", "")}</p>
+        <div style={{ ...card, borderLeft: `4px solid ${conhece ? VINHO : "var(--border)"}` }}>
+          <p className="text-sm mb-2">{OPS_PAG2.pergunta}</p>
+          <div className="flex gap-2">
+            {OPS_SIM_NAO.map((r) => (
+              <button key={r.valor} type="button" onClick={() => setConhece(r.valor)} style={btnResp(conhece === r.valor)}>{r.rotulo}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label style={rotulo}><b style={{ color: "var(--text-primary)" }}>{OPS_PAG2.riscosTitulo}</b> Um risco por linha (até {OPS_RISCOS_LINHAS}).</label>
+          <textarea className="field-input w-full rounded p-2" rows={OPS_RISCOS_LINHAS} value={riscos}
+            onChange={(e) => setRiscos(e.target.value)} placeholder={"Ex:\nQueda com e sem diferença de nível\nTropeço"} />
+          <p className="text-xs text-right" style={{ color: "var(--text-secondary)" }}>
+            {riscos.split("\n").filter((l) => l.trim()).length}/{OPS_RISCOS_LINHAS} linhas
+          </p>
+        </div>
+        <div>
+          <label style={rotulo}><b style={{ color: "var(--text-primary)" }}>{OPS_PAG2.medidasTitulo}</b> {OPS_PAG2.medidasOrientacao}</label>
+          <div className="space-y-2">
+            {medidas.map((m, i) => (
+              <div key={i} className="grid gap-2" style={{ gridTemplateColumns: "1.6rem 1fr 6.5rem 8rem 2rem" }}>
+                <span className="text-sm self-center" style={{ color: "var(--text-secondary)" }}>{i + 1}</span>
+                <input className="field-input rounded p-2" maxLength={OPS_MEDIDA_MAX.acao} value={m.acao} placeholder="Ação (o que)"
+                  onChange={(e) => setMedidas((p) => p.map((x, j) => (j === i ? { ...x, acao: e.target.value } : x)))} />
+                <input className="field-input rounded p-2" maxLength={OPS_MEDIDA_MAX.prazo} value={m.prazo} placeholder="Prazo"
+                  onChange={(e) => setMedidas((p) => p.map((x, j) => (j === i ? { ...x, prazo: e.target.value } : x)))} />
+                <input className="field-input rounded p-2" maxLength={OPS_MEDIDA_MAX.responsavel} value={m.responsavel} placeholder="Responsável"
+                  onChange={(e) => setMedidas((p) => p.map((x, j) => (j === i ? { ...x, responsavel: e.target.value } : x)))} />
+                <button type="button" title="Remover linha" style={{ ...btnBase, padding: "4px 0" }}
+                  onClick={() => setMedidas((p) => (p.length > 1 ? p.filter((_, j) => j !== i) : [{ ...MEDIDA_VAZIA }]))}>×</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 flex-wrap mt-2">
+            {medidas.length < OPS_MEDIDAS_LINHAS && (
+              <button type="button" onClick={() => setMedidas((p) => [...p, { ...MEDIDA_VAZIA }])} style={{ ...btnBase, fontSize: 12 }}>+ Linha</button>
+            )}
+            <button type="button" onClick={() => setMedidas([{ ...MEDIDA_NA }])} style={{ ...btnBase, fontSize: 12 }}>Nenhuma (N/A)</button>
+          </div>
+          <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>Linhas em branco não saem na folha. Até {OPS_MEDIDAS_LINHAS} linhas.</p>
+        </div>
+        <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+          Assinatura: o PDF sai com "{OPS_PAG2.assinatura}" em branco — imprima e colete a assinatura no papel.
+        </p>
+      </div>
 
       {erro && <p className="text-sm" style={{ color: "var(--status-danger)" }}>{erro}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onCancelar} style={btnBase}>Cancelar</button>
         <button type="button" disabled={salvando} onClick={salvar} style={{ ...btnPrimario, flex: 1, padding: "10px 12px", opacity: salvando ? 0.6 : 1 }}>
-          {salvando ? "Salvando..." : editando ? "Salvar correção" : "Assinar e salvar OPS"}
+          {salvando ? "Salvando..." : editando ? "Salvar correção" : "Salvar OPS"}
         </button>
       </div>
     </div>
@@ -359,7 +417,7 @@ export function OpsImpressaoPorId({ id, onBack }) {
 // Tela principal
 // ---------------------------------------------------------------------------
 export default function OpsScreen({ role, nomeUsuario = "", abaInicial = "novo", onBack }) {
-  const [aba, setAba] = useState(abaInicial); // "novo" | "historico" | "assinatura"
+  const [aba, setAba] = useState(abaInicial); // "novo" | "historico"
   const [editando, setEditando] = useState(null);
   const [registros, setRegistros] = useState(null);
   const [membros, setMembros] = useState([]);
@@ -400,20 +458,15 @@ export default function OpsScreen({ role, nomeUsuario = "", abaInicial = "novo",
         <div className="flex gap-2 flex-wrap">
           {abaBtn("novo", "Novo OPS")}
           {abaBtn("historico", "Histórico")}
-          {abaBtn("assinatura", "Minha assinatura")}
         </div>
       </div>
 
       {aviso && <p className="max-w-2xl mx-auto px-4 text-sm" style={{ color: "var(--status-ok)" }}>{aviso}</p>}
 
-      {aba === "assinatura" && (
-        <div className="max-w-2xl mx-auto p-4"><MajSignatureField modoCadastro nomeSugerido={nomeUsuario} /></div>
-      )}
-
       {aba === "novo" && registros && (
         <OpsForm key={`novo-${formKey}`} registros={registros} membros={membros} nomeUsuario={nomeUsuario}
           onCancelar={() => { setFormKey((k) => k + 1); setAba("historico"); }}
-          onSalvo={() => { carregar(); setFormKey((k) => k + 1); setAviso("OPS salvo e assinado."); setAba("historico"); }} />
+          onSalvo={() => { carregar(); setFormKey((k) => k + 1); setAviso("OPS salvo. Use \"Gerar PDF\" para imprimir e colher a assinatura."); setAba("historico"); }} />
       )}
       {aba === "novo" && !registros && !erro && <p className="max-w-2xl mx-auto p-4 text-sm" style={{ color: "var(--text-secondary)" }}>Carregando...</p>}
       {aba === "novo" && erro && <p className="max-w-2xl mx-auto p-4 text-sm" style={{ color: "var(--status-danger)" }}>{erro}</p>}

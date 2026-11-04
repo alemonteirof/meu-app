@@ -333,22 +333,26 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
   `semana_iso`/`ano_iso` (calculados pelo trigger), `funcionario_observado` (+ `_uid` se for usuário; livre,
   pode até ser o próprio observador), `predio`, `empresa` (fixo "MAJ SOLUÇÕES"), `respostas` jsonb
   `{"1".."18": sim|nao|na}` (CHECK via `ops_respostas_validas`), 3 textos obrigatórios, `form_versao`,
-  `assinatura_*`, `observador_uid/email/nome`, `assinado_em`, `corrigido_por_uid/nome`, `corrigido_em`.
-- Trigger `ops_assinar` (BEFORE INSERT/UPDATE): exige MAJ; no INSERT exige assinatura e carimba observador/
-  data/sha256; no UPDATE (**correção** — decisão do Alexandre: editável sempre, com log) só observador ou admin,
+  `assinatura_*` (**opcionais** desde 04/11), `observador_uid/email/nome`, `assinado_em` (= data/hora do registro),
+  `corrigido_por_uid/nome`, `corrigido_em`. **Página 2** (04/11): `conhece_perigos_riscos` (sim|nao), `riscos` (texto, 1 por linha, até 5),
+  `medidas` jsonb `[{acao, prazo, responsavel}]` (até 10).
+- Trigger `ops_assinar` (BEFORE INSERT/UPDATE): exige MAJ; no INSERT carimba observador/data (assinatura
+  digital **não é mais exigida** — decisão 04/11: OPS impresso e assinado no papel; se vier, grava sha256); no UPDATE (**correção** — decisão do Alexandre: editável sempre, com log) só observador ou admin,
   e trava autoria/assinatura/`form_versao`, carimbando `corrigido_*`. `ops_auditar` grava em
-  `assinatura_auditoria_maj` (`documento_tipo='ops'`): `assinada` / `corrigida` / `excluida` — os 2 últimos com
+  `assinatura_auditoria_maj` (`documento_tipo='ops'`): `registrada` (ou `assinada` se houver assinatura) / `corrigida` / `excluida` — os 2 últimos com
   snapshot do ANTES (sem `assinatura_valor`). DELETE só admin.
 - RPC `ops_membros_maj()` (security definer): id/nome dos admin/operador p/ o select "Funcionário observado"
   (operador não lê `profiles` de outros).
 - Textos dos 18 itens + recuos do layout em `lib/opsItens.js` por `form_versao` (`nissan-terceiros-v1`).
   Se a Nissan mudar o modelo, criar versão nova e manter a antiga.
-- UI `components/OpsScreen.jsx`: abas Novo OPS · Histórico · Minha assinatura. Botões grandes SIM/NÃO/N/A sem
+- UI `components/OpsScreen.jsx`: abas Novo OPS · Histórico (sem "Minha assinatura" e sem campo de assinatura desde 04/11).
+  Página 2 no formulário: SIM/NÃO da entrevista, "Quais são os riscos?" e medidas (+ Linha / "Nenhuma (N/A)"). Botões grandes SIM/NÃO/N/A sem
   pré-marcação, atalho "N/A nos dois" (itens 1-2, PNE), item 15 sugere SIM se o observado assinou DDS na data
   (`dds_assinaturas`), aviso + confirmação se já houver OPS na mesma semana ISO, textos com limite 480 chars
-  (garante 1 página).
-- PDF: `components/OpsPrintView.jsx` — layout **igual ao modelo Nissan** (sem faixa do RVT, sem assinatura),
-  A4 retrato, `document.title = "OPS SEMANA XX"`. Rota **`#/ops/<id>/imprimir`** (tratada no `Root` do App.jsx)
+  (garante 1 página na folha 1).
+- PDF: `components/OpsPrintView.jsx` — layout **igual ao modelo Nissan, 2 páginas** (`OpsFolha` + `OpsFolha2`, quebra
+  `.ops-folha-2 { break-before: page }`; sem faixa do RVT). Página 2: Entrevista operador, riscos, medidas 1–10 e
+  "Assinatura do funcionário auditado" **em branco** (assinatura à mão) + "Semana" preenchida. A4 retrato, `document.title = "OPS SEMANA XX"`. Rota **`#/ops/<id>/imprimir`** (tratada no `Root` do App.jsx)
   p/ o futuro robô do Box: só MAJ logado; seta `document.body.dataset.opsPronto = id` quando a folha montou.
   Modelo oficial no Box: GESTÃO DE TERCEIROS - NISSAN DO BRASIL / 09. OPS - OBSERVAÇÃO PREVENTIVA DE SEGURANÇA
   (pastas por mês `MAIO_25` → `SEMANA 19`).
@@ -668,6 +672,8 @@ Rodar sempre no SQL Editor do Supabase **antes** de subir o build que depende de
 - `migracao_ops.sql` — tabela `ops_registros` + função de CHECK `ops_respostas_validas` + triggers
   `trg_ops_assinar`/`trg_ops_auditar` + RLS (só MAJ; UPDATE observador/admin; DELETE admin) + RPC
   `ops_membros_maj`. **Rodada** (2026-10-16, aplicada pelo Claude via MCP com autorização do Alexandre).
+- `migracao_ops_pagina2.sql` — página 2 do OPS (`conhece_perigos_riscos`, `riscos`, `medidas`) + assinatura
+  opcional (`ops_assinar` não exige mais; `ops_auditar` grava `registrada`). **Pendente** (2026-11-04).
 
 ## 16. Segurança — estado da auditoria de 29/08/2026
 

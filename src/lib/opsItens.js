@@ -64,6 +64,23 @@ export const OPS_TEXTOS = [
 // ~5 linhas do quadro no PDF (A4, Arial 9pt) — acima disso a folha passa de 1 página.
 export const OPS_TEXTO_MAX = 480;
 
+// Página 2 do modelo Nissan (Entrevista operador / Medidas corretivas / Assinatura).
+// Textos copiados do .doc. Limites garantem que cada linha cabe na linha pautada da folha.
+export const OPS_PAG2 = {
+  titulo: "ENTREVISTA OPERADOR:",
+  pergunta: "Funcionário conhece planilha de Perigo e Riscos e os riscos do posto de trabalho?",
+  riscosTitulo: "Quais são os riscos?",
+  medidasTitulo: "Medidas corretivas / Ações a seguir:",
+  medidasOrientacao: "definir o que, quando e quem.",
+  assinatura: "Assinatura do funcionário auditado:",
+  semana: "Semana:",
+};
+export const OPS_SIM_NAO = OPS_RESPOSTAS.filter((r) => r.valor !== "na");
+export const OPS_RISCOS_LINHAS = 5;     // linhas pontilhadas de "Quais são os riscos?"
+export const OPS_RISCOS_LINHA_MAX = 90; // caracteres por linha
+export const OPS_MEDIDAS_LINHAS = 10;   // linhas 1 a 10 da tabela de medidas
+export const OPS_MEDIDA_MAX = { acao: 75, prazo: 12, responsavel: 20 };
+
 // Semana ISO 8601 de uma data 'AAAA-MM-DD' — mesma regra do Postgres
 // (extract(week) / extract(isoyear)) usada no trigger ops_assinar.
 export function semanaIso(iso) {
