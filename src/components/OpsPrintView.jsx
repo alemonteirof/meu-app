@@ -261,7 +261,7 @@ export default function OpsPrintView({ registro, onBack }) {
   return (
     <div className="max-w-4xl mx-auto p-4">
       {/* @page próprio: A4 retrato (o padrão global de impressão é A4 paisagem do RVT) */}
-      <style>{`@media print { @page { size: A4 portrait; margin: 10mm 12mm; } .ops-folha { width: 100% !important; } .ops-folha-2 { break-before: page; page-break-before: always; } }`}</style>
+      <style>{`@media print { @page { size: A4 portrait; margin: 0; } .ops-folha { width: 100% !important; box-sizing: border-box; padding: 10mm 12mm !important; } .ops-folha-2 { break-before: page; page-break-before: always; } }`}</style>
       <div className="flex items-center justify-between gap-3 flex-wrap no-print mb-3">
         {onBack ? <button type="button" onClick={onBack} style={btnBase}>← Voltar</button> : <span />}
         <button type="button" onClick={() => { document.title = nomeArquivo; window.print(); }} style={btnPrimario}>
