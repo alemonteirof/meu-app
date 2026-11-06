@@ -6,6 +6,13 @@
       "sourceType": "github",
       "skillPath": "skills/design-motion-principles/SKILL.md",
       "computedHash": "ca263e4515ddd34e412c841a2b35c2898a2a2122744836fdd003f0a2552192d6"
+    },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/security-audit/SKILL.md",
+      "computedHash": "e6b2e317de75da97e9de18d842982994803f3a67a4a6d8154a82323dc3de8528",
+      "installMode": "copy"
     }
   }
 }
