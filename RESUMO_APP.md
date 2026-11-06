@@ -287,7 +287,9 @@ Selecionáveis em Atendimentos com id prefixado `bp:<id>` / `fa:<id>` (`decodeAl
 
 ### `assinaturas_salvas` / `assinatura_auditoria`
 `assinaturas_salvas`: 1 linha por `user_id` (RLS `user_id = auth.uid()`), `origem` = `desenho|texto`.
-`assinatura_auditoria`: log append-only gravado só pelo trigger, nunca pelo app.
+`assinatura_auditoria`: log append-only gravado só pelo trigger, nunca pelo app. Sem FK com `rvts`
+(sobrevive à exclusão do RVT; exclusão de RVT assinado grava evento `rvt_excluido`). Assinatura do
+cliente vai pela RPC `assinar_rvt_cliente` (não UPDATE direto) — ver seção 16.
 
 ### Checklist de ferramentas / assinatura MAJ (`tool_checklists`, `assinaturas_salvas_maj`, `assinatura_auditoria_maj`)
 - Só membros MAJ (`is_maj_staff()` = admin/operador) registram e assinam. Banco de assinatura **separado**
@@ -686,6 +688,16 @@ campos de `inspecoes`, bug de `paineis_marca_check` (esperava capitalizado, app 
 - CHECKs propositalmente ausentes em `dispositivos.categoria_funcional` (legado grava string livre)
   e `atendimentos.status`/`tipo` (valor com inconsistência de caixa).
 - Cliente de teste "ZZZZ" + painel "dasasdasd" a apagar pelo próprio app.
+
+**Revisão de RLS 06/11/2026 (skill `security-audit` da Cloudflare, em `.claude/skills/`):**
+`has_client_access()` não olha o papel do vínculo — as policies `FOR ALL` deixavam o Visualizador
+(cliente) gravar/apagar dados do próprio cliente pela API. `migracao_rls_visualizador_somente_leitura.sql`
+(**rodada 06/11/2026** pelo Claude via MCP com autorização do Alexandre; testada simulando
+Visualizador/Operador com rollback): SELECT = `has_client_access`;
+escrita = `is_maj_staff() and has_client_access` (padrão de `pendencias`) em todas as tabelas
+principais, intervenções, `supervisorio_comandos` e upload no bucket `fotos`. Única escrita do
+Visualizador = assinatura do cliente via RPC `assinar_rvt_cliente`. Isolamento entre clientes estava OK.
+Regra p/ tabela nova: nunca `FOR ALL has_client_access` — separar leitura e escrita.
 
 ## 17. Código morto — não reintroduzir
 

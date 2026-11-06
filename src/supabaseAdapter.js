@@ -1448,14 +1448,13 @@ export async function salvarAssinaturaVisita(rvtId, { tipo, valor, origem }) {
     login = data?.user?.email ?? null;
   } catch { /* sessão indisponível */ }
   if (!login) throw new Error('Sessão expirada. Faça login novamente para assinar.');
-  const { data, error } = await supabase.from('rvts').update({
-    assinatura_cliente: valor,
-    assinatura_cliente_tipo: tipo,
-    assinatura_cliente_origem: origem || tipo,
-  }).eq('id', rvtId)
-    .select('assinatura_cliente_login, assinatura_cliente_data, assinatura_cliente_origem')
-    .single();
+  // RPC (não UPDATE direto): visualizador não tem UPDATE em rvts; a função só
+  // mexe nas colunas da assinatura (migracao_rls_visualizador_somente_leitura.sql).
+  const { data: rows, error } = await supabase.rpc('assinar_rvt_cliente', {
+    p_rvt_id: rvtId, p_tipo: tipo, p_valor: valor, p_origem: origem || tipo,
+  });
   if (error) throw error;
+  const data = Array.isArray(rows) ? rows[0] : rows;
   return {
     login: data?.assinatura_cliente_login || login,
     data: data?.assinatura_cliente_data || new Date().toISOString(),
